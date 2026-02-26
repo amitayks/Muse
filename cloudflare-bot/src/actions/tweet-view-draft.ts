@@ -8,31 +8,35 @@
 
 import type { ActionHandler } from '../core/router';
 import type { DraftContent } from '../types';
+import { homeButton } from '../ui/components';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { getDraft, getTimezone } from '../services/db';
 import { editMessage, sendPhoto, deleteMessage } from '../services/telegram';
 import { ensureImage } from '../services/storage';
 import { renderDraftDetail, renderError } from '../views';
-import { truncateHtml } from '../views/drafts';
+import { truncateHtml } from '../ui/utils';
 
 export const tweetViewDraftAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     const draftId = ctx.value;
     const messageId = ctx.messageId;
 
     if (!messageId) {
-        return renderError('Message context lost.');
+        return renderError('Message context lost.', lang);
     }
 
     // Show loading state
     await editMessage(ctx.env, ctx.chatId, messageId,
-        '⏳ <b>Retrieving your draft...</b>',
+        t(lang, 'drafts.retrieving'),
         []
     );
 
     const draft = await getDraft(ctx.env, draftId, ctx.chatId);
     if (!draft) {
         await editMessage(ctx.env, ctx.chatId, messageId,
-            '❌ Draft not found. It may have been deleted.',
-            [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+            t(lang, 'actions.draftNotFoundDeleted'),
+            [[homeButton(lang)]]
         );
         return;
     }
@@ -50,7 +54,7 @@ export const tweetViewDraftAction: ActionHandler = async (ctx) => {
     }
 
     const tz = await getTimezone(ctx.env, ctx.chatId);
-    const view = await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz);
+    const view = await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz, lang);
 
     if (imageUrl) {
         // Delete the text message and send as photo with caption

@@ -38,8 +38,11 @@ export function getUserIdFromUpdate(update: TelegramUpdate): number | null {
  * Check if a user is the admin (no DB access needed)
  */
 export function isAdmin(chatId: string | number, env: Env): boolean {
-    if (!env.ADMIN_CHAT_ID) return false;
-    return String(chatId) === env.ADMIN_CHAT_ID;
+    // ADMIN_CHAT_ID is set at runtime by hydrateEnv (Telegram bot handlers).
+    // For API routes (raw env), fall back to TELEGRAM_CHAT_ID (the secret).
+    const adminId = env.ADMIN_CHAT_ID || env.TELEGRAM_CHAT_ID;
+    if (!adminId) return false;
+    return String(chatId) === adminId;
 }
 
 /**
@@ -287,16 +290,19 @@ export function sanitizeError(error: unknown): string {
 // ==================== SECURITY HEADERS ====================
 
 /**
- * Add security headers to a response
+ * Add security headers to a response.
+ * Pass skipFrameOptions: true for routes that need to load in iframes (e.g. Telegram WebApps).
  */
-export function addSecurityHeaders(response: Response): Response {
+export function addSecurityHeaders(response: Response, options?: { skipFrameOptions?: boolean }): Response {
     const headers = new Headers(response.headers);
 
     // Prevent MIME type sniffing
     headers.set('X-Content-Type-Options', 'nosniff');
 
-    // Prevent clickjacking
-    headers.set('X-Frame-Options', 'DENY');
+    // Prevent clickjacking (skip for WebApp routes loaded in Telegram iframes)
+    if (!options?.skipFrameOptions) {
+        headers.set('X-Frame-Options', 'DENY');
+    }
 
     // XSS protection (legacy but still useful)
     headers.set('X-XSS-Protection', '1; mode=block');
@@ -401,6 +407,7 @@ export const RATE_LIMITS = {
     admin: { windowMs: 60000, maxRequests: 5 },          // 5 req/min for admin endpoints
     image: { windowMs: 60000, maxRequests: 50 },         // 50 req/min for images
     github: { windowMs: 60000, maxRequests: 30 },        // 30 req/min for GitHub webhook
+    api: { windowMs: 60000, maxRequests: 60 },           // 60 req/min for WebApp API routes
 } as const;
 
 /**

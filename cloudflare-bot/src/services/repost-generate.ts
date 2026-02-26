@@ -7,7 +7,8 @@
 
 import type { Env, DraftContent, TwitterTweet, TwitterAccountConfig } from '../types';
 import { getTwitterAccountOverview, getRecentTweetsByAccount } from './db';
-import { REPOST_SYSTEM_PROMPT, buildRepostUserPrompt } from './repost-prompt';
+import { buildRepostUserPrompt } from './repost-prompt';
+import { getPrompt } from './prompts';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODEL = 'gemini-2.0-flash';
@@ -21,7 +22,8 @@ export async function generateRepostContent(
     accountId: string,
     config: TwitterAccountConfig,
     personaOverride?: string | null,
-    imageUrl?: string | null
+    imageUrl?: string | null,
+    language?: string,
 ): Promise<DraftContent | null> {
     // Load persona context — use override if provided, else fetch from account
     let persona: string | undefined;
@@ -40,12 +42,14 @@ export async function generateRepostContent(
         authorUsername: tweet.author_username,
         isThread: tweet.is_thread === 1,
         tone: config.tone,
-        language: config.language,
+        language: language || 'en',
         includeHashtags: config.includeHashtags,
         persona,
         recentTweets: recentTweets.map(t => t.text),
         hasImage: !!imageUrl,
     });
+
+    const repostSystemPrompt = await getPrompt(env, tweet.chat_id, 'repost', language || 'en');
 
     try {
         const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
@@ -80,7 +84,7 @@ export async function generateRepostContent(
                     { role: 'user', parts },
                 ],
                 systemInstruction: {
-                    parts: [{ text: REPOST_SYSTEM_PROMPT }],
+                    parts: [{ text: repostSystemPrompt }],
                 },
                 generationConfig: {
                     responseMimeType: 'application/json',

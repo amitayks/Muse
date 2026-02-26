@@ -4,7 +4,8 @@
 
 import type { Env, TwitterTweet } from '../types';
 import { updateTwitterTweet } from './db';
-import { SCORING_SYSTEM_PROMPT, buildScoringUserPrompt } from './scoring-prompt';
+import { buildScoringUserPrompt } from './scoring-prompt';
+import { getPrompt } from './prompts';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODEL = 'gemini-2.0-flash';
@@ -30,6 +31,9 @@ export async function scoreTweetBatch(env: Env, tweets: TwitterTweet[]): Promise
     console.log(`[scoring] Scoring ${pendingTweets.length} tweets`);
 
     const userPrompt = buildScoringUserPrompt(pendingTweets);
+    // Scoring is admin-only — use first tweet's chatId for prompt resolution
+    const chatId = pendingTweets[0]?.chat_id || '';
+    const scoringSystemPrompt = await getPrompt(env, chatId, 'scoring', 'en');
 
     try {
         const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
@@ -42,7 +46,7 @@ export async function scoreTweetBatch(env: Env, tweets: TwitterTweet[]): Promise
                     { role: 'user', parts: [{ text: userPrompt }] },
                 ],
                 systemInstruction: {
-                    parts: [{ text: SCORING_SYSTEM_PROMPT }],
+                    parts: [{ text: scoringSystemPrompt }],
                 },
                 generationConfig: {
                     responseMimeType: 'application/json',

@@ -27,6 +27,9 @@ import { handleTestGenerate } from './routes/test-generate';
 import { handleImageRequest } from './routes/image';
 import { handleHeyGenWebhook } from './routes/heygen-webhook';
 import { handleMediaRequest } from './routes/media';
+import { handlePromptEditorPage } from './routes/app';
+import { handleAdminPromptEditorPage } from './routes/app-admin';
+import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi } from './routes/api-prompt';
 
 
 export default {
@@ -98,6 +101,76 @@ export default {
             if (url.pathname === '/test-generate' && request.method === 'GET') {
                 const response = await handleTestGenerate(request, url, env);
                 return response;
+            }
+
+            // WebApp routes — no X-Frame-Options (loaded in Telegram iframe)
+            if (url.pathname === '/app/prompts') {
+                const rateLimit = checkRateLimit(`app:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = addSecurityHeaders(handlePromptEditorPage(), { skipFrameOptions: true });
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+            }
+
+            // Admin WebApp route — no X-Frame-Options (loaded in Telegram iframe)
+            if (url.pathname === '/app/admin-prompts') {
+                const rateLimit = checkRateLimit(`app:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = addSecurityHeaders(handleAdminPromptEditorPage(), { skipFrameOptions: true });
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+            }
+
+            // Prompt API routes
+            if (url.pathname === '/api/prompt') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handlePromptApi(request, env);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
+            }
+
+            // Stale count API
+            if (url.pathname === '/api/prompt/stale-count') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleStaleCountApi(request, env);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
+            }
+
+            // Acknowledge stale prompt API
+            if (url.pathname === '/api/prompt/acknowledge') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleAcknowledgeApi(request, env);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
+            }
+
+            // Admin prompt API routes
+            if (url.pathname === '/api/admin/prompt/push') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleAdminPromptApi(request, env, true);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
+            }
+
+            if (url.pathname === '/api/admin/prompt') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleAdminPromptApi(request, env, false);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
             }
 
             return addSecurityHeaders(new Response('Not Found', { status: 404 }));

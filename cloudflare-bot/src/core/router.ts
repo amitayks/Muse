@@ -3,6 +3,7 @@
  */
 
 import type { Env, ViewResult, ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
 
 // ==================== TYPES ====================
 
@@ -12,6 +13,7 @@ export interface HandlerContext {
     messageId?: number;
     args?: string;
     executionCtx?: ExecutionContext;
+    lang?: Lang;
 }
 
 export type CommandHandler = (ctx: HandlerContext) => Promise<ViewResult | void>;
@@ -139,7 +141,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
             return handler(ctx);
         }
         const { renderHome } = await import('../views');
-        return renderHome(ctx.env, ctx.chatId);
+        return renderHome(ctx.env, ctx.chatId, (ctx.lang || 'en') as Lang);
     },
     page: paginationAction,
     repo: async (ctx) => {
@@ -150,7 +152,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
             current_view: 'repo',
             context: { selected_repo_id: ctx.value },
         });
-        return renderRepoDetail(ctx.env, ctx.chatId, ctx.value);
+        return renderRepoDetail(ctx.env, ctx.chatId, ctx.value, (ctx.lang || 'en') as Lang);
     },
     config: configToggleAction,
     account: accountDetailAction as ActionHandler,

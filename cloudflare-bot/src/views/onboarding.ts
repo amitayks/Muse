@@ -4,127 +4,131 @@
  */
 
 import type { ViewResult, InlineButton } from '../types';
+import { homeButton } from '../ui/components';
+import { t } from '../ui/strings';
+import type { Lang } from '../ui/strings';
 
-export function renderWelcome(): ViewResult {
+export function renderWelcome(lang: Lang = 'en'): ViewResult {
     return {
         text: [
-            '🎭 <b>Welcome to Muse!</b>',
+            t(lang, 'onboarding.welcomeTitle'),
             '',
-            'Your AI content partner for X/Twitter.',
+            t(lang, 'onboarding.welcomeSubtitle'),
             '',
-            "I'll help you turn your code and ideas into polished posts.",
+            t(lang, 'onboarding.welcomeDesc'),
             '',
-            "First, let's connect your accounts so I can work with your APIs.",
+            t(lang, 'onboarding.welcomeSetup'),
             '',
-            '<i>By continuing, you agree to provide your own API keys. Keys are encrypted and stored securely.</i>',
+            t(lang, 'onboarding.welcomeDisclaimer'),
         ].join('\n'),
         keyboard: [
-            [{ text: 'Get Started', callback_data: 'onboard:start', style: 'primary' }],
-            [{ text: '❓ Learn More', callback_data: 'onboard:learn' }],
+            [{ text: t(lang, 'onboarding.btnGetStarted'), callback_data: 'onboard:start', style: 'primary' }],
+            [{ text: t(lang, 'onboarding.btnLearnMore'), callback_data: 'onboard:learn' }],
         ],
     };
 }
 
-export function renderLearnMore(): ViewResult {
+export function renderLearnMore(lang: Lang = 'en'): ViewResult {
     return {
         text: [
-            '📖 <b>What Muse Does</b>',
+            t(lang, 'onboarding.learnTitle'),
             '',
-            '• <b>Repost</b> — Turn any tweet into your own styled post',
-            '• <b>Generate</b> — Create content from your GitHub commits',
-            '• <b>Handwrite</b> — Compose tweets with AI refinement',
-            '• <b>Follow</b> — Track X accounts and auto-generate reposts',
+            t(lang, 'onboarding.learnRepost'),
+            t(lang, 'onboarding.learnGenerate'),
+            t(lang, 'onboarding.learnHandwrite'),
+            t(lang, 'onboarding.learnFollow'),
             '',
-            'You bring your own API keys (Gemini for AI, X for posting).',
-            'All keys are encrypted at rest and never shared.',
+            t(lang, 'onboarding.learnKeys'),
+            t(lang, 'onboarding.learnSecurity'),
         ].join('\n'),
         keyboard: [
-            [{ text: 'Get Started', callback_data: 'onboard:start', style: 'primary' }],
+            [{ text: t(lang, 'onboarding.btnGetStarted'), callback_data: 'onboard:start', style: 'primary' }],
         ],
     };
 }
 
-export function renderGeminiKeyPrompt(): ViewResult {
+export function renderGeminiKeyPrompt(lang: Lang = 'en'): ViewResult {
     return {
         text: [
-            '🔑 <b>Step 1/3: Google Gemini API Key</b>',
+            t(lang, 'onboarding.geminiTitle'),
             '',
-            'This powers the AI content generation.',
+            t(lang, 'onboarding.geminiDesc'),
             '',
-            'Get yours free at:',
-            'aistudio.google.com/apikey',
+            t(lang, 'onboarding.geminiGetYours'),
+            t(lang, 'onboarding.geminiLink'),
             '',
-            '📋 Paste your key below as a message:',
+            t(lang, 'onboarding.geminiPaste'),
             '',
-            '<i>(I\u2019ll delete your message immediately after saving the key)</i>',
+            t(lang, 'onboarding.geminiDeleteNote'),
         ].join('\n'),
         keyboard: [
-            [{ text: '📖 How to get it', url: 'https://aistudio.google.com/apikey' }],
-            [{ text: '⏭ Skip for now', callback_data: 'onboard:skip_gemini' }],
+            [{ text: t(lang, 'onboarding.btnHowToGet'), url: 'https://aistudio.google.com/apikey' }],
+            [{ text: t(lang, 'onboarding.btnSkipForNow'), callback_data: 'onboard:skip_gemini' }],
         ],
     };
 }
 
-export function renderGeminiSuccess(): ViewResult {
+export function renderGeminiSuccess(lang: Lang = 'en'): ViewResult {
     return {
-        text: '✅ <b>Gemini connected!</b>\n\nMoving to the next step...',
+        text: t(lang, 'onboarding.geminiSuccess'),
         keyboard: [],
     };
 }
 
-export function renderXKeysPrompt(): ViewResult {
+export function renderXKeysPrompt(lang: Lang = 'en'): ViewResult {
     return {
         text: [
-            '🔑 <b>Step 2/3: X/Twitter API</b>',
+            t(lang, 'onboarding.xTitle'),
             '',
-            'I need 4 values from developer.x.com',
+            t(lang, 'onboarding.xDesc'),
             '',
-            '<b>Send them in this exact format</b> (one per line):',
+            t(lang, 'onboarding.xFormat'),
             '',
-            '<code>API_KEY</code>',
-            '<code>API_SECRET</code>',
-            '<code>ACCESS_TOKEN</code>',
-            '<code>ACCESS_SECRET</code>',
+            t(lang, 'onboarding.xKey'),
+            t(lang, 'onboarding.xSecret'),
+            t(lang, 'onboarding.xAccessToken'),
+            t(lang, 'onboarding.xAccessSecret'),
             '',
-            '<i>(I\u2019ll delete the message immediately after saving)</i>',
+            t(lang, 'onboarding.xDeleteNote'),
         ].join('\n'),
         keyboard: [
-            [{ text: '📖 How to get them', url: 'https://developer.x.com/en/portal/dashboard' }],
+            [{ text: t(lang, 'onboarding.btnHowToGetThem'), url: 'https://developer.x.com/en/portal/dashboard' }],
+            [{ text: t(lang, 'onboarding.btnSkipForNow'), callback_data: 'onboard:skip_x' }],
         ],
     };
 }
 
-export function renderXSuccess(username?: string): ViewResult {
+export function renderXSuccess(username?: string, lang: Lang = 'en'): ViewResult {
     const label = username ? ` (@${username})` : '';
     return {
-        text: `✅ <b>X/Twitter connected${label}!</b>\n\nMoving to the next step...`,
+        text: t(lang, 'onboarding.xSuccess').replace('{label}', label),
         keyboard: [],
     };
 }
 
-export function renderGitHubTokenPrompt(): ViewResult {
+export function renderGitHubTokenPrompt(lang: Lang = 'en'): ViewResult {
     return {
         text: [
-            '🔑 <b>Step 3/3: GitHub Token (optional)</b>',
+            t(lang, 'onboarding.githubTitle'),
             '',
-            'Only needed for auto-generating content from your code commits.',
+            t(lang, 'onboarding.githubDesc'),
             '',
-            'Create a personal access token at:',
-            'github.com/settings/tokens',
+            t(lang, 'onboarding.githubCreate'),
+            t(lang, 'onboarding.githubLink'),
             '',
-            '📋 Paste your token below, or skip this step.',
+            t(lang, 'onboarding.githubPaste'),
         ].join('\n'),
         keyboard: [
-            [{ text: '📖 Create token', url: 'https://github.com/settings/tokens' }],
-            [{ text: '⏭ Skip', callback_data: 'onboard:skip_github' }],
+            [{ text: t(lang, 'onboarding.btnCreateToken'), url: 'https://github.com/settings/tokens' }],
+            [{ text: t(lang, 'onboarding.btnSkip'), callback_data: 'onboard:skip_github' }],
         ],
     };
 }
 
-export function renderGitHubSuccess(username?: string): ViewResult {
+export function renderGitHubSuccess(username?: string, lang: Lang = 'en'): ViewResult {
     const label = username ? ` (${username})` : '';
     return {
-        text: `✅ <b>GitHub connected${label}!</b>`,
+        text: t(lang, 'onboarding.githubSuccess').replace('{label}', label),
         keyboard: [],
     };
 }
@@ -135,46 +139,46 @@ export function renderComplete(services: {
     hasGitHub: boolean;
     hasHeyGen: boolean;
     xUsername?: string;
-}): ViewResult {
+}, lang: Lang = 'en'): ViewResult {
     const lines = [
-        '🎉 <b>You\u2019re all set!</b>',
+        t(lang, 'onboarding.completeTitle'),
         '',
-        '<b>Connected:</b>',
+        t(lang, 'onboarding.connected'),
     ];
 
-    lines.push(services.hasGemini ? '✅ Gemini AI' : '⬜ Gemini AI (skipped)');
+    lines.push(services.hasGemini ? `✅ ${t(lang, 'settings.geminiAi')}` : `⬜ ${t(lang, 'settings.geminiAi')} (${t(lang, 'onboarding.skipped')})`);
     lines.push(services.hasX
-        ? `✅ X/Twitter${services.xUsername ? ` (@${services.xUsername})` : ''}`
-        : '⬜ X/Twitter (skipped)');
-    lines.push(services.hasGitHub ? '✅ GitHub' : '⬜ GitHub (skipped)');
-    lines.push(services.hasHeyGen ? '✅ HeyGen' : '⬜ HeyGen (skipped)');
+        ? `✅ ${t(lang, 'settings.xTwitter')}${services.xUsername ? ` (@${services.xUsername})` : ''}`
+        : `⬜ ${t(lang, 'settings.xTwitter')} (${t(lang, 'onboarding.skipped')})`);
+    lines.push(services.hasGitHub ? `✅ ${t(lang, 'settings.github')}` : `⬜ ${t(lang, 'settings.github')} (${t(lang, 'onboarding.skipped')})`);
+    lines.push(services.hasHeyGen ? '✅ HeyGen' : `⬜ HeyGen (${t(lang, 'onboarding.skipped')})`);
 
     lines.push('');
-    lines.push('Try /repost with any tweet URL, or follow an X account to get started!');
+    lines.push(t(lang, 'onboarding.completeHint'));
 
     return {
         text: lines.join('\n'),
         keyboard: [
-            [{ text: '🏠 Dashboard', callback_data: 'view:home' }],
-            [{ text: '⚙️ Add More Keys', callback_data: 'view:settings' }],
+            [homeButton(lang)],
+            [{ text: t(lang, 'onboarding.btnAddMoreKeys'), callback_data: 'view:settings' }],
         ],
     };
 }
 
-export function renderKeyError(service: string, errorMessage?: string): ViewResult {
-    const canSkip = service.toLowerCase() !== 'x';
+export function renderKeyError(service: string, errorMessage?: string, lang: Lang = 'en'): ViewResult {
+    const canSkip = true;
     const keyboard: InlineButton[][] = [];
     if (canSkip) {
-        keyboard.push([{ text: '⏭ Skip for now', callback_data: `onboard:skip_${service.toLowerCase()}` }]);
+        keyboard.push([{ text: t(lang, 'onboarding.btnSkipForNow'), callback_data: `onboard:skip_${service.toLowerCase()}` }]);
     }
 
     return {
         text: [
-            `❌ <b>${service} key validation failed</b>`,
+            t(lang, 'onboarding.keyErrorTitle').replace('{service}', service),
             '',
-            errorMessage || 'The key appears to be invalid. Please check and try again.',
+            errorMessage || t(lang, 'onboarding.keyErrorDefault'),
             '',
-            canSkip ? 'Paste a new key or skip this step.' : 'Paste a new key to try again.',
+            canSkip ? t(lang, 'onboarding.keyErrorRetrySkip') : t(lang, 'onboarding.keyErrorRetry'),
         ].join('\n'),
         keyboard,
     };

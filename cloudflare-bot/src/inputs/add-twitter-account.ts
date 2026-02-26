@@ -7,6 +7,9 @@
 
 import type { HandlerContext, InputHandler } from '../core/router';
 import type { ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
+import { cancelRow } from '../ui/components';
 import { createTwitterAccount, updateChatState } from '../services/db';
 import { renderAccountsList } from '../views/accounts';
 import { sendMessage } from '../services/telegram';
@@ -16,12 +19,13 @@ export const addTwitterAccountInput: InputHandler = async (
     ctx: HandlerContext & { text: string; context: ChatContext }
 ) => {
     const { env, chatId } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
     const username = ctx.text.trim().replace(/^@/, '');
 
     if (!username || username.length < 1 || username.length > 15 || !/^[a-zA-Z0-9_]+$/.test(username)) {
         await sendMessage(env, chatId,
-            `❌ <b>Invalid username</b>\n\n"${username}" doesn't look like a valid Twitter/X username.\n\nUsernames must be 1-15 characters, alphanumeric or underscore only.\n\nTry again:`,
-            [[{ text: '❌ Cancel', callback_data: 'view:accounts' }]]
+            `${t(lang, 'addAccount.invalidUsername')}\n\n${t(lang, 'addAccount.invalidUsernameMsg').replace('{username}', username)}`,
+            [cancelRow('view:accounts', lang)]
         );
         return;
     }
@@ -55,21 +59,21 @@ export const addTwitterAccountInput: InputHandler = async (
             context: null,
         });
 
-        const view = await renderAccountsList(env, chatId);
+        const view = await renderAccountsList(env, chatId, 0, lang);
         await respond(env, chatId, view, { viewName: 'accounts', context: null });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         if (message.includes('UNIQUE constraint')) {
             await sendMessage(env, chatId,
-                `❌ <b>Already following</b>\n\nYou're already following @${username}.`,
-                [[{ text: '👤 Accounts', callback_data: 'view:accounts' }]]
+                `${t(lang, 'addAccount.alreadyFollowing')}\n\n${t(lang, 'addAccount.alreadyFollowingMsg').replace('{username}', username)}`,
+                [[{ text: t(lang, 'actions.btnAccounts'), callback_data: 'view:accounts' }]]
             );
             return;
         }
         console.error('[add-account] Error:', error);
         await sendMessage(env, chatId,
-            `❌ Failed to add account. Please try again.`,
-            [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+            t(lang, 'addAccount.failedToAddAccount'),
+            [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
         );
     }
 };

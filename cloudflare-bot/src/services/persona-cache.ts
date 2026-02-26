@@ -8,7 +8,8 @@
 import type { Env, PersonaCache } from '../types';
 import { getPersonaCache, upsertPersonaCache } from './db';
 import { lookupUserByUsername } from './x';
-import { PERSONA_SYSTEM_PROMPT, buildPersonaUserPrompt } from './persona-prompt';
+import { buildPersonaUserPrompt } from './persona-prompt';
+import { getPrompt } from './prompts';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODEL = 'gemini-2.0-flash';
@@ -73,6 +74,9 @@ export async function getOrCreatePersona(
             bio,
         });
 
+        // Persona cache is global (no user context), use empty chatId
+        const personaSystemPrompt = await getPrompt(env, '', 'persona', 'en');
+
         const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
 
         const response = await fetch(url, {
@@ -83,7 +87,7 @@ export async function getOrCreatePersona(
                     { role: 'user', parts: [{ text: userPrompt }] },
                 ],
                 systemInstruction: {
-                    parts: [{ text: PERSONA_SYSTEM_PROMPT }],
+                    parts: [{ text: personaSystemPrompt }],
                 },
                 generationConfig: {
                     responseMimeType: 'application/json',

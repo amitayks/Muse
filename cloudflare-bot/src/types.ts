@@ -74,6 +74,7 @@ export interface User {
     context: string | null;
 
     // Settings
+    language: string; // 'en' | 'he'
     timezone: string;
     page_size: number;
     video_settings: string | null;
@@ -191,9 +192,6 @@ export interface RepoConfig {
     branches: string[];
     platform: 'x';
 
-    // Content language
-    language: 'en' | 'he';
-
     // Thread settings
     minCommitsForThread: number;
     maxTweets: number;
@@ -224,7 +222,6 @@ export const DEFAULT_REPO_CONFIG: RepoConfig = {
     watchPushes: false,
     branches: ['main'],
     platform: 'x',
-    language: 'en',
     minCommitsForThread: 3,
     maxTweets: 10,
     alwaysGenerateThreadImage: true,
@@ -416,7 +413,6 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
 
 // Twitter account configuration
 export interface TwitterAccountConfig {
-    language: 'en' | 'he';
     includeHashtags: boolean;
     alwaysGenerateImage: boolean;
     singleImageProbability: number;
@@ -428,7 +424,6 @@ export interface TwitterAccountConfig {
 }
 
 export const DEFAULT_TWITTER_ACCOUNT_CONFIG: TwitterAccountConfig = {
-    language: 'en',
     includeHashtags: true,
     alwaysGenerateImage: false,
     singleImageProbability: 0.3,
@@ -604,6 +599,7 @@ export interface InlineButton {
     text: string;
     callback_data?: string;
     url?: string;
+    web_app?: { url: string };
     style?: 'primary' | 'success' | 'danger';
 }
 
@@ -622,6 +618,7 @@ export interface TelegramMessage {
     caption?: string;
     photo?: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>;
     from?: { id: number; first_name: string };
+    web_app_data?: { data: string; button_text: string };
 }
 
 // Telegram callback query
@@ -652,6 +649,7 @@ export interface ChatContext {
     selectedCharGroupId?: string;
     selected_account_id?: string;
     schedule_date?: string; // YYYY-MM-DD for day picker flow
+    schedule_return_view?: string; // Origin view for schedule flow back-navigation
     repost_preview?: {
         tweet_id: string;
         username: string;

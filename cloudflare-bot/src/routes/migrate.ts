@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { verifyAdminSecret, secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../services/security';
+import { seedDefaultPrompts } from '../services/prompts';
 
 /**
  * Helper: run each SQL statement individually using prepare().run() to avoid D1 exec() issues
@@ -339,6 +340,64 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             }
         } catch (instagramError) {
             logInfo('Instagram migration note:', String(instagramError));
+        }
+
+        // Migration: Add language column to users table
+        try {
+            const usersInfo2 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasLanguage = usersInfo2.results?.some((col: any) => col.name === 'language');
+
+            if (!hasLanguage) {
+                await env.DB.prepare(`ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en';`).run();
+                logInfo('Added language column to users table');
+
+                // Set existing users' language based on their repo/account configs
+                // If any repo or account has language='he', set the user to 'he'
+                try {
+                    await env.DB.prepare(`
+                        UPDATE users SET language = 'he' WHERE chat_id IN (
+                            SELECT DISTINCT chat_id FROM repos WHERE config LIKE '%"language":"he"%'
+                            UNION
+                            SELECT DISTINCT chat_id FROM twitter_accounts WHERE config LIKE '%"language":"he"%'
+                        )
+                    `).run();
+                    logInfo('Migrated existing user languages from repo/account configs');
+                } catch (langMigrateError) {
+                    logInfo('Language migration from configs note:', String(langMigrateError));
+                }
+            }
+        } catch (languageError) {
+            logInfo('Language column migration note:', String(languageError));
+        }
+
+        // Migration: Create prompt storage tables and seed defaults
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS default_prompts (
+                    prompt_type TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    version INTEGER DEFAULT 1,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (prompt_type, language)
+                );`,
+                `CREATE TABLE IF NOT EXISTS user_prompts (
+                    chat_id TEXT NOT NULL,
+                    prompt_type TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    based_on_version INTEGER DEFAULT 1,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (chat_id, prompt_type, language),
+                    FOREIGN KEY (chat_id) REFERENCES users(chat_id)
+                );`,
+            ]);
+            const seeded = await seedDefaultPrompts(env);
+            if (seeded > 0) {
+                logInfo(`Seeded ${seeded} default prompts`);
+            }
+        } catch (promptError) {
+            logInfo('Prompt storage migration note:', String(promptError));
         }
 
         return secureJsonResponse({ success: true, message: 'Database migrated' });

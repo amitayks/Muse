@@ -4,6 +4,8 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext, HeyGenCharacter } from '../types';
+import type { Lang } from '../ui/strings';
+import { cancelRow } from '../ui/components';
 import { updateChatState, getVideoSettings, updateVideoSettings } from '../services/db';
 import { sendMessage, getFileUrl } from '../services/telegram';
 import { logInfo, logError } from '../services/security';
@@ -31,7 +33,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
                 '📷 Please send a <b>photo</b>. Text messages are not accepted at this step.',
                 [
                     ...(cc.assetIds.length > 0 ? [[{ text: `✅ Done (${cc.assetIds.length} photo${cc.assetIds.length !== 1 ? 's' : ''})`, callback_data: 'vsettings:done_photos' }]] : []),
-                    [{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }],
+                    cancelRow('vsettings:cancel_character', ((ctx as any).lang || 'en') as Lang),
                 ],
             );
             return;
@@ -69,7 +71,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
                 `📷 Photo ${count} uploaded!${tip}\n\nSend more photos or tap <b>Done</b> to continue.`,
                 [
                     [{ text: `✅ Done (${count} photo${count !== 1 ? 's' : ''})`, callback_data: 'vsettings:done_photos' }],
-                    [{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }],
+                    cancelRow('vsettings:cancel_character', ((ctx as any).lang || 'en') as Lang),
                 ],
             );
         } catch (error) {
@@ -79,7 +81,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
                 `❌ Failed to upload the photo.\n<code>${errMsg}</code>\n\nPlease try again with a different image.`,
                 [
                     ...(cc.assetIds.length > 0 ? [[{ text: `✅ Done (${cc.assetIds.length} photos)`, callback_data: 'vsettings:done_photos' }]] : []),
-                    [{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }],
+                    cancelRow('vsettings:cancel_character', ((ctx as any).lang || 'en') as Lang),
                 ],
             );
         }
@@ -88,7 +90,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
         if (!text || text.trim().length === 0) {
             await sendMessage(env, chatId,
                 'Please enter a name for the character.',
-                [[{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }]],
+                [cancelRow('vsettings:cancel_character', ((ctx as any).lang || 'en') as Lang)],
             );
             return;
         }

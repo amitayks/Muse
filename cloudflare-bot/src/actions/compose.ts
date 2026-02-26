@@ -4,17 +4,19 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent, HandwriteState } from '../types';
+import type { Lang } from '../ui/strings';
 import { getChatState, parseContext, updateChatState, createDraft, getTimezone } from '../services/db';
 import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../services/telegram';
 import { ensureImage } from '../services/storage';
 import { renderCompose, renderDraftDetail } from '../views';
-import { truncateHtml } from '../views/drafts';
+import { truncateHtml } from '../ui/utils';
 import { renderHome } from '../views/home';
 import { sanitizeError } from '../services/security';
 
 export async function composeAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult | void> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, value } = ctx;
     const state = await getChatState(env, chatId);
     const context = parseContext(state);
@@ -22,28 +24,29 @@ export async function composeAction(
 
     switch (value) {
         case 'pendown':
-            await handlePenDown(env, chatId, handwrite);
+            await handlePenDown(env, chatId, handwrite, lang);
             return; // void — handled sending ourselves
         case 'toggle_image':
-            return handleToggle(env, chatId, context, handwrite, 'imageGen');
+            return handleToggle(env, chatId, context, handwrite, 'imageGen', lang);
         case 'toggle_ai':
-            return handleToggle(env, chatId, context, handwrite, 'aiRefine');
+            return handleToggle(env, chatId, context, handwrite, 'aiRefine', lang);
         case 'cancel':
-            await handleCancel(env, chatId, ctx.messageId, handwrite);
+            await handleCancel(env, chatId, ctx.messageId, handwrite, lang);
             return; // void — handled sending ourselves
         default:
-            return renderHome(env, chatId);
+            return renderHome(env, chatId, lang);
     }
 }
 
 async function handlePenDown(
     env: import('../types').Env,
     chatId: string,
-    handwrite: HandwriteState | undefined
+    handwrite: HandwriteState | undefined,
+    lang: Lang = 'en'
 ): Promise<void> {
     if (!handwrite || handwrite.tweets.length === 0) {
         // No tweets to save — send compose view as new message
-        const view = renderCompose([], [], handwrite?.imageGen ?? false, handwrite?.aiRefine ?? false);
+        const view = renderCompose([], [], handwrite?.imageGen ?? false, handwrite?.aiRefine ?? false, lang);
         await sendMessage(env, chatId, view.text, view.keyboard);
         return;
     }
@@ -78,7 +81,7 @@ async function handlePenDown(
             content = await refineHandwrittenContent(env, content, {
                 refineText: handwrite.aiRefine,
                 generateImagePrompt: handwrite.imageGen,
-            });
+            }, lang, chatId);
             // Preserve media keys from original tweets
             content.tweets = content.tweets.map((t, i) => ({
                 ...t,
@@ -120,7 +123,7 @@ async function handlePenDown(
     }
 
     const tz = await getTimezone(env, chatId);
-    const view = await renderDraftDetail(env, chatId, draftId, tz);
+    const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
 
     let finalMessageId: number;
 
@@ -151,10 +154,11 @@ async function handleToggle(
     chatId: string,
     context: import('../types').ChatContext,
     handwrite: HandwriteState | undefined,
-    field: 'imageGen' | 'aiRefine'
+    field: 'imageGen' | 'aiRefine',
+    lang: Lang = 'en'
 ): Promise<ViewResult> {
     if (!handwrite) {
-        return renderHome(env, chatId);
+        return renderHome(env, chatId, lang);
     }
 
     handwrite[field] = !handwrite[field];
@@ -172,16 +176,17 @@ async function handleToggle(
         return { text: t.text, hasMedia: !!t.mediaKey };
     });
 
-    return renderCompose(composeTweets, charWarnings, handwrite.imageGen, handwrite.aiRefine);
+    return renderCompose(composeTweets, charWarnings, handwrite.imageGen, handwrite.aiRefine, lang);
 }
 
 async function handleCancel(
     env: import('../types').Env,
     chatId: string,
     messageId: number | undefined,
-    handwrite: HandwriteState | undefined
+    handwrite: HandwriteState | undefined,
+    lang: Lang = 'en'
 ): Promise<void> {
-    const view = await renderHome(env, chatId);
+    const view = await renderHome(env, chatId, lang);
     const hadTweets = handwrite && handwrite.tweets.length > 0;
 
     if (hadTweets) {

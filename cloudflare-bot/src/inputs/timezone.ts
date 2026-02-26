@@ -1,20 +1,26 @@
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { setTimezone, getTimezone, getPageSize, updateChatState } from '../services/db';
 import { respond } from '../core/respond';
 import { renderSettings } from '../views/settings';
 import { isValidTimezone } from '../services/timezone';
+import { cancelRow } from '../ui/components';
 import { sendMessage } from '../services/telegram';
+import { countStalePrompts } from '../services/prompts';
+import { isAdmin } from '../services/security';
 
 export async function timezoneInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: input } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
 
     const tz = input.trim().toUpperCase();
 
     if (!isValidTimezone(tz)) {
         await sendMessage(env, chatId,
-            `❌ Invalid format.\n\nPlease use UTC offset format:\n<code>UTC+2</code>, <code>UTC-5:30</code>, <code>UTC</code>\n\nTry again or cancel.`,
-            [[{ text: '❌ Cancel', callback_data: 'view:settings' }]]
+            `${t(lang, 'schedule.invalidFormat')}\n\n${t(lang, 'settings.timezoneInputDesc')}\n${t(lang, 'settings.timezoneInputExamples')}`,
+            [cancelRow('view:settings', lang)]
         );
         return;
     }
@@ -24,6 +30,8 @@ export async function timezoneInput(ctx: HandlerContext & { text: string; contex
 
     const savedTz = await getTimezone(env, chatId);
     const ps = await getPageSize(env, chatId);
-    const view = renderSettings(savedTz, ps);
+    const staleCount = await countStalePrompts(env, chatId);
+    const isAdminUser = isAdmin(chatId, env);
+    const view = renderSettings(savedTz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
     await respond(env, chatId, view, { viewName: 'settings', context: null });
 }

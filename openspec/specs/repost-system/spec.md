@@ -198,6 +198,40 @@ The system SHALL generate a quote-tweet draft using the repost generation prompt
 - **WHEN** user clicks Generate for a tweet from an account not being followed
 - **THEN** bot fetches/creates persona via X API profile + Gemini web search, caches it, generates content using DEFAULT config (with selected tone override), and shows draft detail
 
+### Requirement: Repost uses user-level language
+The `buildRepostUserPrompt()` function SHALL use the user's global language setting (`user.language`) instead of the account-level `config.language` to determine the language instruction sent to Gemini.
+
+#### Scenario: Hebrew user generates repost
+- **WHEN** a user with `language='he'` generates a repost
+- **THEN** the prompt sent to Gemini SHALL include `- Language: Hebrew`
+- **AND** the language SHALL come from `user.language`, not from the account's config
+
+#### Scenario: English user generates repost
+- **WHEN** a user with `language='en'` generates a repost
+- **THEN** the prompt sent to Gemini SHALL include `- Language: English`
+
+### Requirement: Repost generation uses DB-backed system prompt
+The repost generation flow SHALL resolve the system prompt from the database via `getPrompt(env, chatId, 'repost', lang)` instead of using a hardcoded constant.
+
+#### Scenario: User with custom repost prompt
+- **WHEN** a user with a custom repost prompt generates a quote-tweet
+- **THEN** the custom repost prompt SHALL be used as the system instruction for Gemini
+
+#### Scenario: Default repost prompt
+- **WHEN** a user without a custom repost prompt generates a quote-tweet
+- **THEN** the global default repost prompt SHALL be used (identical to current hardcoded behavior)
+
+### Requirement: Content generation uses user language
+The `generateContent()` function in `gemini.ts` SHALL accept a `language` parameter and include a language instruction in the user prompt sent to Gemini. This ensures PR/commit-based tweet generation respects the user's language preference.
+
+#### Scenario: Hebrew user gets Hebrew tweets
+- **WHEN** `generateContent(env, source, repoId, 'he')` is called
+- **THEN** the user prompt SHALL include a language instruction telling Gemini to write in Hebrew
+
+#### Scenario: English user gets English tweets (default)
+- **WHEN** `generateContent(env, source, repoId, 'en')` is called
+- **THEN** the user prompt SHALL include a language instruction telling Gemini to write in English
+
 ### Requirement: Tweet history context
 The generation prompt SHALL include the last 20-50 tweets from the same account (from `twitter_tweets` table, ordered by `tweeted_at DESC`). This enables the AI to reference past events and maintain context continuity.
 

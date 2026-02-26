@@ -422,6 +422,30 @@ export function parseContext(state: ChatState): ChatContext {
     }
 }
 
+// ==================== LANGUAGE ====================
+
+/**
+ * Get language for a chat (defaults to 'en')
+ */
+export async function getUserLanguage(env: Env, chatId: string): Promise<'en' | 'he'> {
+    const result = await env.DB.prepare('SELECT language FROM users WHERE chat_id = ?')
+        .bind(chatId)
+        .first<{ language: string | null }>();
+    const lang = result?.language;
+    return lang === 'he' ? 'he' : 'en';
+}
+
+/**
+ * Set language for a chat
+ */
+export async function setUserLanguage(env: Env, chatId: string, lang: 'en' | 'he'): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET language = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    )
+        .bind(lang, chatId)
+        .run();
+}
+
 // ==================== TIMEZONE ====================
 
 /**

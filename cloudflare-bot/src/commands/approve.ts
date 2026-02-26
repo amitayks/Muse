@@ -1,4 +1,6 @@
 import type { HandlerContext } from '../core/router';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { respond } from '../core/respond';
 import { getAllDrafts } from '../services/db';
 import { publishDraft } from '../core/publish';
@@ -7,15 +9,16 @@ import { sendMessage } from '../services/telegram';
 
 export async function approveCommand(ctx: HandlerContext) {
 	const { env, chatId } = ctx;
+	const lang = (ctx.lang || 'en') as Lang;
 	try {
 		const drafts = await getAllDrafts(env, chatId, 'approved');
 
 		if (drafts.length === 0) {
-			await respond(env, chatId, renderError('No approved drafts to publish.\n\nApprove some drafts first!'));
+			await respond(env, chatId, renderError(t(lang, 'actions.noApprovedDrafts'), lang));
 			return;
 		}
 
-		const pubView = renderPublishing(drafts.length);
+		const pubView = renderPublishing(drafts.length, lang);
 		await sendMessage(env, chatId, pubView.text, pubView.keyboard);
 
 		const results: string[] = [];
@@ -23,14 +26,14 @@ export async function approveCommand(ctx: HandlerContext) {
 		for (const draft of drafts) {
 			try {
 				const result = await publishDraft(env, chatId, draft);
-				results.push(`✅ PR #${draft.pr_number}: ${result.url}`);
+				results.push(t(lang, 'actions.publishedDraft').replace('{number}', String(draft.pr_number)).replace('{url}', result.url));
 			} catch (error) {
-				results.push(`❌ PR #${draft.pr_number}: Publishing failed`);
+				results.push(t(lang, 'actions.publishFailed').replace('{number}', String(draft.pr_number)));
 			}
 		}
 
-		await respond(env, chatId, renderSuccess(`Published ${drafts.length} drafts:\n\n${results.join('\n')}`));
+		await respond(env, chatId, renderSuccess(t(lang, 'actions.publishedCount').replace('{count}', String(drafts.length)).replace('{results}', results.join('\n')), lang));
 	} catch (error) {
-		await respond(env, chatId, renderError('Failed to publish. Please try again.'));
+		await respond(env, chatId, renderError(t(lang, 'actions.publishFailedGeneric'), lang));
 	}
 }

@@ -7,8 +7,11 @@
 
 import type { HandlerContext, InputHandler } from '../core/router';
 import type { ChatContext, TwitterAccountConfig } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { updateChatState, getExistingRepostDraft, getTwitterAccounts } from '../services/db';
 import { getTweetById } from '../services/x';
+import { cancelRow } from '../ui/components';
 import { renderRepostPreview } from '../views/repost';
 import { sendMessage } from '../services/telegram';
 
@@ -28,12 +31,13 @@ export const repostUrlInput: InputHandler = async (
     ctx: HandlerContext & { text: string; context: ChatContext }
 ) => {
     const { env, chatId, text: input } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
 
     const parsed = parseTweetUrl(input.trim());
     if (!parsed) {
         await sendMessage(env, chatId,
-            `❌ <b>Invalid tweet URL</b>\n\nCouldn't parse a tweet URL from that.\n\n<b>Supported formats:</b>\n<code>https://x.com/username/status/123456</code>\n<code>https://twitter.com/username/status/123456</code>\n\nTry again:`,
-            [[{ text: '❌ Cancel', callback_data: 'view:home' }]]
+            `${t(lang, 'repostInput.invalidTweetUrl')}\n\n${t(lang, 'repostInput.invalidTweetUrlMsg')}\n\n${t(lang, 'repost.supportedFormats')}\n<code>https://x.com/username/status/123456</code>\n<code>https://twitter.com/username/status/123456</code>\n\nTry again:`,
+            [cancelRow('view:home', lang)]
         );
         return;
     }
@@ -44,8 +48,8 @@ export const repostUrlInput: InputHandler = async (
     const result = await getTweetById(env, tweetId);
     if (!result) {
         await sendMessage(env, chatId,
-            `❌ <b>Tweet not found</b>\n\nCouldn't fetch tweet <code>${tweetId}</code> from @${username}.\n\nThe tweet may be deleted, from a private account, or the URL may be incorrect.\n\nTry another URL:`,
-            [[{ text: '❌ Cancel', callback_data: 'view:home' }]]
+            `${t(lang, 'repostInput.tweetNotFound')}\n\n${t(lang, 'repostInput.tweetNotFoundMsg').replace('{tweetId}', tweetId).replace('{username}', username)}`,
+            [cancelRow('view:home', lang)]
         );
         return;
     }
@@ -115,7 +119,7 @@ export const repostUrlInput: InputHandler = async (
         selectedTone: defaultTone,
         existingDraftId: existingDraft?.id,
         hasImage: !!mediaUrl,
-    });
+    }, lang);
 
     await sendMessage(env, chatId, view.text, view.keyboard);
 };

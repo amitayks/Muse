@@ -1,4 +1,6 @@
 import type { HandlerContext } from '../core/router';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { getRepoByOwnerRepo, getRepo, upsertRepoOverview } from '../services/db';
 import { fetchRepoReadme, fetchRecentMergedPRs } from '../services/github';
 import { extractRepoOverview } from '../services/gemini';
@@ -6,6 +8,7 @@ import { sendMessage } from '../services/telegram';
 
 export async function overviewCommand(ctx: HandlerContext) {
     const { env, chatId, args } = ctx;
+    const lang = (ctx.lang || 'en') as Lang;
 
     // Check if args is a repo ID (from "Re-bootstrap" button) or owner/repo format
     let owner: string;
@@ -17,8 +20,8 @@ export async function overviewCommand(ctx: HandlerContext) {
         const parts = args.trim().split('/');
         if (parts.length !== 2 || !parts[0] || !parts[1]) {
             await sendMessage(env, chatId,
-                '❌ Invalid format.\n\nUsage: <code>/overview owner/repo</code>',
-                [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+                `${t(lang, 'overview.invalidFormat')}\n\n${t(lang, 'overview.usage')}`,
+                [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
             );
             return;
         }
@@ -27,8 +30,8 @@ export async function overviewCommand(ctx: HandlerContext) {
         const watchedRepo = await getRepoByOwnerRepo(env, chatId, owner, repo);
         if (!watchedRepo) {
             await sendMessage(env, chatId,
-                `❌ Repository <code>${owner}/${repo}</code> is not in your watched repos.\n\nAdd it first with /watch.`,
-                [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+                `${t(lang, 'overview.notWatched').replace('{repo}', `${owner}/${repo}`)}\n\n${t(lang, 'overview.addFirst')}`,
+                [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
             );
             return;
         }
@@ -38,8 +41,8 @@ export async function overviewCommand(ctx: HandlerContext) {
         const watchedRepo = await getRepo(env, args, chatId);
         if (!watchedRepo) {
             await sendMessage(env, chatId,
-                '❌ Repository not found.',
-                [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+                t(lang, 'overview.repoNotFound'),
+                [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
             );
             return;
         }
@@ -48,15 +51,15 @@ export async function overviewCommand(ctx: HandlerContext) {
         repoId = watchedRepo.id;
     } else {
         await sendMessage(env, chatId,
-            '❌ Please specify a repository.\n\nUsage: <code>/overview owner/repo</code>',
-            [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+            `${t(lang, 'overview.specifyRepo')}\n\n${t(lang, 'overview.usage')}`,
+            [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
         );
         return;
     }
 
     // Send progress message
     const progressMsgId = await sendMessage(env, chatId,
-        `🔍 Bootstrapping overview for <code>${owner}/${repo}</code>...\n\nFetching README and recent PRs...`
+        `${t(lang, 'overview.bootstrapping').replace('{repo}', `${owner}/${repo}`)}\n\n${t(lang, 'overview.fetchingReadme')}`
     );
 
     try {
@@ -67,43 +70,43 @@ export async function overviewCommand(ctx: HandlerContext) {
         ]);
 
         // Extract overview via Gemini
-        const overview = await extractRepoOverview(env, readmeText, prSummaries);
+        const overview = await extractRepoOverview(env, readmeText, prSummaries, chatId, lang as string);
 
         // Store in D1
         await upsertRepoOverview(env, repoId, overview);
 
         // Build preview message
-        const lines: string[] = ['✅ <b>Overview bootstrapped!</b>\n'];
+        const lines: string[] = [`${t(lang, 'overview.bootstrapped')}\n`];
 
         if (overview.summary) {
-            lines.push(`📋 <b>Summary:</b> ${overview.summary}\n`);
+            lines.push(`${t(lang, 'overview.summary')} ${overview.summary}\n`);
         }
         if (overview.tech_stack) {
-            lines.push(`🛠 <b>Tech Stack:</b> ${overview.tech_stack}\n`);
+            lines.push(`${t(lang, 'overview.techStack')} ${overview.tech_stack}\n`);
         }
         if (overview.key_features.length > 0) {
-            lines.push(`⭐ <b>Key Features:</b> ${overview.key_features.join(', ')}\n`);
+            lines.push(`${t(lang, 'overview.keyFeatures')} ${overview.key_features.join(', ')}\n`);
         }
         if (overview.target_audience) {
-            lines.push(`👥 <b>Target Audience:</b> ${overview.target_audience}\n`);
+            lines.push(`${t(lang, 'overview.targetAudience')} ${overview.target_audience}\n`);
         }
         if (overview.brand_voice) {
-            lines.push(`🎤 <b>Brand Voice:</b> ${overview.brand_voice}\n`);
+            lines.push(`${t(lang, 'overview.brandVoice')} ${overview.brand_voice}\n`);
         }
         if (overview.visual_theme) {
-            lines.push(`🎨 <b>Visual Theme:</b> ${overview.visual_theme}\n`);
+            lines.push(`${t(lang, 'overview.visualTheme')} ${overview.visual_theme}\n`);
         }
 
-        lines.push('This context will now be used when generating content for this repo.');
+        lines.push(t(lang, 'overview.contextUsed'));
 
         await sendMessage(env, chatId, lines.join('\n'), [
-            [{ text: '🏠 Home', callback_data: 'view:home' }],
+            [{ text: t(lang, 'common.home'), callback_data: 'view:home' }],
         ]);
     } catch (error) {
         console.error('Overview bootstrap error:', error);
         await sendMessage(env, chatId,
-            `❌ Failed to bootstrap overview for <code>${owner}/${repo}</code>.\n\nPlease try again.`,
-            [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+            `${t(lang, 'overview.bootstrapFailed').replace('{repo}', `${owner}/${repo}`)}\n\n${t(lang, 'overview.tryAgain')}`,
+            [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
         );
     }
 }

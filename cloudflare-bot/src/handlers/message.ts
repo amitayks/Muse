@@ -6,7 +6,9 @@
  */
 
 import type { Env, TelegramMessage } from '../types';
-import { getChatState, parseContext, updateChatState } from '../services/db';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
+import { getChatState, parseContext, updateChatState, getUserLanguage } from '../services/db';
 import { sanitizeError } from '../services/security';
 import { sendMessage } from '../services/telegram';
 import { respond } from '../core/respond';
@@ -25,10 +27,12 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
 
     console.log('Processing message:', chatId, isEdit ? '(edit)' : '', text.substring(0, 50));
 
+    let lang: Lang = 'en';
     try {
-        // Get current state
+        // Get current state and user language
         const state = await getChatState(env, chatId);
         const context = parseContext(state);
+        lang = await getUserLanguage(env, chatId) as Lang;
 
         // ==================== COMPOSE MODE PRIORITY ====================
         // Priority: characterCreate → lookCreate → videoCompose → handwrite → regular
@@ -40,11 +44,11 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                 await updateChatState(env, chatId, {
                     context: { ...context, characterCreate: undefined },
                 });
-                await sendMessage(env, chatId, 'Character creation cancelled.', []);
+                await sendMessage(env, chatId, t(lang, 'actions.characterCreateCancelled'), []);
                 // Fall through to handle the command
             } else {
                 await characterCreateInput({
-                    env, chatId, text, context,
+                    env, chatId, text, context, lang,
                     message: {
                         message_id: message.message_id,
                         photo: message.photo,
@@ -61,10 +65,10 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                 await updateChatState(env, chatId, {
                     context: { ...context, lookCreate: undefined },
                 });
-                await sendMessage(env, chatId, 'Look creation cancelled.', []);
+                await sendMessage(env, chatId, t(lang, 'actions.lookCreateCancelled'), []);
             } else {
                 await lookCreateInput({
-                    env, chatId, text, context,
+                    env, chatId, text, context, lang,
                     message: {
                         message_id: message.message_id,
                         photo: message.photo,
@@ -80,10 +84,10 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                 await updateChatState(env, chatId, {
                     context: { ...context, videoCompose: { ...context.videoCompose, active: false } },
                 });
-                await sendMessage(env, chatId, 'Video instructions compose cancelled.', []);
+                await sendMessage(env, chatId, t(lang, 'actions.videoComposeCancelled'), []);
             } else {
                 await videoComposeInput({
-                    env, chatId, text, context,
+                    env, chatId, text, context, lang,
                     message: {
                         message_id: message.message_id,
                         photo: message.photo,
@@ -107,7 +111,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
 
                     // Execute the command
                     const args = parts.slice(1).join(' ');
-                    const view = await commandHandlers[command]({ env, chatId, args });
+                    const view = await commandHandlers[command]({ env, chatId, args, lang });
                     if (view) {
                         await sendMessage(env, chatId, view.text, view.keyboard);
                     }
@@ -124,6 +128,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                     chatId,
                     text,
                     context,
+                    lang,
                     message: {
                         message_id: message.message_id,
                         photo: message.photo,
@@ -144,7 +149,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
         if (context.awaiting_input) {
             const handler = inputHandlers[context.awaiting_input];
             if (handler) {
-                const view = await handler({ env, chatId, text, context, messageId: message.message_id });
+                const view = await handler({ env, chatId, text, context, messageId: message.message_id, lang });
                 if (view) {
                     await respond(env, chatId, view, { viewName: state?.current_view || 'home', context: null });
                 }
@@ -161,7 +166,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
 
             const handler = commandHandlers[command];
             if (handler) {
-                const view = await handler({ env, chatId, args });
+                const view = await handler({ env, chatId, args, lang });
                 if (view) {
                     await sendMessage(env, chatId, view.text, view.keyboard);
                 }
@@ -172,13 +177,13 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
 
         // Default: show home (only for non-empty text messages)
         if (text) {
-            await respond(env, chatId, await renderHome(env, chatId), { viewName: 'home', context: null });
+            await respond(env, chatId, await renderHome(env, chatId, lang), { viewName: 'home', context: null });
         }
     } catch (error) {
         const errDetail = error instanceof Error ? (error.stack || error.message) : String(error);
         console.error('Message handler error:', errDetail);
         const safeDetail = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
-        const view = renderError(`An error occurred.\n<code>${safeDetail}</code>`);
+        const view = renderError(`An error occurred.\n<code>${safeDetail}</code>`, lang);
         await sendMessage(env, chatId, view.text, view.keyboard).catch(() => {});
     }
 }

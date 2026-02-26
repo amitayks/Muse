@@ -5,11 +5,14 @@
  */
 
 import type { ActionHandler } from '../core/router';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { createTwitterAccount } from '../services/db';
 import { editMessage } from '../services/telegram';
 
 /** Follow the account — create twitter account entry */
 export const rpFollowAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     const username = ctx.value;
 
     try {
@@ -17,14 +20,14 @@ export const rpFollowAction: ActionHandler = async (ctx) => {
 
         if (ctx.messageId) {
             await editMessage(ctx.env, ctx.chatId, ctx.messageId,
-                `✅ Now following <b>@${username}</b>!\n\nYou'll get batch notifications when they post new tweets.`
+                t(lang, 'actions.nowFollowing').replace('{username}', username)
             );
         }
     } catch (error) {
         console.error('[rp_follow] Failed to follow:', error);
         if (ctx.messageId) {
             await editMessage(ctx.env, ctx.chatId, ctx.messageId,
-                `❌ Failed to follow <b>@${username}</b>. They may already be in your accounts.`
+                t(lang, 'actions.followFailed').replace('{username}', username)
             );
         }
     }
@@ -33,9 +36,10 @@ export const rpFollowAction: ActionHandler = async (ctx) => {
 
 /** No follow — dismiss the prompt */
 export const rpNoFollowAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     if (ctx.messageId) {
         await editMessage(ctx.env, ctx.chatId, ctx.messageId,
-            `👋 Got it! You can always follow them later from the Accounts page.`
+            t(lang, 'actions.noFollowDismiss')
         );
     }
     return;

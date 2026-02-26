@@ -3,24 +3,24 @@
  */
 
 import type { Env, ViewResult, InlineButton } from '../types';
+import { t } from '../ui/strings';
+import type { Lang } from '../ui/strings';
 import { getRepos, getRepo, parseRepoConfig, getRepoOverview } from '../services/db';
 import { renderError } from './home';
+import { homeButton, backButton, backHomeRow, addButtonRow, paginationRows, toggleButton, confirmDeleteView, emptyListView, inputPromptView, cancelRow } from '../ui/components';
 
-export async function renderReposList(env: Env, chatId: string, page = 0): Promise<ViewResult> {
+export async function renderReposList(env: Env, chatId: string, page = 0, lang: Lang = 'en'): Promise<ViewResult> {
     const allRepos = await getRepos(env, chatId);
 
     if (allRepos.length === 0) {
-        return {
-            text: `📦 <b>Watched Repositories</b>
-
-No repositories are being watched yet.
-
-Add a repo to start auto-detecting new PRs and commits!`,
-            keyboard: [
-                [{ text: '➕ Add repo', callback_data: 'action:add_repo', style: 'primary' as const }],
-                [{ text: '🏠 Home', callback_data: 'view:home' }],
-            ],
-        };
+        return emptyListView(
+            t(lang, 'repos.title'),
+            t(lang, 'repos.noRepos'),
+            t(lang, 'repos.addRepo'),
+            'action:add_repo',
+            'view:home',
+            lang
+        );
     }
 
     const limit = 10;
@@ -41,38 +41,30 @@ Add a repo to start auto-detecting new PRs and commits!`,
         },
     ]);
 
-    const navButtons: InlineButton[] = [];
-    if (page > 0) {
-        navButtons.push({ text: '⬅️ Prev', callback_data: `page:repos:${page - 1}` });
-    }
-    if (page < totalPages - 1) {
-        navButtons.push({ text: 'Next ➡️', callback_data: `page:repos:${page + 1}` });
-    }
-
     return {
-        text: `📦 <b>Watched Repositories</b> (${allRepos.length} total)
+        text: `${t(lang, 'repos.title')} (${allRepos.length} ${t(lang, 'common.total')})
 
 ${repoList}
 
-Tap a repo to manage settings.${totalPages > 1 ? `\n\nPage ${page + 1} of ${totalPages}` : ''}`,
+${t(lang, 'repos.tapToManage')}${totalPages > 1 ? `\n\n${t(lang, 'common.page')} ${page + 1} ${t(lang, 'common.of')} ${totalPages}` : ''}`,
         keyboard: [
-            [{ text: '➕ Add repo', callback_data: 'action:add_repo', style: 'primary' as const }],
+            addButtonRow(t(lang, 'repos.addRepo'), 'action:add_repo'),
             ...repoButtons,
-            navButtons.length > 0 ? navButtons : [],
-            [{ text: '🏠 Home', callback_data: 'view:home' }],
-        ].filter((row) => row.length > 0),
+            ...paginationRows('repos', page, page < totalPages - 1, lang),
+            [homeButton(lang)],
+        ],
     };
 }
 
-export async function renderRepoDetail(env: Env, chatId: string, repoId: string): Promise<ViewResult> {
+export async function renderRepoDetail(env: Env, chatId: string, repoId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const repo = await getRepo(env, repoId, chatId);
 
     if (!repo) {
-        return renderError('Repository not found.');
+        return renderError(t(lang, 'error.repoNotFound'));
     }
 
     const config = parseRepoConfig(repo);
-    const watchStatus = repo.is_watching ? '👁 Watching' : '⏸️ Paused';
+    const watchStatus = repo.is_watching ? t(lang, 'repos.watching') : t(lang, 'repos.paused');
 
     const hashtagOn = config.includeHashtags;
     const prOn = config.watchPRs;
@@ -82,8 +74,6 @@ export async function renderRepoDetail(env: Env, chatId: string, repoId: string)
     const prIcon = prOn ? '✅' : '❌';
     const pushIcon = pushOn ? '✅' : '❌';
     const imgIcon = imgOn ? '✅' : '❌';
-    const langLabel = config.language === 'en' ? '🇺🇸 EN' : '🇮🇱 HE';
-
     // Fetch overview for display
     const overview = await getRepoOverview(env, repoId, chatId);
     let overviewSection: string;
@@ -92,20 +82,20 @@ export async function renderRepoDetail(env: Env, chatId: string, repoId: string)
     if (overview) {
         const summaryPreview = overview.summary
             ? overview.summary.length > 120 ? overview.summary.substring(0, 117) + '...' : overview.summary
-            : 'No summary';
+            : t(lang, 'repos.noSummary');
         const featureCount = overview.key_features.length;
-        overviewSection = `\n<b>Project Overview:</b>
+        overviewSection = `\n${t(lang, 'repos.projectOverview')}
 📋 ${summaryPreview}
 ⭐ ${featureCount} feature${featureCount !== 1 ? 's' : ''}${overview.visual_theme ? ` | 🎨 ${overview.visual_theme.substring(0, 40)}` : ''}`;
         overviewButtons.push([
-            { text: '✏️ Edit Overview', callback_data: `config:edit_overview:${repo.id}` },
-            { text: '🔄 Re-bootstrap', callback_data: `config:rebootstrap:${repo.id}` },
+            { text: t(lang, 'repos.editOverview'), callback_data: `config:edit_overview:${repo.id}` },
+            { text: t(lang, 'repos.rebootstrap'), callback_data: `config:rebootstrap:${repo.id}` },
         ]);
     } else {
-        overviewSection = `\n<b>Project Overview:</b>
-No overview yet — run <code>/overview ${repo.owner}/${repo.repo}</code> to bootstrap.`;
+        overviewSection = `\n${t(lang, 'repos.projectOverview')}
+${t(lang, 'repos.noOverviewYet').replace('{repo}', `${repo.owner}/${repo.repo}`)}`;
         overviewButtons.push([
-            { text: '🔍 Bootstrap Overview', callback_data: `config:rebootstrap:${repo.id}` },
+            { text: t(lang, 'repos.bootstrapOverview'), callback_data: `config:rebootstrap:${repo.id}` },
         ]);
     }
 
@@ -113,79 +103,66 @@ No overview yet — run <code>/overview ${repo.owner}/${repo.repo}</code> to boo
         text: `📦 <b>${repo.owner}/${repo.repo}</b>
 ${watchStatus}
 
-<b>Content Settings:</b>
-${hashtagIcon} Hashtags: <b>${config.includeHashtags ? 'Yes' : 'No'}</b>
-🌐 Language: <b>${config.language.toUpperCase()}</b>
+${t(lang, 'repos.contentSettings')}
+${hashtagIcon} ${t(lang, 'repos.hashtags')}: <b>${config.includeHashtags ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
 
-<b>Watch Settings:</b>
-${prIcon} PRs: <b>${config.watchPRs ? 'Yes' : 'No'}</b>
-${pushIcon} Pushes: <b>${config.watchPushes ? 'Yes' : 'No'}</b>
-📌 Branches: <b>${config.branches.join(', ')}</b>
+${t(lang, 'repos.watchSettings')}
+${prIcon} ${t(lang, 'repos.prs')}: <b>${config.watchPRs ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${pushIcon} ${t(lang, 'repos.pushes')}: <b>${config.watchPushes ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${t(lang, 'repos.branches')} <b>${config.branches.join(', ')}</b>
 
-<b>Image Settings:</b>
-${imgIcon} Thread Image: <b>${config.alwaysGenerateThreadImage ? 'Always' : 'Off'}</b>
-🎲 Single Prob: <b>${Math.round(config.singleTweetImageProbability * 100)}%</b>
+${t(lang, 'repos.imageSettings')}
+${imgIcon} ${t(lang, 'repos.threadImage')}: <b>${config.alwaysGenerateThreadImage ? t(lang, 'repos.always') : t(lang, 'common.off')}</b>
+${t(lang, 'repos.singleProb')} <b>${Math.round(config.singleTweetImageProbability * 100)}%</b>
 ${overviewSection}
 
-Tap a setting to change it:`,
+${t(lang, 'common.tapToChange')}`,
         keyboard: [
             [
-                { text: langLabel, callback_data: `config:language:${repo.id}` },
-                { text: `Tags: ${hashtagOn ? 'On' : 'Off'}`, callback_data: `config:hashtags:${repo.id}`, style: hashtagOn ? 'success' : 'danger' },
+                toggleButton('repos.tags', hashtagOn, `config:hashtags:${repo.id}`, lang),
             ],
             [
-                { text: `PRs: ${prOn ? 'On' : 'Off'}`, callback_data: `config:watchPRs:${repo.id}`, style: prOn ? 'success' : 'danger' },
-                { text: `Push: ${pushOn ? 'On' : 'Off'}`, callback_data: `config:watchPushes:${repo.id}`, style: pushOn ? 'success' : 'danger' },
+                toggleButton('repos.prs', prOn, `config:watchPRs:${repo.id}`, lang),
+                toggleButton('repos.push', pushOn, `config:watchPushes:${repo.id}`, lang),
             ],
             [
-                { text: `Img: ${imgOn ? 'On' : 'Off'}`, callback_data: `config:threadImage:${repo.id}`, style: imgOn ? 'success' : 'danger' },
+                toggleButton('repos.img', imgOn, `config:threadImage:${repo.id}`, lang),
                 { text: `🎲 ${Math.round(config.singleTweetImageProbability * 100)}%`, callback_data: `config:singleImage:${repo.id}` },
             ],
             ...overviewButtons,
             [
                 repo.is_watching
-                    ? { text: 'Stop watching', callback_data: `action:unwatch:${repo.id}`, style: 'danger' as const }
-                    : { text: 'Start watching', callback_data: `action:watch:${repo.id}`, style: 'success' as const },
+                    ? { text: t(lang, 'repos.stopWatching'), callback_data: `action:unwatch:${repo.id}`, style: 'danger' as const }
+                    : { text: t(lang, 'repos.startWatching'), callback_data: `action:watch:${repo.id}`, style: 'success' as const },
             ],
-            [{ text: 'Delete', callback_data: `action:delete_repo:${repo.id}`, style: 'danger' }],
-            [{ text: '◀️ Back', callback_data: 'view:repos' }],
+            [{ text: t(lang, 'common.delete'), callback_data: `action:delete_repo:${repo.id}`, style: 'danger' }],
+            backHomeRow('view:repos', lang),
         ],
     };
 }
 
-export function renderAddRepo(): ViewResult {
-    return {
-        text: `➕ <b>Add Repository</b>
-
-Send me the repository in <code>owner/repo</code> format.
-
-<b>Example:</b>
-<code>ozkeisar/work-content-tracker</code>
-
-I'll set up a webhook to auto-detect new PRs and commits.`,
-        keyboard: [[{ text: '❌ Cancel', callback_data: 'view:repos' }]],
-    };
+export function renderAddRepo(lang: Lang = 'en'): ViewResult {
+    return inputPromptView(
+        t(lang, 'repos.addRepoTitle'),
+        t(lang, 'repos.addRepoDesc'),
+        t(lang, 'repos.addRepoExample'),
+        'view:repos',
+        lang
+    );
 }
 
-export async function renderDeleteRepoConfirm(env: Env, chatId: string, repoId: string): Promise<ViewResult> {
+export async function renderDeleteRepoConfirm(env: Env, chatId: string, repoId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const repo = await getRepo(env, repoId, chatId);
 
     if (!repo) {
-        return renderError('Repository not found.');
+        return renderError(t(lang, 'error.repoNotFound'));
     }
 
-    return {
-        text: `🗑️ <b>Delete Repository?</b>
-
-Are you sure you want to delete:
-<code>${repo.owner}/${repo.repo}</code>
-
-This will also remove the webhook from GitHub.`,
-        keyboard: [
-            [
-                { text: 'Yes, delete', callback_data: `action:confirm_delete_repo:${repo.id}`, style: 'danger' },
-                { text: 'Cancel', callback_data: `repo:${repo.id}` },
-            ],
-        ],
-    };
+    return confirmDeleteView(
+        t(lang, 'repos.deleteRepoTitle'),
+        t(lang, 'repos.deleteRepoMsg').replace('{repo}', `${repo.owner}/${repo.repo}`),
+        `action:confirm_delete_repo:${repo.id}`,
+        `repo:${repo.id}`,
+        lang
+    );
 }

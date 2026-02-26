@@ -6,6 +6,9 @@ import type { Env, ViewResult, InlineButton, VideoDraft, VideoConfig, VideoScrip
 import { DEFAULT_VIDEO_CONFIG } from '../types';
 import { getWatchingRepos, countVideoDraftsByRepo, getVideoDraftsByRepo, getVideoDraft } from '../services/db';
 import { estimateCreditCost } from '../services/heygen';
+import { homeButton, backButton, cancelRow } from '../ui/components';
+import { t } from '../ui/strings';
+import type { Lang } from '../ui/strings';
 
 // Short status codes for callback_data to stay under Telegram's 64-byte limit
 const STATUS_TO_CODE: Record<string, string> = { draft: 'd', queued: 'q', generating: 'g', completed: 'c', approved: 'a', scheduled: 's', published: 'p', failed: 'f' };
@@ -13,11 +16,11 @@ export const STATUS_FROM_CODE: Record<string, string> = { d: 'draft', q: 'queued
 
 // ==================== VIDEO STUDIO HOME ====================
 
-export async function renderVideoStudioHome(env: Env, chatId: string): Promise<ViewResult> {
+export async function renderVideoStudioHome(env: Env, chatId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const repos = await getWatchingRepos(env, chatId);
 
     const keyboard: InlineButton[][] = [
-        [{ text: '🎬 Standalone Video', callback_data: 'action:video_create:standalone' }],
+        [{ text: t(lang, 'video.standaloneVideo'), callback_data: 'action:video_create:standalone' }],
     ];
 
     // Show all watched repos
@@ -29,21 +32,21 @@ export async function renderVideoStudioHome(env: Env, chatId: string): Promise<V
     }
 
     if (repos.length === 0) {
-        keyboard.push([{ text: '➕ Add Repo First', callback_data: 'view:repos' }]);
+        keyboard.push([{ text: t(lang, 'video.addRepoFirst'), callback_data: 'view:repos' }]);
     }
 
-    keyboard.push([{ text: '⚙️ Video Settings', callback_data: 'vsettings:home' }]);
-    keyboard.push([{ text: '🏠 Home', callback_data: 'view:home' }]);
+    keyboard.push([{ text: t(lang, 'video.btnVideoSettings'), callback_data: 'vsettings:home' }]);
+    keyboard.push([homeButton(lang)]);
 
     return {
-        text: `🎬 <b>Video Studio</b>\n\nCreate AI avatar videos from your code updates.\n\nSelect a repo or create a standalone video:`,
+        text: `${t(lang, 'video.studioTitle')}\n\n${t(lang, 'video.studioDesc')}\n\n${t(lang, 'video.studioSelect')}`,
         keyboard,
     };
 }
 
 // ==================== REPO VIDEO HOME ====================
 
-export async function renderVideoRepoHome(env: Env, chatId: string, repoId: string): Promise<ViewResult> {
+export async function renderVideoRepoHome(env: Env, chatId: string, repoId: string, lang: Lang = 'en'): Promise<ViewResult> {
     // Wrap each count in try/catch so one failure doesn't crash the whole view
     const safeCount = async (status: string): Promise<number> => {
         try {
@@ -63,22 +66,22 @@ export async function renderVideoRepoHome(env: Env, chatId: string, repoId: stri
     const failedCount = await safeCount('failed');
 
     const keyboard: InlineButton[][] = [
-        [{ text: `🆕 Create New Video`, callback_data: `action:video_create:${repoId}` }],
+        [{ text: t(lang, 'video.createNewVideo'), callback_data: `action:video_create:${repoId}` }],
     ];
 
-    if (draftCount > 0) keyboard.push([{ text: `📝 Drafts (${draftCount})`, callback_data: `view:video_list:${repoId}:d` }]);
-    if (queuedCount > 0) keyboard.push([{ text: `📋 Queued (${queuedCount})`, callback_data: `view:video_list:${repoId}:q` }]);
-    if (generatingCount > 0) keyboard.push([{ text: `⏳ Generating (${generatingCount})`, callback_data: `view:video_list:${repoId}:g` }]);
-    if (completedCount > 0) keyboard.push([{ text: `✅ Completed (${completedCount})`, callback_data: `view:video_list:${repoId}:c` }]);
-    if (approvedCount > 0) keyboard.push([{ text: `👍 Approved (${approvedCount})`, callback_data: `view:video_list:${repoId}:a` }]);
-    if (scheduledCount > 0) keyboard.push([{ text: `📅 Scheduled (${scheduledCount})`, callback_data: `view:video_list:${repoId}:s` }]);
-    if (publishedCount > 0) keyboard.push([{ text: `📢 Published (${publishedCount})`, callback_data: `view:video_list:${repoId}:p` }]);
-    if (failedCount > 0) keyboard.push([{ text: `❌ Failed (${failedCount})`, callback_data: `view:video_list:${repoId}:f` }]);
+    if (draftCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusDrafts')} (${draftCount})`, callback_data: `view:video_list:${repoId}:d` }]);
+    if (queuedCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusQueued')} (${queuedCount})`, callback_data: `view:video_list:${repoId}:q` }]);
+    if (generatingCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusGenerating')} (${generatingCount})`, callback_data: `view:video_list:${repoId}:g` }]);
+    if (completedCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusCompleted')} (${completedCount})`, callback_data: `view:video_list:${repoId}:c` }]);
+    if (approvedCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusApproved')} (${approvedCount})`, callback_data: `view:video_list:${repoId}:a` }]);
+    if (scheduledCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusScheduled')} (${scheduledCount})`, callback_data: `view:video_list:${repoId}:s` }]);
+    if (publishedCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusPublished')} (${publishedCount})`, callback_data: `view:video_list:${repoId}:p` }]);
+    if (failedCount > 0) keyboard.push([{ text: `${t(lang, 'video.statusFailed')} (${failedCount})`, callback_data: `view:video_list:${repoId}:f` }]);
 
-    keyboard.push([{ text: '◀️ Back', callback_data: 'view:video_studio' }]);
+    keyboard.push([backButton('view:video_studio', lang)]);
 
     return {
-        text: `🎬 <b>Video Studio</b>\n\nSelect a category or create a new video:`,
+        text: `${t(lang, 'video.studioTitle')}\n\n${t(lang, 'video.repoSelectCategory')}`,
         keyboard,
     };
 }
@@ -90,7 +93,8 @@ export async function renderVideoList(
     chatId: string,
     repoId: string,
     status: string,
-    page = 0
+    page = 0,
+    lang: Lang = 'en'
 ): Promise<ViewResult> {
     const pageSize = 5;
     // Expand short code to full status if needed
@@ -105,20 +109,20 @@ export async function renderVideoList(
     }
 
     const statusLabels: Record<string, string> = {
-        draft: '📝 Drafts',
-        queued: '📋 Queued',
-        generating: '⏳ Generating',
-        completed: '✅ Completed',
-        approved: '👍 Approved',
-        scheduled: '📅 Scheduled',
-        published: '📢 Published',
-        failed: '❌ Failed',
+        draft: t(lang, 'video.statusDrafts'),
+        queued: t(lang, 'video.statusQueued'),
+        generating: t(lang, 'video.statusGenerating'),
+        completed: t(lang, 'video.statusCompleted'),
+        approved: t(lang, 'video.statusApproved'),
+        scheduled: t(lang, 'video.statusScheduled'),
+        published: t(lang, 'video.statusPublished'),
+        failed: t(lang, 'video.statusFailed'),
     };
 
     const keyboard: InlineButton[][] = [];
 
     for (const draft of drafts) {
-        const title = draft.title || 'Untitled';
+        const title = draft.title || t(lang, 'video.untitled');
         const preview = title.length > 30 ? title.substring(0, 27) + '...' : title;
         const date = draft.created_at?.substring(0, 10) || '';
         keyboard.push([{
@@ -129,26 +133,26 @@ export async function renderVideoList(
 
     // Pagination — use short status code to stay under 64-byte limit
     const nav: InlineButton[] = [];
-    if (page > 0) nav.push({ text: '◀️ Prev', callback_data: `view:video_list:${repoId}:${statusCode}:${page - 1}` });
-    if (drafts.length === pageSize) nav.push({ text: 'Next ▶️', callback_data: `view:video_list:${repoId}:${statusCode}:${page + 1}` });
+    if (page > 0) nav.push({ text: t(lang, 'common.prev'), callback_data: `view:video_list:${repoId}:${statusCode}:${page - 1}` });
+    if (drafts.length === pageSize) nav.push({ text: t(lang, 'common.next'), callback_data: `view:video_list:${repoId}:${statusCode}:${page + 1}` });
     if (nav.length > 0) keyboard.push(nav);
 
-    keyboard.push([{ text: '◀️ Back', callback_data: `view:video_repo:${repoId}` }]);
+    keyboard.push([backButton(`view:video_repo:${repoId}`, lang)]);
 
     return {
-        text: `${statusLabels[fullStatus] || fullStatus}\n\n${drafts.length === 0 ? 'No videos in this category.' : `Page ${page + 1}:`}`,
+        text: `${statusLabels[fullStatus] || fullStatus}\n\n${drafts.length === 0 ? t(lang, 'video.noVideos') : `${t(lang, 'common.page')} ${page + 1}:`}`,
         keyboard,
     };
 }
 
 // ==================== VIDEO DETAIL ====================
 
-export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: string): Promise<ViewResult> {
+export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const draft = await getVideoDraft(env, videoDraftId, chatId);
     if (!draft) {
         return {
-            text: '❌ Video not found.',
-            keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+            text: t(lang, 'error.videoNotFound'),
+            keyboard: [[homeButton(lang)]],
         };
     }
 
@@ -162,16 +166,16 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
         config = draft.config ? JSON.parse(draft.config) : null;
     } catch { /* ignore */ }
 
-    const lines: string[] = [`🎬 <b>${draft.title || 'Untitled Video'}</b>`];
-    lines.push(`Status: <b>${draft.status}</b>`);
+    const lines: string[] = [`🎬 <b>${draft.title || t(lang, 'video.untitled')}</b>`];
+    lines.push(`${t(lang, 'video.status')} <b>${draft.status}</b>`);
 
     if (config) {
         lines.push(`\n${config.length} | ${config.aspectRatio}`);
-        lines.push(`Emotion: ${config.emotion} | Captions: ${config.captions ? 'On' : 'Off'}`);
+        lines.push(`${t(lang, 'video.emotion')} ${config.emotion} | ${config.captions ? t(lang, 'video.captionsOn') : t(lang, 'video.captionsOff')}`);
     }
 
     if (script) {
-        lines.push(`\nScenes: ${script.scenes.length} | Words: ~${script.totalWordCount}`);
+        lines.push(`\n${t(lang, 'video.scenes')} ${script.scenes.length} | ${t(lang, 'video.words')} ~${script.totalWordCount}`);
         // Show first scene preview
         const preview = script.scenes[0]?.scriptText || '';
         if (preview) {
@@ -181,7 +185,7 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
     }
 
     if (draft.created_at) {
-        lines.push(`\nCreated: ${draft.created_at.substring(0, 16)}`);
+        lines.push(`\n${t(lang, 'video.created')} ${draft.created_at.substring(0, 16)}`);
     }
 
     const keyboard: InlineButton[][] = [];
@@ -189,40 +193,40 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
     // Status-specific actions
     switch (draft.status) {
         case 'draft':
-            keyboard.push([{ text: '✅ Approve & Generate', callback_data: `action:video_approve_script:${draft.id}` }]);
-            keyboard.push([{ text: '🔄 Regenerate Script', callback_data: `action:video_regen_script:${draft.id}` }]);
-            keyboard.push([{ text: '🗑 Delete', callback_data: `action:video_delete:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.approveGenerate'), callback_data: `action:video_approve_script:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.regenerateScript'), callback_data: `action:video_regen_script:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.btnDelete'), callback_data: `action:video_delete:${draft.id}` }]);
             break;
         case 'completed':
             if (draft.video_url) {
-                keyboard.push([{ text: '▶️ Watch', url: `${env.WORKER_URL}/media/${draft.video_url}` }]);
+                keyboard.push([{ text: t(lang, 'video.btnWatch'), url: `${env.WORKER_URL}/media/${draft.video_url}` }]);
             }
-            keyboard.push([{ text: '📢 Publish', callback_data: `action:video_publish:${draft.id}`, style: 'success' as const }]);
-            keyboard.push([{ text: '📅 Schedule', callback_data: `action:video_schedule:${draft.id}` }]);
-            keyboard.push([{ text: '🗑 Delete', callback_data: `action:video_delete:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.btnPublish'), callback_data: `action:video_publish:${draft.id}`, style: 'success' as const }]);
+            keyboard.push([{ text: t(lang, 'drafts.schedule'), callback_data: `action:video_schedule:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.btnDelete'), callback_data: `action:video_delete:${draft.id}` }]);
             break;
         case 'approved':
-            keyboard.push([{ text: '📢 Publish', callback_data: `action:video_publish:${draft.id}`, style: 'success' as const }]);
-            keyboard.push([{ text: '📅 Schedule', callback_data: `action:video_schedule:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.btnPublish'), callback_data: `action:video_publish:${draft.id}`, style: 'success' as const }]);
+            keyboard.push([{ text: t(lang, 'drafts.schedule'), callback_data: `action:video_schedule:${draft.id}` }]);
             break;
         case 'queued':
-            lines.push('\n⏳ Preparing for generation...');
-            keyboard.push([{ text: '🗑 Delete', callback_data: `action:video_delete:${draft.id}` }]);
+            lines.push(`\n${t(lang, 'video.preparing')}`);
+            keyboard.push([{ text: t(lang, 'video.btnDelete'), callback_data: `action:video_delete:${draft.id}` }]);
             break;
         case 'generating':
-            lines.push('\n⏳ Video is being generated by HeyGen...');
-            if (draft.heygen_video_id) lines.push(`Job ID: <code>${draft.heygen_video_id}</code>`);
+            lines.push(`\n${t(lang, 'video.generatingByHeygen')}`);
+            if (draft.heygen_video_id) lines.push(`${t(lang, 'video.jobId')} <code>${draft.heygen_video_id}</code>`);
             break;
         case 'failed':
-            keyboard.push([{ text: '🔄 Retry', callback_data: `action:video_approve_script:${draft.id}` }]);
-            keyboard.push([{ text: '🗑 Delete', callback_data: `action:video_delete:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.retry'), callback_data: `action:video_approve_script:${draft.id}` }]);
+            keyboard.push([{ text: t(lang, 'video.btnDelete'), callback_data: `action:video_delete:${draft.id}` }]);
             break;
         case 'published':
-            lines.push('\n✅ Published successfully.');
+            lines.push(`\n${t(lang, 'video.publishedSuccess')}`);
             break;
     }
 
-    keyboard.push([{ text: '◀️ Back', callback_data: draft.repo_id ? `view:video_repo:${draft.repo_id}` : 'view:video_studio' }]);
+    keyboard.push([backButton(draft.repo_id ? `view:video_repo:${draft.repo_id}` : 'view:video_studio', lang)]);
 
     return { text: lines.join('\n'), keyboard };
 }
@@ -232,33 +236,34 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
 export function renderVideoConfig(
     repoId: string,
     config: VideoConfig,
-    characterName?: string
+    characterName?: string,
+    lang: Lang = 'en'
 ): ViewResult {
-    const depthLabel = config.commitDepth === 'since_last_video' ? 'Since last video'
-        : config.commitDepth === 0 ? 'None (standalone)'
-        : config.commitDepth === 1 ? 'Latest only'
+    const depthLabel = config.commitDepth === 'since_last_video' ? t(lang, 'video.sinceLastVideo')
+        : config.commitDepth === 0 ? t(lang, 'video.noneStandalone')
+        : config.commitDepth === 1 ? t(lang, 'video.latestOnly')
         : `Last ${config.commitDepth}`;
 
     const charDisplay = config.talkingPhotoId
-        ? `✅ ${characterName || 'Selected'}`
-        : '❌ Not set';
+        ? `✅ ${characterName || t(lang, 'video.selected')}`
+        : `❌ ${t(lang, 'video.notSet')}`;
 
     const lines: string[] = [
-        '🎬 <b>Video Configuration</b>',
+        t(lang, 'video.configTitle'),
         '',
-        `🎤  Tone:  <b>${config.tone}</b>`,
-        `⏱  Length:  <b>${config.length}</b>`,
-        `📐  Aspect:  <b>${config.aspectRatio}</b>`,
-        `😀  Emotion:  <b>${config.emotion}</b>`,
-        `📊  Commits:  <b>${depthLabel}</b>`,
-        `👤  Character:  <b>${charDisplay}</b>`,
+        `${t(lang, 'video.toneLabel')}  <b>${config.tone}</b>`,
+        `${t(lang, 'video.lengthLabel')}  <b>${config.length}</b>`,
+        `${t(lang, 'video.aspectLabel')}  <b>${config.aspectRatio}</b>`,
+        `${t(lang, 'video.emotionLabel')}  <b>${config.emotion}</b>`,
+        `${t(lang, 'video.commitsLabel')}  <b>${depthLabel}</b>`,
+        `${t(lang, 'video.characterLabel')}  <b>${charDisplay}</b>`,
         '',
-        `${config.captions ? '✅' : '❌'} Captions  ·  ${config.textOverlay ? '✅' : '❌'} Text Overlay`,
+        `${config.captions ? '✅' : '❌'} ${t(lang, 'video.captions')}  ·  ${config.textOverlay ? '✅' : '❌'} ${t(lang, 'video.textOverlay')}`,
     ];
 
     if (config.manualInstructions) {
         lines.push('');
-        lines.push('📝 <b>Instructions:</b>');
+        lines.push(t(lang, 'video.instructionsLabel'));
         const preview = config.manualInstructions.length > 200
             ? config.manualInstructions.substring(0, 197) + '...'
             : config.manualInstructions;
@@ -266,7 +271,7 @@ export function renderVideoConfig(
     }
 
     lines.push('');
-    lines.push('<i>Tap a setting to cycle through options</i>');
+    lines.push(t(lang, 'video.tapToCycle'));
 
     const keyboard: InlineButton[][] = [
         [{ text: `🎤 ${config.tone} ›`, callback_data: `vconfig:tone:${repoId}` }],
@@ -277,19 +282,19 @@ export function renderVideoConfig(
         [{ text: `😀 ${config.emotion} ›`, callback_data: `vconfig:emotion:${repoId}` }],
         [{ text: `📊 ${depthLabel} ›`, callback_data: `vconfig:depth:${repoId}` }],
         [
-            { text: `${config.captions ? '✅' : '❌'} Captions`, callback_data: `vconfig:captions:${repoId}` },
-            { text: `${config.textOverlay ? '✅' : '❌'} Overlay`, callback_data: `vconfig:overlay:${repoId}` },
+            { text: `${config.captions ? '✅' : '❌'} ${t(lang, 'video.captions')}`, callback_data: `vconfig:captions:${repoId}` },
+            { text: `${config.textOverlay ? '✅' : '❌'} ${t(lang, 'video.overlay')}`, callback_data: `vconfig:overlay:${repoId}` },
         ],
         [
-            { text: `👤 ${config.talkingPhotoId ? '✅ Character' : 'Character'}`, callback_data: `vconfig:character:${repoId}` },
-            { text: `📝 Instructions${config.manualInstructions ? ' ✎' : ''}`, callback_data: `vconfig:instructions:${repoId}` },
+            { text: `👤 ${config.talkingPhotoId ? `✅ ${t(lang, 'video.character')}` : t(lang, 'video.character')}`, callback_data: `vconfig:character:${repoId}` },
+            { text: `📝 ${t(lang, 'video.instructions')}${config.manualInstructions ? ' ✎' : ''}`, callback_data: `vconfig:instructions:${repoId}` },
         ],
         [
-            { text: '💾 Save Preset', callback_data: `vconfig:save_preset:${repoId}` },
-            { text: '📂 Load Preset', callback_data: `vconfig:load_preset:${repoId}` },
+            { text: t(lang, 'video.savePreset'), callback_data: `vconfig:save_preset:${repoId}` },
+            { text: t(lang, 'video.loadPreset'), callback_data: `vconfig:load_preset:${repoId}` },
         ],
-        [{ text: '🎬 Create Video', callback_data: `action:video_generate:${repoId}` }],
-        [{ text: '❌ Cancel', callback_data: repoId === 'standalone' ? 'view:video_studio' : `view:video_repo:${repoId}` }],
+        [{ text: t(lang, 'video.createVideo'), callback_data: `action:video_generate:${repoId}` }],
+        cancelRow(repoId === 'standalone' ? 'view:video_studio' : `view:video_repo:${repoId}`, lang),
     ];
 
     return { text: lines.join('\n'), keyboard };
@@ -300,14 +305,15 @@ export function renderVideoConfig(
 export function renderScriptPreview(
     draft: VideoDraft,
     script: VideoScriptResponse,
-    config: VideoConfig
+    config: VideoConfig,
+    lang: Lang = 'en'
 ): ViewResult {
-    const lines: string[] = [`🎬 <b>Script Preview: ${script.title}</b>\n`];
+    const lines: string[] = [`${t(lang, 'video.scriptPreviewTitle').replace('{title}', script.title)}\n`];
 
     // Show scenes
     for (let i = 0; i < script.scenes.length; i++) {
         const scene = script.scenes[i];
-        lines.push(`<b>Scene ${i + 1}</b> (${scene.emotion})`);
+        lines.push(`${t(lang, 'video.sceneN').replace('{n}', String(i + 1))} (${scene.emotion})`);
         const text = scene.scriptText.length > 200
             ? scene.scriptText.substring(0, 197) + '...'
             : scene.scriptText;
@@ -317,22 +323,22 @@ export function renderScriptPreview(
     }
 
     // Stats
-    lines.push(`📊 <b>Stats:</b> ${script.scenes.length} scenes, ~${script.totalWordCount} words`);
+    lines.push(`${t(lang, 'video.stats')} ${script.scenes.length} scenes, ~${script.totalWordCount} words`);
 
     // Credit estimate (Avatar IV: ~1 premium credit per 3 seconds)
     const creditCost = estimateCreditCost(script.totalWordCount);
-    lines.push(`💰 <b>Estimated Cost:</b> ~${creditCost} premium credits`);
+    lines.push(`${t(lang, 'video.estimatedCost')} ~${creditCost} ${t(lang, 'video.premiumCredits')}`);
 
     // Caption preview
     if (script.twitterCaption) {
-        lines.push(`\n🐦 <b>Twitter:</b> ${script.twitterCaption}`);
+        lines.push(`\n${t(lang, 'video.twitterCaption')} ${script.twitterCaption}`);
     }
 
     const keyboard: InlineButton[][] = [
-        [{ text: '✅ Approve & Generate', callback_data: `action:video_approve_script:${draft.id}` }],
-        [{ text: '🔄 Regenerate', callback_data: `action:video_regen_script:${draft.id}` }],
-        [{ text: '⚙️ Edit Config', callback_data: `action:video_create:${draft.repo_id || 'standalone'}` }],
-        [{ text: '❌ Cancel', callback_data: `action:video_delete:${draft.id}` }],
+        [{ text: t(lang, 'video.approveGenerate'), callback_data: `action:video_approve_script:${draft.id}` }],
+        [{ text: t(lang, 'video.regenerate'), callback_data: `action:video_regen_script:${draft.id}` }],
+        [{ text: t(lang, 'video.editConfig'), callback_data: `action:video_create:${draft.repo_id || 'standalone'}` }],
+        cancelRow(`action:video_delete:${draft.id}`, lang),
     ];
 
     return { text: lines.join('\n'), keyboard };

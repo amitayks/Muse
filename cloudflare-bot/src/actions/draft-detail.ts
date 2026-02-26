@@ -1,18 +1,20 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent } from '../types';
+import type { Lang } from '../ui/strings';
 import { getDraft, getChatState, parseContext, updateChatState, getTimezone } from '../services/db';
 import { ensureImage } from '../services/storage';
-import { editMessage, deleteMessage, sendPhoto } from '../services/telegram';
+import { editMessage, editMessageCaption, deleteMessage, sendPhoto } from '../services/telegram';
 import { renderDraftDetail, renderError } from '../views';
-import { truncateHtml } from '../views/drafts';
+import { truncateHtml } from '../ui/utils';
 import { sanitizeError } from '../services/security';
 
 export async function draftDetailAction(ctx: HandlerContext & { value: string }): Promise<ViewResult | void> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, value: draftId, messageId } = ctx;
 
     const draft = await getDraft(env, draftId, chatId);
     if (!draft) {
-        return renderError('Draft not found.');
+        return renderError('Draft not found.', lang);
     }
 
     let imageUrl: string | null = null;
@@ -24,9 +26,15 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
         } catch { return false; }
     })();
     if (shouldEnsureImage) {
-        // Show loading state immediately so the user knows something is happening
-        if (messageId) {
-            await editMessage(env, chatId, messageId, '⏳ <b>Retrieving your draft...</b>');
+        // Only show loading state when image needs generating (not already cached)
+        if (messageId && !draft.image_url) {
+            try {
+                await editMessage(env, chatId, messageId, '⏳ <b>Retrieving your draft...</b>');
+            } catch {
+                try {
+                    await editMessageCaption(env, chatId, messageId, '⏳ <b>Retrieving your draft...</b>');
+                } catch { /* ignore — loading state is non-critical */ }
+            }
         }
         try {
             imageUrl = await ensureImage(env, chatId, draft);
@@ -46,7 +54,7 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
     }
 
     const tz = await getTimezone(env, chatId);
-    const view = await renderDraftDetail(env, chatId, draftId, tz);
+    const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
 
     await updateChatState(env, chatId, {
         current_view: 'draft',
@@ -54,13 +62,20 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
     });
 
     if (imageUrl && messageId) {
-        try {
-            await deleteMessage(env, chatId, messageId);
-        } catch { /* ignore */ }
-        const fullImageUrl = `${env.WORKER_URL}${imageUrl}`;
         const caption = truncateHtml(view.text, 1000);
-        await sendPhoto(env, chatId, fullImageUrl, caption, view.keyboard);
-        return; // void — handled sending ourselves
+        // If the message is already a photo (e.g. returning from schedule), just update the caption
+        try {
+            await editMessageCaption(env, chatId, messageId, caption, view.keyboard);
+            return; // void — photo preserved, caption updated
+        } catch {
+            // Not a photo message — transition from text to photo
+            try {
+                await deleteMessage(env, chatId, messageId);
+            } catch { /* ignore */ }
+            const fullImageUrl = `${env.WORKER_URL}${imageUrl}`;
+            await sendPhoto(env, chatId, fullImageUrl, caption, view.keyboard);
+            return; // void — handled sending ourselves
+        }
     }
 
     return view; // let router handle editMessage

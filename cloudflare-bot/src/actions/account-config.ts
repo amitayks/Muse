@@ -6,6 +6,7 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, TwitterAccountConfig } from '../types';
+import type { Lang } from '../ui/strings';
 import { getTwitterAccount, updateTwitterAccount, parseTwitterAccountConfig } from '../services/db';
 import { renderAccountDetail } from '../views/accounts';
 import { renderError } from '../views';
@@ -15,23 +16,19 @@ const IMAGE_PROBABILITIES = [0, 0.1, 0.3, 0.5, 0.7, 1.0];
 const BATCH_PAGE_SIZES = [3, 5, 8, 10];
 
 export async function accountConfigToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
+    const lang = (ctx.lang || 'en') as Lang;
     const setting = ctx.value;
     const accountId = ctx.extra!;
 
     const account = await getTwitterAccount(ctx.env, accountId, ctx.chatId);
     if (!account) {
-        return renderError('Account not found.');
+        return renderError('Account not found.', lang);
     }
 
     const config = parseTwitterAccountConfig(account);
     let updated = false;
 
     switch (setting) {
-        case 'language':
-            config.language = config.language === 'en' ? 'he' : 'en';
-            updated = true;
-            break;
-
         case 'hashtags':
             config.includeHashtags = !config.includeHashtags;
             updated = true;
@@ -84,5 +81,5 @@ export async function accountConfigToggleAction(ctx: HandlerContext & { value: s
         await updateTwitterAccount(ctx.env, accountId, ctx.chatId, { config });
     }
 
-    return renderAccountDetail(ctx.env, ctx.chatId, accountId);
+    return renderAccountDetail(ctx.env, ctx.chatId, accountId, lang);
 }

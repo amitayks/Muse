@@ -1,10 +1,16 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
-import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview } from '../services/db';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
+import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../services/db';
 import { renderRepoDetail, renderError, renderSettings } from '../views';
+import { cancelRow } from '../ui/components';
 import { isValidTimezone } from '../services/timezone';
+import { countStalePrompts } from '../services/prompts';
+import { isAdmin } from '../services/security';
 
 export async function configToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult | void> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, value: setting, extra } = ctx;
 
     // Handle page size configuration: config:page_size:N
@@ -16,7 +22,21 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         }
         const tz = await getTimezone(env, chatId);
         const ps = await getPageSize(env, chatId);
-        return renderSettings(tz, ps);
+        const staleCount = await countStalePrompts(env, chatId);
+        const isAdminUser = isAdmin(chatId, env);
+        return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
+    }
+
+    // Handle language toggle: config:language
+    if (setting === 'language') {
+        const currentLang = await getUserLanguage(env, chatId);
+        const newLang: Lang = currentLang === 'en' ? 'he' : 'en';
+        await setUserLanguage(env, chatId, newLang);
+        const tz = await getTimezone(env, chatId);
+        const ps = await getPageSize(env, chatId);
+        const staleCount = await countStalePrompts(env, chatId);
+        const isAdminUser = isAdmin(chatId, env);
+        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser);
     }
 
     // Handle timezone configuration: config:timezone:OFFSET
@@ -28,8 +48,8 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
                 context: { awaiting_input: 'timezone' },
             });
             return {
-                text: `⌨️ <b>Custom Timezone</b>\n\nType your UTC offset:\n\nExamples: <code>UTC+2</code>, <code>UTC-5:30</code>, <code>UTC+9:45</code>`,
-                keyboard: [[{ text: '❌ Cancel', callback_data: 'view:settings' }]],
+                text: `${t(lang, 'settings.timezoneInputTitle')}\n\n${t(lang, 'settings.timezoneInputDesc')}\n\n${t(lang, 'settings.timezoneInputExamples')}`,
+                keyboard: [cancelRow('view:settings', lang)],
             };
         }
 
@@ -43,10 +63,12 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
             await setTimezone(env, chatId, offset);
             const tz = await getTimezone(env, chatId);
             const ps = await getPageSize(env, chatId);
-            return renderSettings(tz, ps);
+            const staleCount = await countStalePrompts(env, chatId);
+            const isAdminUser = isAdmin(chatId, env);
+            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
         }
 
-        return renderError('Invalid timezone format. Use UTC+N or UTC-N format.');
+        return renderError(t(lang, 'error.invalidTimezone'), lang);
     }
 
     // Handle overview re-bootstrap: config:rebootstrap:REPO_ID
@@ -60,19 +82,19 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
     if (setting === 'edit_overview') {
         const overview = await getRepoOverview(env, extra!, chatId);
         if (!overview) {
-            return renderError('No overview found. Bootstrap one first.');
+            return renderError(t(lang, 'error.noOverview'), lang);
         }
         // Short field codes to stay under Telegram's 64-byte callback_data limit
         return {
-            text: `✏️ <b>Edit Overview</b>\n\nSelect a field to edit:`,
+            text: `${t(lang, 'repos.editOverviewTitle')}\n\n${t(lang, 'repos.editOverviewDesc')}`,
             keyboard: [
-                [{ text: '📋 Summary', callback_data: `config:ov_edit:${extra}:s` }],
-                [{ text: '🛠 Tech Stack', callback_data: `config:ov_edit:${extra}:ts` }],
-                [{ text: '⭐ Key Features', callback_data: `config:ov_edit:${extra}:kf` }],
-                [{ text: '👥 Target Audience', callback_data: `config:ov_edit:${extra}:ta` }],
-                [{ text: '🎤 Brand Voice', callback_data: `config:ov_edit:${extra}:bv` }],
-                [{ text: '🎨 Visual Theme', callback_data: `config:ov_edit:${extra}:vt` }],
-                [{ text: '◀️ Back', callback_data: `repo:${extra}` }],
+                [{ text: t(lang, 'repos.fieldSummary'), callback_data: `config:ov_edit:${extra}:s` }],
+                [{ text: t(lang, 'repos.fieldTechStack'), callback_data: `config:ov_edit:${extra}:ts` }],
+                [{ text: t(lang, 'repos.fieldKeyFeatures'), callback_data: `config:ov_edit:${extra}:kf` }],
+                [{ text: t(lang, 'repos.fieldTargetAudience'), callback_data: `config:ov_edit:${extra}:ta` }],
+                [{ text: t(lang, 'repos.fieldBrandVoice'), callback_data: `config:ov_edit:${extra}:bv` }],
+                [{ text: t(lang, 'repos.fieldVisualTheme'), callback_data: `config:ov_edit:${extra}:vt` }],
+                [{ text: t(lang, 'common.back'), callback_data: `repo:${extra}` }],
             ],
         };
     }
@@ -84,14 +106,14 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         // We need to handle this via the context approach
         // Since callback_data has a max length, we'll store the edit context in chat state
         const repoId2 = extra;
-        if (!repoId2) return renderError('Missing repository.');
+        if (!repoId2) return renderError(t(lang, 'error.missingRepo'), lang);
 
         // The field is passed in a different way — we'll use the remaining args
         // Actually, callback_data format: config:ov_edit:REPO_ID:field
         // The router splits as: prefix=config, value=ov_edit, extra=REPO_ID:field
         // So extra contains "REPO_ID:field"
         const colonIdx = repoId2.indexOf(':');
-        if (colonIdx === -1) return renderError('Missing field.');
+        if (colonIdx === -1) return renderError(t(lang, 'error.missingField'), lang);
         const actualRepoId = repoId2.substring(0, colonIdx);
         const rawField = repoId2.substring(colonIdx + 1);
 
@@ -99,19 +121,19 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         const shortToField: Record<string, string> = { s: 'summary', ts: 'tech_stack', kf: 'key_features', ta: 'target_audience', bv: 'brand_voice', vt: 'visual_theme' };
         const field = shortToField[rawField] || rawField;
 
-        const fieldLabels: Record<string, string> = {
-            summary: 'Summary',
-            tech_stack: 'Tech Stack',
-            key_features: 'Key Features (comma-separated)',
-            target_audience: 'Target Audience',
-            brand_voice: 'Brand Voice',
-            visual_theme: 'Visual Theme',
+        const fieldLabelKeys: Record<string, string> = {
+            summary: 'repos.summaryLabel',
+            tech_stack: 'repos.techStackLabel',
+            key_features: 'repos.keyFeaturesLabel',
+            target_audience: 'repos.targetAudienceLabel',
+            brand_voice: 'repos.brandVoiceLabel',
+            visual_theme: 'repos.visualThemeLabel',
         };
 
-        const label = fieldLabels[field] || field;
+        const label = fieldLabelKeys[field] ? t(lang, fieldLabelKeys[field]) : field;
         const overview = await getRepoOverview(env, actualRepoId, chatId);
         const currentValue = overview ? (overview as unknown as Record<string, unknown>)[field] : null;
-        const displayValue = Array.isArray(currentValue) ? (currentValue as string[]).join(', ') : (currentValue as string | null) || '(empty)';
+        const displayValue = Array.isArray(currentValue) ? (currentValue as string[]).join(', ') : (currentValue as string | null) || t(lang, 'repos.empty');
 
         await updateChatState(env, chatId, {
             current_view: 'overview_edit',
@@ -119,15 +141,15 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         });
 
         return {
-            text: `✏️ <b>Edit ${label}</b>\n\n<b>Current value:</b>\n${displayValue}\n\nSend the new value:`,
-            keyboard: [[{ text: '❌ Cancel', callback_data: `config:edit_overview:${actualRepoId}` }]],
+            text: `${t(lang, 'repos.editFieldTitle').replace('{label}', label)}\n\n${t(lang, 'repos.currentValue')}\n${displayValue}\n\n${t(lang, 'repos.sendNewValue')}`,
+            keyboard: [cancelRow(`config:edit_overview:${actualRepoId}`, lang)],
         };
     }
 
     const repoId = extra;
     const repo = await getRepo(env, repoId!, chatId);
     if (!repo) {
-        return renderError('Repository not found.');
+        return renderError(t(lang, 'error.repoNotFound'), lang);
     }
 
     const config = parseRepoConfig(repo);
@@ -142,9 +164,6 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         case 'watchPushes':
             config.watchPushes = !config.watchPushes;
             break;
-        case 'language':
-            config.language = config.language === 'en' ? 'he' : 'en';
-            break;
         case 'threadImage':
             config.alwaysGenerateThreadImage = !config.alwaysGenerateThreadImage;
             break;
@@ -157,9 +176,9 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
             break;
         }
         default:
-            return renderRepoDetail(env, chatId, repoId!);
+            return renderRepoDetail(env, chatId, repoId!, lang);
     }
 
     await updateRepo(env, repoId!, chatId, { config });
-    return renderRepoDetail(env, chatId, repoId!);
+    return renderRepoDetail(env, chatId, repoId!, lang);
 }

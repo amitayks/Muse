@@ -4,6 +4,7 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
+import type { Lang } from '../ui/strings';
 import type { DraftListType } from '../views/drafts';
 import { getDraft, deleteDraft, getChatState, parseContext, updateChatState, getTimezone, getPageSize, countDrafts, countDraftsBySource } from '../services/db';
 import { deleteMessage, sendMessage } from '../services/telegram';
@@ -12,25 +13,27 @@ import { renderDeleteDraftConfirm, renderDraftDetail, renderDraftCategories, ren
 export async function deleteDraftAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, extra: draftId } = ctx;
 
-    if (!draftId) return renderError('Missing draft ID.');
+    if (!draftId) return renderError('Missing draft ID.', lang);
 
     const draft = await getDraft(env, draftId, chatId);
-    if (!draft) return renderError('Draft not found.');
+    if (!draft) return renderError('Draft not found.', lang);
 
-    return renderDeleteDraftConfirm(draftId, draft.pr_title);
+    return renderDeleteDraftConfirm(draftId, draft.pr_title, lang);
 }
 
 export async function confirmDeleteDraftAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult | void> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, messageId, extra: draftId } = ctx;
 
-    if (!draftId) return renderError('Missing draft ID.');
+    if (!draftId) return renderError('Missing draft ID.', lang);
 
     const draft = await getDraft(env, draftId, chatId);
-    if (!draft) return renderError('Draft not found.');
+    if (!draft) return renderError('Draft not found.', lang);
 
     // Read origin list info from chat state before deletion
     const state = await getChatState(env, chatId);
@@ -60,10 +63,10 @@ export async function confirmDeleteDraftAction(
         else total = await countDrafts(env, chatId, listType as any);
         const totalPages = Math.ceil(total / ps);
         const safePage = totalPages > 0 ? Math.min(listPage, totalPages - 1) : 0;
-        view = await renderDraftsList(env, chatId, safePage, listType, ps);
+        view = await renderDraftsList(env, chatId, safePage, listType, ps, lang);
         newView = `drafts_${listType}`;
     } else {
-        view = await renderDraftCategories(env, chatId);
+        view = await renderDraftCategories(env, chatId, lang);
         newView = 'drafts';
     }
 
@@ -87,10 +90,11 @@ export async function confirmDeleteDraftAction(
 export async function cancelDeleteDraftAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult> {
+    const lang = (ctx.lang || 'en') as Lang;
     const { env, chatId, extra: draftId } = ctx;
 
-    if (!draftId) return renderError('Missing draft ID.');
+    if (!draftId) return renderError('Missing draft ID.', lang);
 
     const tz = await getTimezone(env, chatId);
-    return renderDraftDetail(env, chatId, draftId, tz);
+    return renderDraftDetail(env, chatId, draftId, tz, lang);
 }

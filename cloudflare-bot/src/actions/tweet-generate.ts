@@ -9,27 +9,30 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { getTwitterTweet, getTwitterAccount, updateTwitterTweet, getScoredTweetsByBatchMessage, createDraft, parseTwitterAccountConfig } from '../services/db';
 import { generateRepostContent } from '../services/repost-generate';
 import { editMessage, sendMessage } from '../services/telegram';
 import { renderError } from '../views';
 
 export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string }): Promise<ViewResult | void> {
+    const lang = (ctx.lang || 'en') as Lang;
     const tweetId = ctx.extra!;
 
     const tweet = await getTwitterTweet(ctx.env, ctx.chatId, tweetId);
     if (!tweet) {
-        return renderError('Tweet not found.');
+        return renderError('Tweet not found.', lang);
     }
 
     // Check if already drafted
     if (tweet.draft_id) {
-        return renderError('A draft has already been generated for this tweet.');
+        return renderError('A draft has already been generated for this tweet.', lang);
     }
 
     const account = await getTwitterAccount(ctx.env, tweet.account_id, ctx.chatId);
     if (!account) {
-        return renderError('Account not found.');
+        return renderError('Account not found.', lang);
     }
 
     const config = parseTwitterAccountConfig(account);
@@ -38,7 +41,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
     const imageUrl = config.analyzeMedia ? tweet.media_url : null;
     const content = await generateRepostContent(ctx.env, tweet, account.id, config, undefined, imageUrl);
     if (!content) {
-        return renderError('Failed to generate content. Please try again.');
+        return renderError('Failed to generate content. Please try again.', lang);
     }
 
     // Create draft
@@ -70,8 +73,8 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
 
     // Send a separate "ready" notification
     await sendMessage(ctx.env, ctx.chatId,
-        `✅ <b>Repost draft generated!</b>\n\nFrom <b>@${account.username}</b>\n<i>${tweetPreview}...</i>\n\nYour draft is ready and waiting in Drafts > RePosts.`,
-        [[{ text: '👁 View Draft', callback_data: `tw_view:${draftId}` }]]
+        `${t(lang, 'actions.repostDraftGenerated')}\n\n${t(lang, 'actions.repostDraftGeneratedMsg').replace('{username}', account.username).replace('{preview}', tweetPreview)}`,
+        [[{ text: t(lang, 'actions.btnViewDraft'), callback_data: `tw_view:${draftId}` }]]
     );
 
     // Return void — we handled messaging ourselves
@@ -105,7 +108,8 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
     const pageItems = tweets.slice(0, pageSize);
 
     const pageLabel = totalPages > 1 ? ` (1/${totalPages})` : '';
-    const lines: string[] = [`🔔 <b>New Tweets Detected</b>${pageLabel}\n`];
+    // Note: rebuildBatchMessage doesn't have lang context, using English default
+    const lines: string[] = [`${t('en', 'notifications.newTweetsDetected')}${pageLabel}\n`];
     const keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
 
     for (const tweet of pageItems) {
@@ -126,19 +130,19 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
 
         const row: Array<{ text: string; callback_data?: string; url?: string }> = [];
         if (tweet.draft_id) {
-            row.push({ text: `✅ Generated`, callback_data: `noop:${tweet.id}` });
+            row.push({ text: t('en', 'notifications.generated'), callback_data: `noop:${tweet.id}` });
         } else {
-            row.push({ text: `⚡ Generate @${account.username}`, callback_data: `action:tw_gen:${tweet.id}` });
+            row.push({ text: t('en', 'notifications.generateFor').replace('{username}', account.username), callback_data: `action:tw_gen:${tweet.id}` });
         }
         if (tweet.tweet_url) {
-            row.push({ text: '🔗 Open', url: tweet.tweet_url });
+            row.push({ text: t('en', 'notifications.openLink'), url: tweet.tweet_url });
         }
         keyboard.push(row);
     }
 
     if (totalPages > 1) {
-        lines.push(`<i>${tweets.length} tweets total</i>`);
-        keyboard.push([{ text: 'Next ➡️', callback_data: `tw_batch:1` }]);
+        lines.push(`<i>${tweets.length} ${t('en', 'notifications.tweetsTotal')}</i>`);
+        keyboard.push([{ text: t('en', 'common.next'), callback_data: `tw_batch:1` }]);
     }
 
     await editMessage(env, chatId, batchMessageId, lines.join('\n'), keyboard);

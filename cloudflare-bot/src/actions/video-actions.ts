@@ -14,6 +14,8 @@ import { createVideo as heygenCreateVideo } from '../services/heygen';
 import { renderVideoConfig, renderScriptPreview, renderVideoDetail, renderVideoRepoHome } from '../views';
 import { sendMessage, editMessage } from '../services/telegram';
 import { logInfo, logError } from '../services/security';
+import { homeButton, cancelRow } from '../ui/components';
+import type { Lang } from '../ui/strings';
 
 // Option arrays for cycling toggles
 const TONE_OPTIONS = ['Casual Update', 'Professional Announcement', 'Technical Deep Dive', 'Excited Launch', 'Community Chat'];
@@ -213,7 +215,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
                 keyboard: [
                     [{ text: '💾 Save', callback_data: `vconfig:save_instructions:${repoId}` }],
                     ...(hasExisting ? [[{ text: '🗑 Clear', callback_data: `vconfig:clear_instructions:${repoId}` }]] : []),
-                    [{ text: '❌ Cancel', callback_data: `action:video_create:${repoId}` }],
+                    cancelRow(`action:video_create:${repoId}`, (ctx.lang || 'en') as Lang),
                 ],
             };
         }
@@ -251,7 +253,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
             });
             return {
                 text: '💾 <b>Save Preset</b>\n\nType a name for this preset:',
-                keyboard: [[{ text: '❌ Cancel', callback_data: `action:video_create:${repoId}` }]],
+                keyboard: [cancelRow(`action:video_create:${repoId}`, (ctx.lang || 'en') as Lang)],
             };
         }
         case 'load_preset': {
@@ -340,7 +342,7 @@ export async function videoGenerateAction(ctx: HandlerContext & { value: string;
             '⏳ <b>Generating Script...</b>\n\n' +
             '🤖 AI is writing your video script.\n' +
             'This usually takes 5-15 seconds.',
-            [[{ text: '❌ Cancel', callback_data: repoId === 'standalone' ? 'view:video_studio' : `view:video_repo:${repoId}` }]],
+            [cancelRow(repoId === 'standalone' ? 'view:video_studio' : `view:video_repo:${repoId}`, (ctx.lang || 'en') as Lang)],
         ).catch(() => {}); // ignore edit failure
     }
 
@@ -358,7 +360,7 @@ export async function videoGenerateAction(ctx: HandlerContext & { value: string;
             manualInstructions: config.manualInstructions,
             emotion: config.emotion,
             textOverlayEnabled: config.textOverlay,
-        });
+        }, chatId, (ctx.lang || 'en') as string);
 
         // Create video draft
         const draftId = await createVideoDraft(env, chatId, {
@@ -393,7 +395,7 @@ export async function videoApproveAction(ctx: HandlerContext & { value: string; 
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft) return { text: '❌ Video draft not found.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft) return { text: '❌ Video draft not found.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     const config = JSON.parse(draft.config || '{}') as VideoConfig;
     const script = JSON.parse(draft.script || '{}') as VideoScriptResponse;
@@ -449,7 +451,7 @@ export async function videoRegenAction(ctx: HandlerContext & { value: string; ex
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft) return { text: '❌ Video draft not found.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft) return { text: '❌ Video draft not found.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     const config = JSON.parse(draft.config || '{}') as VideoConfig;
     const overview = draft.repo_id ? await getRepoOverview(env, draft.repo_id, chatId) : null;
@@ -462,7 +464,7 @@ export async function videoRegenAction(ctx: HandlerContext & { value: string; ex
             manualInstructions: config.manualInstructions,
             emotion: config.emotion,
             textOverlayEnabled: config.textOverlay,
-        });
+        }, chatId, (ctx.lang || 'en') as string);
 
         await updateVideoDraft(env, draftId, chatId, {
             script: JSON.stringify(script),
@@ -492,7 +494,7 @@ export async function videoDeleteAction(ctx: HandlerContext & { value: string; e
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft) return { text: '❌ Video not found.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft) return { text: '❌ Video not found.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     await deleteVideoDraft(env, draftId, chatId);
 
@@ -509,7 +511,7 @@ export async function videoPublishAction(ctx: HandlerContext & { value: string; 
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft) return { text: '❌ Video not found.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft) return { text: '❌ Video not found.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     const hasInstagram = !!(env.INSTAGRAM_ACCESS_TOKEN && env.INSTAGRAM_BUSINESS_ACCOUNT_ID);
 
@@ -537,7 +539,7 @@ export async function videoScheduleAction(ctx: HandlerContext & { value: string;
 
     return {
         text: '📅 <b>Schedule Video</b>\n\nSend the date and time (UTC) to publish:\n\nFormat: <code>YYYY-MM-DD HH:MM</code>\nExample: <code>2026-02-15 14:00</code>',
-        keyboard: [[{ text: '❌ Cancel', callback_data: `view:video_detail:${draftId}` }]],
+        keyboard: [cancelRow(`view:video_detail:${draftId}`, (ctx.lang || 'en') as Lang)],
     };
 }
 
@@ -548,7 +550,7 @@ export async function videoPubTwitterAction(ctx: HandlerContext & { value: strin
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     try {
         const { publishVideoToTwitter } = await import('../services/video-publish');
@@ -567,7 +569,7 @@ export async function videoPubTwitterAction(ctx: HandlerContext & { value: strin
 
         return {
             text: `✅ <b>Published to Twitter!</b>\n\n${twitterUrl}`,
-            keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+            keyboard: [[homeButton((ctx.lang || 'en') as Lang)]],
         };
     } catch (error) {
         logError('Twitter publish failed:', error instanceof Error ? error.message : String(error));
@@ -583,7 +585,7 @@ export async function videoPubInstagramAction(ctx: HandlerContext & { value: str
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     try {
         const { publishVideoToInstagram } = await import('../services/video-publish');
@@ -602,7 +604,7 @@ export async function videoPubInstagramAction(ctx: HandlerContext & { value: str
 
         return {
             text: `✅ <b>Published to Instagram!</b>\n\n${igUrl}`,
-            keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+            keyboard: [[homeButton((ctx.lang || 'en') as Lang)]],
         };
     } catch (error) {
         logError('Instagram publish failed:', error instanceof Error ? error.message : String(error));
@@ -618,7 +620,7 @@ export async function videoPubBothAction(ctx: HandlerContext & { value: string; 
     if (!draftId) return;
 
     const draft = await getVideoDraft(env, draftId, chatId);
-    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]] };
+    if (!draft || !draft.video_url) return { text: '❌ Video not found or not ready.', keyboard: [[homeButton((ctx.lang || 'en') as Lang)]] };
 
     try {
         const { publishVideoToTwitter, publishVideoToInstagram } = await import('../services/video-publish');
@@ -644,7 +646,7 @@ export async function videoPubBothAction(ctx: HandlerContext & { value: string; 
 
         return {
             text: `📢 <b>Publish Results</b>\n\n${results.join('\n')}`,
-            keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+            keyboard: [[homeButton((ctx.lang || 'en') as Lang)]],
         };
     } catch (error) {
         logError('Multi-platform publish failed:', error instanceof Error ? error.message : String(error));

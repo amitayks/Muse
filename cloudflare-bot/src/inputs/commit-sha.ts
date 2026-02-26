@@ -1,18 +1,21 @@
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
 import { updateChatState, createDraft, getTimezone, getRepoByOwnerRepo, applyOverviewPatches } from '../services/db';
 import { getContentSource } from '../services/github';
 import { generateContent } from '../services/gemini';
 import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../services/telegram';
 import { ensureImage } from '../services/storage';
 import { renderGenerating, renderDraftDetail } from '../views';
-import { truncateHtml } from '../views/drafts';
+import { truncateHtml } from '../ui/utils';
+import { cancelRow } from '../ui/components';
 import { sanitizeError } from '../services/security';
 
 export async function commitShaInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: sha } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
 
-    const genView = renderGenerating(sha);
+    const genView = renderGenerating(sha, lang);
     const genMessageId = await sendMessage(env, chatId, genView.text, genView.keyboard);
 
     try {
@@ -32,7 +35,7 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
             }
         }
 
-        const result = await generateContent(env, source, repoId);
+        const result = await generateContent(env, source, repoId, lang, chatId);
         const content = result.content;
 
         // Apply overview patches (non-blocking)
@@ -64,7 +67,7 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
         }
 
         const tz = await getTimezone(env, chatId);
-        const view = await renderDraftDetail(env, chatId, draftId, tz);
+        const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
 
         let finalMessageId: number;
 
@@ -92,7 +95,7 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
         // Keep awaiting_input so user can retry with a different SHA
         await sendMessage(env, chatId,
             `❌ <b>Generation failed</b>\n\nCouldn't generate content for <code>${sha.substring(0, 7)}</code>.\n\nSend another commit SHA or PR number to try again.`,
-            [[{ text: '❌ Cancel', callback_data: 'view:home' }]]
+            [cancelRow('view:home', lang)]
         );
     }
 }

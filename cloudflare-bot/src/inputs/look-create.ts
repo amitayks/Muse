@@ -4,6 +4,8 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
+import { cancelRow } from '../ui/components';
 import { updateChatState, getVideoSettings, updateVideoSettings } from '../services/db';
 import { sendMessage, getFileUrl } from '../services/telegram';
 import { logInfo, logError } from '../services/security';
@@ -28,7 +30,7 @@ export async function lookCreateInput(ctx: LookCreateInputContext): Promise<void
         if (!ctx.message?.photo || ctx.message.photo.length === 0) {
             await sendMessage(env, chatId,
                 '📷 Please send a <b>photo</b> to add as a look. Text messages are not accepted.',
-                [[{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${lc.characterGroupId}` }]],
+                [cancelRow(`vsettings:char_detail:${lc.characterGroupId}`, ((ctx as any).lang || 'en') as Lang)],
             );
             return;
         }
@@ -59,7 +61,7 @@ export async function lookCreateInput(ctx: LookCreateInputContext): Promise<void
 
             await sendMessage(env, chatId,
                 '✅ Photo uploaded! Now send a <b>name</b> for this look (e.g. "Casual", "Professional", "Outdoor").',
-                [[{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${lc.characterGroupId}` }]],
+                [cancelRow(`vsettings:char_detail:${lc.characterGroupId}`, ((ctx as any).lang || 'en') as Lang)],
             );
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
@@ -78,7 +80,7 @@ export async function lookCreateInput(ctx: LookCreateInputContext): Promise<void
         if (!lookName) {
             await sendMessage(env, chatId,
                 'Please send a name for this look.',
-                [[{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${lc.characterGroupId}` }]],
+                [cancelRow(`vsettings:char_detail:${lc.characterGroupId}`, ((ctx as any).lang || 'en') as Lang)],
             );
             return;
         }

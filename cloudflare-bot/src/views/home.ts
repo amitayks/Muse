@@ -3,15 +3,15 @@
  */
 
 import type { Env, ViewResult, InlineButton, DraftContent } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import { getNextScheduledDraft, getDraftStatusCounts, getTimezone } from '../services/db';
 import { formatLocalTime } from '../services/timezone';
 import { isAdmin } from '../services/security';
+import { escapeHtml } from '../ui/utils';
+import { homeButton } from '../ui/components';
 
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-export async function renderHome(env: Env, chatId: string): Promise<ViewResult> {
+export async function renderHome(env: Env, chatId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const [nextDraft, counts, tz] = await Promise.all([
         getNextScheduledDraft(env, chatId),
         getDraftStatusCounts(env, chatId),
@@ -28,117 +28,117 @@ export async function renderHome(env: Env, chatId: string): Promise<ViewResult> 
         const content = JSON.parse(nextDraft.content) as DraftContent;
         const firstTweet = content.tweets[0]?.text || nextDraft.pr_title;
         const preview = escapeHtml(firstTweet.length > 60 ? firstTweet.substring(0, 57) + '...' : firstTweet);
-        const format = content.format === 'single' ? 'Single Tweet' : `Thread (${content.tweets.length} tweets)`;
+        const format = content.format === 'single' ? t(lang, 'home.singleTweet') : `Thread (${content.tweets.length} tweets)`;
         const timeStr = nextDraft.scheduled_at
             ? formatLocalTime(nextDraft.scheduled_at, tz)
-            : 'Pending';
+            : t(lang, 'home.pending');
 
-        text = `🤖 <b>Content Bot Dashboard</b>
+        text = `${t(lang, 'home.title')}
 
-📅 <b>Next up:</b>
+${t(lang, 'home.nextUp')}
 "${preview}"
 ⏰ ${timeStr}
 📊 ${format} | PR #${nextDraft.pr_number}
 
-📊 <b>Queue:</b> ${scheduledCount} scheduled | ${draftCount} drafts | ${approvedCount} approved`;
+${t(lang, 'home.queueLabel')} ${scheduledCount} ${t(lang, 'home.scheduled')} | ${draftCount} ${t(lang, 'home.drafts')} | ${approvedCount} ${t(lang, 'home.approved')}`;
     } else {
-        text = `🤖 <b>Content Bot Dashboard</b>
+        text = `${t(lang, 'home.title')}
 
-👋 All clear! No posts in queue.
+${t(lang, 'home.allClear')}
 
-📊 ${draftCount} drafts | ${approvedCount} approved`;
+📊 ${draftCount} ${t(lang, 'home.drafts')} | ${approvedCount} ${t(lang, 'home.approved')}`;
     }
 
     const keyboard: InlineButton[][] = [];
     if (scheduledCount > 0) {
         keyboard.push([
-            { text: '📅 Schedule', callback_data: 'view:drafts_scheduled' },
-            { text: '📝 Drafts', callback_data: 'view:drafts' },
+            { text: t(lang, 'home.btnSchedule'), callback_data: 'view:drafts_scheduled' },
+            { text: t(lang, 'home.btnDrafts'), callback_data: 'view:drafts' },
         ]);
     } else {
-        keyboard.push([{ text: '📝 Drafts', callback_data: 'view:drafts' }]);
+        keyboard.push([{ text: t(lang, 'home.btnDrafts'), callback_data: 'view:drafts' }]);
     }
     keyboard.push([
-        { text: '✍️ Handwrite', callback_data: 'view:handwrite', style: 'primary' },
-        { text: '⚡ Generate', callback_data: 'view:generate', style: 'primary' },
-        { text: '🔄 RePost', callback_data: 'view:repost', style: 'primary' },
+        { text: t(lang, 'home.btnHandwrite'), callback_data: 'view:handwrite', style: 'primary' },
+        { text: t(lang, 'home.btnGenerate'), callback_data: 'view:generate', style: 'primary' },
+        { text: t(lang, 'home.btnRepost'), callback_data: 'view:repost', style: 'primary' },
     ]);
     keyboard.push([
-        { text: '📦 Repos', callback_data: 'view:repos' },
-        { text: '👤 Accounts', callback_data: 'view:accounts' },
+        { text: t(lang, 'home.btnRepos'), callback_data: 'view:repos' },
+        { text: t(lang, 'home.btnAccounts'), callback_data: 'view:accounts' },
     ]);
     if (isAdmin(chatId, env)) {
-        keyboard.push([{ text: '🎬 Video Studio', callback_data: 'view:video_studio' }]);
+        keyboard.push([{ text: t(lang, 'home.btnVideoStudio'), callback_data: 'view:video_studio' }]);
     }
     keyboard.push([
-        { text: '⚙️ Settings', callback_data: 'view:settings' },
-        { text: '❓ Help', callback_data: 'view:help' },
+        { text: t(lang, 'home.btnSettings'), callback_data: 'view:settings' },
+        { text: t(lang, 'home.btnHelp'), callback_data: 'view:help' },
     ]);
 
     return { text, keyboard };
 }
 
-export function renderHelp(): ViewResult {
+export function renderHelp(lang: Lang = 'en'): ViewResult {
     return {
-        text: `❓ <b>Help</b>
+        text: `${t(lang, 'help.title')}
 
-<b>Create Content</b>
-⚡ <b>Generate</b> — AI creates a post from any commit or PR
-✍️ <b>Handwrite</b> — Compose your own tweet or thread
-🔄 <b>RePost</b> — Quote-tweet from any tweet URL
+${t(lang, 'help.createContent')}
+${t(lang, 'help.generateDesc')}
+${t(lang, 'help.handwriteDesc')}
+${t(lang, 'help.repostDesc')}
 
-<b>Manage</b>
-📝 <b>Drafts</b> — Review, edit, approve, schedule, or delete
-📦 <b>Repos</b> — Watch repos for auto-generated content
-👤 <b>Accounts</b> — Follow X accounts for repost suggestions
+${t(lang, 'help.manage')}
+${t(lang, 'help.draftsDesc')}
+${t(lang, 'help.reposDesc')}
+${t(lang, 'help.accountsDesc')}
 
-<b>How it works</b>
-Watch a repo → new PRs auto-generate drafts → review and publish to X. Scheduled posts go out automatically. AI images are generated and attached when publishing.
+${t(lang, 'help.howItWorks')}
+${t(lang, 'help.howItWorksDesc')}
 
-<b>Quick commands</b>
-/generate, /handwrite, /repost, /drafts, /repos, /watch, /help`,
-        keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+${t(lang, 'help.quickCommands')}
+${t(lang, 'help.quickCommandsList')}`,
+        keyboard: [[homeButton(lang)]],
     };
 }
 
-export function renderError(message: string): ViewResult {
+export function renderError(message: string, lang: Lang = 'en'): ViewResult {
     return {
-        text: `❌ <b>Error</b>
+        text: `${t(lang, 'common.error')}
 
 ${message}
 
-Tap Home to return to the dashboard.`,
-        keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+${t(lang, 'error.tapHome')}`,
+        keyboard: [[homeButton(lang)]],
     };
 }
 
-export function renderSuccess(message: string): ViewResult {
+export function renderSuccess(message: string, lang: Lang = 'en'): ViewResult {
     return {
-        text: `✅ <b>Success!</b>
+        text: `${t(lang, 'common.success')}
 
 ${message}`,
-        keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+        keyboard: [[homeButton(lang)]],
     };
 }
 
-export function renderGenerating(sha: string): ViewResult {
+export function renderGenerating(sha: string, lang: Lang = 'en'): ViewResult {
     return {
-        text: `🔄 <b>Generating...</b>
+        text: `${t(lang, 'generating.title')}
 
-Finding PR for commit <code>${sha}</code>...
+${t(lang, 'generating.findingPr')} <code>${sha}</code>...
 
-This may take a moment.`,
+${t(lang, 'generating.mayTakeMoment')}`,
         keyboard: [],
     };
 }
 
-export function renderPublishing(count: number): ViewResult {
+export function renderPublishing(count: number, lang: Lang = 'en'): ViewResult {
     return {
-        text: `📤 <b>Publishing...</b>
+        text: `${t(lang, 'publishing.title')}
 
-Publishing ${count} draft${count > 1 ? 's' : ''} to X...
+${t(lang, 'publishing.publishingTo')} ${count} draft${count > 1 ? 's' : ''} to X...
 
-Please wait.`,
+${t(lang, 'publishing.pleaseWait')}`,
         keyboard: [],
     };
 }
@@ -148,34 +148,34 @@ export interface ComposeTweet {
     hasMedia?: boolean;
 }
 
-export function renderCompose(tweets: ComposeTweet[], charWarnings: number[], imageGen: boolean, aiRefine: boolean): ViewResult {
+export function renderCompose(tweets: ComposeTweet[], charWarnings: number[], imageGen: boolean, aiRefine: boolean, lang: Lang = 'en'): ViewResult {
     const count = tweets.length;
 
     let text: string;
 
     if (count === 0) {
-        text = `✍️ <b>Compose Your Post</b>
+        text = `${t(lang, 'compose.title')}
 
-Send me your content — each message becomes a tweet in the thread.
+${t(lang, 'compose.instructions')}
 
-📝 <b>Text</b> — just type and send
-📷 <b>Photo</b> — attach an image (with optional caption)
-✏️ <b>Edit</b> — edit any sent message to update it
+${t(lang, 'compose.textHint')}
+${t(lang, 'compose.photoHint')}
+${t(lang, 'compose.editHint')}
 
-When you're done, tap <b>Pen Down</b> to save your draft.
+${t(lang, 'compose.whenDone')}
 
-🎨 <b>Image</b> — AI generates an eye-catching image for your post
-✨ <b>AI Refine</b> — polishes your writing while keeping your voice`;
+${t(lang, 'compose.imageHint')}
+${t(lang, 'compose.aiHint')}`;
     } else {
-        const format = count === 1 ? 'Single Tweet' : `Thread · ${count} tweets`;
-        text = `✍️ <b>Composing</b> — ${format}\n`;
+        const format = count === 1 ? t(lang, 'home.singleTweet') : `Thread · ${count} tweets`;
+        text = `${t(lang, 'compose.composing')} — ${format}\n`;
 
         for (let i = 0; i < tweets.length; i++) {
-            const t = tweets[i];
-            const media = t.hasMedia ? ' 📷' : '';
-            const len = t.text.length;
+            const tw = tweets[i];
+            const media = tw.hasMedia ? ' 📷' : '';
+            const len = tw.text.length;
             const over = len > 280;
-            const preview = t.text.length > 80 ? t.text.substring(0, 77) + '...' : t.text;
+            const preview = tw.text.length > 80 ? tw.text.substring(0, 77) + '...' : tw.text;
             const safePreview = escapeHtml(preview);
             text += `\n${i + 1}. ${safePreview}${media}`;
             text += `\n    <i>${len}/280${over ? ' ⚠️' : ''}</i>`;
@@ -184,18 +184,18 @@ When you're done, tap <b>Pen Down</b> to save your draft.
 
     if (charWarnings.length > 0) {
         const warnings = charWarnings.map(i => `Tweet ${i}`).join(', ');
-        text += `\n\n⚠️ ${warnings} exceed${charWarnings.length === 1 ? 's' : ''} 280 chars — will be trimmed on publish`;
+        text += `\n\n⚠️ ${warnings} ${t(lang, 'compose.exceeds280')}`;
     }
 
     return {
         text,
         keyboard: [
-            [{ text: '✏️ Pen Down', callback_data: 'compose:pendown', style: 'success' }],
+            [{ text: t(lang, 'compose.btnPenDown'), callback_data: 'compose:pendown', style: 'success' }],
             [
                 { text: `🎨 Image: ${imageGen ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_image' },
                 { text: `✨ AI: ${aiRefine ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_ai' },
             ],
-            [{ text: 'Cancel', callback_data: 'compose:cancel', style: 'danger' }],
+            [{ text: t(lang, 'common.cancel'), callback_data: 'compose:cancel', style: 'danger' }],
         ],
     };
 }

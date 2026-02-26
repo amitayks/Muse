@@ -4,6 +4,7 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext, HandwriteState, HandwriteTweet } from '../types';
+import type { Lang } from '../ui/strings';
 import { updateChatState, getChatState, parseContext } from '../services/db';
 import { editMessage } from '../services/telegram';
 import { storeUserMedia } from '../services/storage';
@@ -22,6 +23,7 @@ interface HandwriteInputContext extends HandlerContext {
 
 export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> {
     const { env, chatId, context } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
     const handwrite = context.handwrite;
 
     if (!handwrite) {
@@ -84,7 +86,7 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
     const statusMessageId = handwrite.statusMessageId || state.message_id;
 
     if (statusMessageId) {
-        const view = renderCompose(composeTweets, charWarnings, handwrite.imageGen, handwrite.aiRefine);
+        const view = renderCompose(composeTweets, charWarnings, handwrite.imageGen, handwrite.aiRefine, lang);
         try {
             await editMessage(env, chatId, statusMessageId, view.text, view.keyboard);
         } catch {

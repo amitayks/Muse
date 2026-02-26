@@ -3,35 +3,9 @@
  */
 
 import type { Env, InlineButton } from '../types';
+import { truncateHtml } from '../ui/utils';
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
-
-/** Safely truncate HTML without breaking tags (local copy to avoid circular imports) */
-function truncateHtmlCaption(html: string, maxLen: number): string {
-    if (html.length <= maxLen) return html;
-    let truncated = html.substring(0, maxLen - 3);
-    const lastOpen = truncated.lastIndexOf('<');
-    const lastClose = truncated.lastIndexOf('>');
-    if (lastOpen > lastClose) {
-        truncated = truncated.substring(0, lastOpen);
-    }
-    const openTags: string[] = [];
-    const tagRegex = /<\/?([a-zA-Z]+)[^>]*>/g;
-    let match;
-    while ((match = tagRegex.exec(truncated)) !== null) {
-        if (match[0][1] === '/') {
-            const idx = openTags.lastIndexOf(match[1].toLowerCase());
-            if (idx !== -1) openTags.splice(idx, 1);
-        } else {
-            openTags.push(match[1].toLowerCase());
-        }
-    }
-    let result = truncated + '...';
-    for (let i = openTags.length - 1; i >= 0; i--) {
-        result += `</${openTags[i]}>`;
-    }
-    return result;
-}
 
 /** Map InlineButton[][] to Telegram's format, including optional style */
 function toTelegramKeyboard(keyboard: InlineButton[][]): Record<string, unknown>[][] {
@@ -40,6 +14,7 @@ function toTelegramKeyboard(keyboard: InlineButton[][]): Record<string, unknown>
             const out: Record<string, unknown> = { text: btn.text };
             if (btn.callback_data) out.callback_data = btn.callback_data;
             if (btn.url) out.url = btn.url;
+            if (btn.web_app) out.web_app = btn.web_app;
             if (btn.style) out.style = btn.style;
             return out;
         })
@@ -285,7 +260,7 @@ export async function sendMessageWithImage(
 ): Promise<number> {
     if (imageUrl) {
         // Truncate text to 1024 chars for photo captions (Telegram limit)
-        const caption = truncateHtmlCaption(text, 1024);
+        const caption = truncateHtml(text, 1024);
         return sendPhoto(env, chatId, imageUrl, caption, keyboard);
     }
     return sendMessage(env, chatId, text, keyboard);

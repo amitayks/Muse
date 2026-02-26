@@ -7,195 +7,13 @@
 import type { Env, ContentSource, DraftContent, ImagePromptData, RepoOverview, OverviewPatch, ContentResponse, VideoScriptResponse, VideoScene, HeyGenEmotion } from '../types';
 import { logInfo, logError, sanitizeContent } from './security';
 import { getRepoOverview } from './db';
+import { getPrompt } from './prompts';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_TEXT_MODEL = 'gemini-3-pro-preview';
+const GEMINI_TEXT_MODEL = 'gemini-3.1-pro-preview';
 const GEMINI_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 
-/**
- * System prompt for content generation - multi-perspective creative approach
- */
-const CONTENT_SYSTEM_PROMPT = `You are creating a complete social media package for a tech company's code changes — tweets and a visual image prompt.
-
-Before generating anything, think through multiple expert perspectives and synthesize their insights:
-
-FOR THE TWEETS, consider:
-- Think from the perspective of a Tech Influencer — what hook would make developers stop mid-scroll? What pattern or format gets engagement in the dev community right now?
-- Think from the perspective of a Copywriter — every character counts in 280 chars. What word choices create maximum impact? Where does punch beat explanation?
-- Think from the perspective of a Growth Marketer — what makes someone hit retweet? What creates FOMO or curiosity? What framing makes this feel like a must-read?
-- Think from the perspective of a Community Manager — what tone feels authentic to developers? What avoids feeling like corporate marketing? What sparks genuine conversation?
-- Think from the perspective of a Storyteller — what narrative can you extract from these commits? Every code change has a story: a problem solved, a capability unlocked, a bottleneck removed.
-
-FOR THE IMAGE — you are a professional visual prompt engineer. Your job is to create image prompts at the quality level of a senior art director at a top creative agency. Follow these principles:
-
-SPECIFICITY IS EVERYTHING. Never use generic descriptions. Every detail must be precise and evocative:
-- BAD: "dark background" → GOOD: "2 AM urban darkness, orange sodium streetlight casting harsh directional shadows, light fog diffusing distant signals"
-- BAD: "blue colors" → GOOD: "deep Prussian blue transitioning to cerulean at the edges, accented with oxidized copper green"
-- BAD: "tech aesthetic" → GOOD: "mixed-media collage combining vintage botanical illustration with precise architectural blueprints"
-- BAD: "modern style" → GOOD: "editorial illustration inspired by Bauhaus poster design — bold geometry, limited palette, asymmetric balance"
-
-BREAK OUT OF THE CYBER DEFAULT. Do NOT default to neon, circuit boards, holographic, or cyberpunk aesthetics. Instead, think across the full spectrum of visual art:
-- Oil painting, watercolor, gouache, ink wash
-- Analog photography (Kodak Portra 400 warmth, Fuji Velvia 50 saturation, Ilford HP5 grain)
-- Editorial illustration, vintage poster design, Bauhaus, Art Deco, Art Nouveau
-- Macro photography, architectural photography, aerial photography
-- Mixed media collage, papercut art, woodblock print, linocut
-- Sculptural/physical metaphors: ceramics, metalwork, glass-blowing, origami
-Choose the medium that BEST serves the metaphor for THIS specific code change.
-
-USE PROFESSIONAL VISUAL VOCABULARY in every field:
-- Lighting: Rembrandt lighting, butterfly lighting, split lighting, rim/backlight, golden hour, blue hour, chiaroscuro, high-key, low-key
-- Camera: 35mm f/1.4 shallow depth, 85mm portrait compression, 24mm wide environmental, tilt-shift miniature effect
-- Color: specify temperature (warm 3000K, cool 7000K), name exact shades (burnt sienna, chartreuse, cerulean, raw umber)
-- Composition: rule of thirds, golden ratio spiral, centered symmetry, leading lines, negative space, figure-ground contrast
-
-THINK IN VISUAL METAPHORS — code is abstract, so find the perfect concrete metaphor:
-- Authentication → a master locksmith hand-forging an intricate skeleton key
-- Performance optimization → a hummingbird frozen mid-flight, wings razor-sharp
-- Database migration → ancient scrolls being carefully transferred into illuminated manuscripts
-- Bug fix → a watchmaker's loupe over delicate clockwork, tweezers adjusting a tiny gear
-- New API → a grand bridge being completed, connecting two distinct landscapes
-- Refactoring → a bonsai tree being carefully pruned, each cut deliberate and purposeful
-DO NOT reuse these examples. Create your OWN unique metaphor specific to the actual code change.
-
-QUALITY CHECKLIST — verify before output:
-✓ No generic terms (no "modern", "sleek", "tech", "digital" without specific context)
-✓ Colors named with precision (not "blue" but "cobalt", "navy", "cerulean")
-✓ Lighting technique specified by name
-✓ Medium chosen for artistic merit, not defaulted
-✓ Visual metaphor is SPECIFIC to this code change, not reusable for any change
-✓ Mood/atmosphere described with sensory detail
-
-If a PROJECT OVERVIEW is provided in the user prompt, ground all perspectives in the project's identity: use brand_voice for tweet tone, target_audience for framing and relevance, and visual_theme for image direction and color choices.
-
-Now synthesize all these perspectives into one cohesive output.
-
-RULES:
-- Each tweet MUST be ≤ 280 characters
-- Include relevant emojis — they increase engagement
-- Never use hashtags unless specifically relevant
-- The imagePrompt MUST be a structured JSON object (not a string)
-- Be specific to the actual code change, never generic
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "format": "single" or "thread",
-  "tweets": [{ "text": "...", "index": 0 }, ...],
-  "imagePrompt": {
-    "concept": {
-      "main_subject": "The ONE specific visual metaphor for this code change — concrete, vivid, not abstract",
-      "symbolic_elements": "Supporting visual details that reinforce the metaphor with sensory richness",
-      "mood": "The emotional atmosphere — described with feeling, not adjectives (e.g., 'the stillness right before a thunderstorm breaks')"
-    },
-    "composition": {
-      "style": "Specific art movement or technique — e.g., 'Kodak Portra 400 analog photography with lifted shadows and warm cast' or 'gouache illustration with visible brushstrokes in the style of mid-century scientific diagrams'",
-      "perspective": "Camera angle with technical precision — e.g., 'low-angle 24mm wide lens creating dramatic convergence' or 'overhead flat-lay at exactly 90 degrees'",
-      "focal_point": "What the eye lands on first and what leads it through the composition"
-    },
-    "environment": {
-      "setting": "A fully realized world — not 'abstract space' but a specific place with texture, atmosphere, and story",
-      "lighting": "Named lighting technique with color temperature — e.g., 'Rembrandt lighting with warm 3200K key, cool 6500K fill from window'",
-      "color_palette": "3-4 precisely named colors with their emotional role — e.g., 'burnt sienna (warmth, craft), ivory (space, breath), deep forest green (growth, stability)'"
-    },
-    "technical": {
-      "medium": "The specific artistic medium chosen for its qualities — e.g., 'wet-plate collodion photography' or 'Japanese woodblock print (ukiyo-e)' or 'mixed media combining ink drawing with watercolor washes'",
-      "quality": "The rendering intention — e.g., 'hand-crafted feel with visible material texture' or 'hyper-detailed photorealistic with shallow depth of field'",
-      "negative": "Avoid generic stock-photo aesthetics"
-    }
-  },
-  "overviewUpdates": null or {
-    "summary": "new summary" or null,
-    "tech_stack": "new tech stack" or null,
-    "key_features": { "add": ["new feature"], "remove": ["old feature"] } or null,
-    "target_audience": "new audience" or null,
-    "brand_voice": "new voice" or null,
-    "visual_theme": "new theme" or null,
-    "recent_changes": { "add": ["brief description of this change"], "remove": [] } or null
-  }
-}
-
-OVERVIEW UPDATES:
-- If a PROJECT OVERVIEW section is provided below, analyze whether this code change represents meaningful project evolution.
-- For minor fixes/typos: set overviewUpdates to null.
-- For feature additions, architectural changes, or significant updates: return patches for affected fields only. Use null for unchanged fields.
-- ALWAYS add a brief description to recent_changes.add when an overview is provided — even small changes are worth tracking.
-- For key_features: only add genuinely new capabilities, only remove features that were replaced or deprecated by this change.
-- Keep all text concise — summary should be 2-3 sentences, not paragraphs.
-- If NO overview is provided, set overviewUpdates to null.`;
-
-/**
- * System prompt for editing content
- */
-const EDIT_SYSTEM_PROMPT = `You are refining a social media package for a tech company. The user has existing tweets and wants changes.
-
-Apply the user's instructions while thinking through these perspectives:
-- As a Copywriter: Does each word earn its place in 280 characters?
-- As a Tech Influencer: Does the hook still grab attention after the edit?
-- As a Community Manager: Does the tone still feel authentic to developers?
-- As an Art Director: Does the image prompt still match the updated content direction?
-
-FOR THE IMAGE PROMPT — maintain professional visual quality:
-- Never use generic terms. Every color must be precisely named (not "blue" but "cerulean" or "Prussian blue").
-- Avoid defaulting to cyber/neon/holographic aesthetics. Consider the full range: oil painting, analog photography, editorial illustration, mixed media, watercolor, woodblock print.
-- Specify lighting by professional name (Rembrandt, butterfly, rim light, chiaroscuro).
-- The visual metaphor must be specific to the code change, not generic tech imagery.
-
-RULES:
-- Keep the same format (single/thread) unless the instruction explicitly changes it
-- Each tweet MUST be ≤ 280 characters
-- The imagePrompt MUST be a structured JSON object (not a string)
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "format": "single" or "thread",
-  "tweets": [{ "text": "...", "index": 0 }, ...],
-  "imagePrompt": {
-    "concept": {
-      "main_subject": "Specific visual metaphor — concrete and vivid",
-      "symbolic_elements": "Supporting details with sensory richness",
-      "mood": "Emotional atmosphere described with feeling"
-    },
-    "composition": {
-      "style": "Specific art movement, technique, or photographic approach",
-      "perspective": "Camera angle with technical precision",
-      "focal_point": "What draws the eye and guides it through the image"
-    },
-    "environment": {
-      "setting": "A fully realized space with texture and atmosphere",
-      "lighting": "Named lighting technique with color temperature",
-      "color_palette": "3-4 precisely named colors with their emotional role"
-    },
-    "technical": {
-      "medium": "Specific artistic medium chosen for its qualities",
-      "quality": "Rendering intention and detail level",
-      "negative": "Avoid generic stock-photo aesthetics"
-    }
-  }
-}`;
-
-/**
- * System prompt for extracting structured overview from README + PRs
- */
-const OVERVIEW_EXTRACTION_PROMPT = `You are analyzing a GitHub repository to extract a structured project overview. You will be given the repository README (if available) and recent merged PR titles/descriptions.
-
-Extract the following fields as a JSON object. Be concise — the total overview should be ~500-1000 words across all fields.
-
-{
-  "summary": "2-3 sentence project description — what it does, why it exists, what problem it solves",
-  "tech_stack": "Comma-separated list of key technologies, frameworks, and platforms (e.g., 'TypeScript, Cloudflare Workers, D1, R2, Gemini API, Telegram Bot API')",
-  "key_features": ["Feature 1", "Feature 2", ...],  // Max 10 items, each a short phrase
-  "target_audience": "1-2 sentences describing who uses this and why",
-  "brand_voice": "1-2 sentences describing the tone and style for social media content about this project",
-  "visual_theme": "1-2 sentences describing colors, visual style, and mood for image generation consistency",
-  "recent_changes": ["Recent change 1", "Recent change 2", ...]  // From PR titles, max 10 most recent
-}
-
-RULES:
-- If README is missing or sparse, infer what you can from PR titles and descriptions
-- key_features should be genuinely distinct capabilities, not generic ("has a UI" is bad, "Telegram bot dashboard with inline keyboards" is good)
-- brand_voice should guide tweet tone — is this project serious/professional, casual/fun, technical/precise?
-- visual_theme should guide image generation — specify color preferences, aesthetic style, mood
-- Respond ONLY with valid JSON, no prose or markdown`;
+// System prompts are now stored in DB — resolved via getPrompt() from services/prompts.ts
 
 /**
  * Extract a structured overview from README + PR data
@@ -203,7 +21,9 @@ RULES:
 export async function extractRepoOverview(
     env: Env,
     readmeText: string | null,
-    prSummaries: { title: string; body: string }[]
+    prSummaries: { title: string; body: string }[],
+    chatId?: string,
+    language?: string,
 ): Promise<{
     summary: string | null;
     tech_stack: string | null;
@@ -223,7 +43,8 @@ export async function extractRepoOverview(
 
     const userPrompt = `${readmeSection}\n\n${prSection}`;
 
-    const responseText = await callGeminiText(env, OVERVIEW_EXTRACTION_PROMPT, userPrompt);
+    const overviewPrompt = await getPrompt(env, chatId || '', 'overview', language || 'en');
+    const responseText = await callGeminiText(env, overviewPrompt, userPrompt);
 
     try {
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -301,7 +122,7 @@ function buildImagePrompt(content: DraftContent): ImagePromptData {
  * Generate tweet content from a content source (PR or commit)
  * If repoId is provided, fetches the repo overview from D1 to enrich the prompt.
  */
-export async function generateContent(env: Env, source: ContentSource, repoId?: string): Promise<ContentResponse> {
+export async function generateContent(env: Env, source: ContentSource, repoId?: string, language?: string, chatId?: string): Promise<ContentResponse> {
     // Fetch overview if repoId is provided
     let overview: RepoOverview | null = null;
     if (repoId) {
@@ -312,8 +133,9 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         }
     }
 
-    const prompt = buildContentPrompt(source, overview);
-    const responseText = await callGeminiText(env, CONTENT_SYSTEM_PROMPT, prompt);
+    const prompt = buildContentPrompt(source, overview, language);
+    const contentSystemPrompt = await getPrompt(env, chatId || '', 'content', language || 'en');
+    const responseText = await callGeminiText(env, contentSystemPrompt, prompt);
     return parseContentResponse(responseText);
 }
 
@@ -419,7 +241,9 @@ function parseContentResponse(content: string): ContentResponse {
 export async function editContent(
     env: Env,
     currentContent: DraftContent,
-    instruction: string
+    instruction: string,
+    chatId?: string,
+    language?: string,
 ): Promise<DraftContent> {
     const currentTweets = currentContent.tweets.map(t => t.text).join('\n---\n');
 
@@ -430,7 +254,8 @@ Instruction: ${instruction}
 
 Apply this change and return the updated content as JSON.`;
 
-    const content = await callGeminiText(env, EDIT_SYSTEM_PROMPT, userPrompt);
+    const editSystemPrompt = await getPrompt(env, chatId || '', 'edit', language || 'en');
+    const content = await callGeminiText(env, editSystemPrompt, userPrompt);
     return parseContentResponse(content).content;
 }
 
@@ -533,111 +358,49 @@ export async function generateImage(env: Env, content: DraftContent): Promise<{ 
 /**
  * Refine handwritten tweets — polish grammar, clarity, impact while preserving voice, count, and order.
  * Optionally generates an imagePrompt.
+ *
+ * System prompt is composed from two DB-stored parts:
+ * - handwrite_refine: text polishing guidelines (multi-perspective framework)
+ * - handwrite_image: image prompt engineering guide (art direction)
+ * Dynamic bits (tweet count, format, lang, JSON schema) are injected as a runtime rules wrapper.
  */
 export async function refineHandwrittenContent(
     env: Env,
     content: DraftContent,
-    options: { refineText: boolean; generateImagePrompt: boolean }
+    options: { refineText: boolean; generateImagePrompt: boolean },
+    language?: string,
+    chatId?: string,
 ): Promise<DraftContent> {
     const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
+    const lang = language || 'en';
+    const langInstruction = lang === 'he' ? ' Write all tweet text in Hebrew.' : '';
 
+    // Build user prompt with instruction
     let instruction: string;
     if (options.refineText && options.generateImagePrompt) {
-        instruction = `Polish these handwritten tweets for grammar, clarity, and engagement impact. Preserve the author's voice, tone, and intent. Keep the EXACT same number of tweets (${content.tweets.length}) in the SAME order. Also generate an imagePrompt for the thread.`;
+        instruction = `Polish these handwritten tweets for grammar, clarity, and engagement impact. Preserve the author's voice, tone, and intent. Keep the EXACT same number of tweets (${content.tweets.length}) in the SAME order.${langInstruction} Also generate an imagePrompt for the thread.`;
     } else if (options.refineText) {
-        instruction = `Polish these handwritten tweets for grammar, clarity, and engagement impact. Preserve the author's voice, tone, and intent. Keep the EXACT same number of tweets (${content.tweets.length}) in the SAME order. Do NOT include an imagePrompt.`;
+        instruction = `Polish these handwritten tweets for grammar, clarity, and engagement impact. Preserve the author's voice, tone, and intent. Keep the EXACT same number of tweets (${content.tweets.length}) in the SAME order.${langInstruction} Do NOT include an imagePrompt.`;
     } else {
         instruction = `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt that captures the theme of the content.`;
     }
 
-    const systemPrompt = `You are refining a personal social media post — this is someone's own voice, not a company brand. Your job is to POLISH, not rewrite. The author chose to write manually — respect their voice and personality.
+    // Compose system prompt from DB-stored parts + runtime rules
+    const parts: string[] = [];
 
-Before refining, think through multiple expert perspectives and synthesize their insights:
-
-FOR THE TWEETS, consider:
-- Think from the perspective of a Tech Influencer — what hook would make people stop mid-scroll? What pattern or format gets engagement right now?
-- Think from the perspective of a Copywriter — every character counts in 280 chars. What word choices create maximum impact? Where does punch beat explanation?
-- Think from the perspective of a Growth Marketer — what makes someone hit retweet? What creates FOMO or curiosity? What framing makes this feel like a must-read?
-- Think from the perspective of a Community Manager — what tone feels authentic and personal? What avoids feeling like corporate marketing? What sparks genuine conversation?
-- Think from the perspective of a Storyteller — what narrative can you draw from the author's words? Every personal post has a perspective worth amplifying.
-
-Then apply these insights as LIGHT POLISH — fix grammar, sharpen phrasing, boost clarity. Do NOT dramatically rewrite or change the author's meaning.
-${options.generateImagePrompt ? `
-FOR THE IMAGE — you are a professional visual prompt engineer. Your job is to create image prompts at the quality level of a senior art director at a top creative agency. Follow these principles:
-
-SPECIFICITY IS EVERYTHING. Never use generic descriptions. Every detail must be precise and evocative:
-- BAD: "dark background" → GOOD: "2 AM urban darkness, orange sodium streetlight casting harsh directional shadows, light fog diffusing distant signals"
-- BAD: "blue colors" → GOOD: "deep Prussian blue transitioning to cerulean at the edges, accented with oxidized copper green"
-- BAD: "tech aesthetic" → GOOD: "mixed-media collage combining vintage botanical illustration with precise architectural blueprints"
-- BAD: "modern style" → GOOD: "editorial illustration inspired by Bauhaus poster design — bold geometry, limited palette, asymmetric balance"
-
-BREAK OUT OF THE CYBER DEFAULT. Do NOT default to neon, circuit boards, holographic, or cyberpunk aesthetics. Instead, think across the full spectrum of visual art:
-- Oil painting, watercolor, gouache, ink wash
-- Analog photography (Kodak Portra 400 warmth, Fuji Velvia 50 saturation, Ilford HP5 grain)
-- Editorial illustration, vintage poster design, Bauhaus, Art Deco, Art Nouveau
-- Macro photography, architectural photography, aerial photography
-- Mixed media collage, papercut art, woodblock print, linocut
-- Sculptural/physical metaphors: ceramics, metalwork, glass-blowing, origami
-Choose the medium that BEST serves the metaphor for THIS specific post's theme.
-
-USE PROFESSIONAL VISUAL VOCABULARY in every field:
-- Lighting: Rembrandt lighting, butterfly lighting, split lighting, rim/backlight, golden hour, blue hour, chiaroscuro, high-key, low-key
-- Camera: 35mm f/1.4 shallow depth, 85mm portrait compression, 24mm wide environmental, tilt-shift miniature effect
-- Color: specify temperature (warm 3000K, cool 7000K), name exact shades (burnt sienna, chartreuse, cerulean, raw umber)
-- Composition: rule of thirds, golden ratio spiral, centered symmetry, leading lines, negative space, figure-ground contrast
-
-THINK IN VISUAL METAPHORS — find the perfect concrete metaphor for the author's message. Do NOT reuse canned examples. Create a UNIQUE metaphor specific to the actual content.
-
-QUALITY CHECKLIST — verify before output:
-✓ No generic terms (no "modern", "sleek", "tech", "digital" without specific context)
-✓ Colors named with precision (not "blue" but "cobalt", "navy", "cerulean")
-✓ Lighting technique specified by name
-✓ Medium chosen for artistic merit, not defaulted
-✓ Visual metaphor is SPECIFIC to this post, not reusable for any post
-✓ Mood/atmosphere described with sensory detail
-` : ''}
-RULES:
-- Each tweet MUST be ≤ 280 characters
-- You MUST return EXACTLY ${content.tweets.length} tweet(s) in the same order
-- Preserve the author's personality, word choices, and intent
-- Only fix grammar issues, awkward phrasing, and improve clarity
-- Include relevant emojis — they increase engagement
-- Do NOT add hashtags unless the author used them
-- Do NOT dramatically change the tone or meaning
-- This is PERSONAL content — keep it feeling like a real person, not a brand
-${options.generateImagePrompt ? '- The imagePrompt MUST be a structured JSON object' : '- Do NOT include an imagePrompt field'}
-
-Respond ONLY with valid JSON:
-{
-  "format": "${content.format}",
-  "tweets": [{ "text": "...", "index": 0 }, ...]${options.generateImagePrompt ? `,
-  "imagePrompt": {
-    "concept": {
-      "main_subject": "The ONE specific visual metaphor for this post — concrete, vivid, not abstract",
-      "symbolic_elements": "Supporting visual details that reinforce the metaphor with sensory richness",
-      "mood": "The emotional atmosphere — described with feeling, not adjectives (e.g., 'the stillness right before a thunderstorm breaks')"
-    },
-    "composition": {
-      "style": "Specific art movement or technique — e.g., 'Kodak Portra 400 analog photography with lifted shadows and warm cast' or 'gouache illustration with visible brushstrokes in the style of mid-century scientific diagrams'",
-      "perspective": "Camera angle with technical precision — e.g., 'low-angle 24mm wide lens creating dramatic convergence' or 'overhead flat-lay at exactly 90 degrees'",
-      "focal_point": "What the eye lands on first and what leads it through the composition"
-    },
-    "environment": {
-      "setting": "A fully realized world — not 'abstract space' but a specific place with texture, atmosphere, and story",
-      "lighting": "Named lighting technique with color temperature — e.g., 'Rembrandt lighting with warm 3200K key, cool 6500K fill from window'",
-      "color_palette": "3-4 precisely named colors with their emotional role — e.g., 'burnt sienna (warmth, craft), ivory (space, breath), deep forest green (growth, stability)'"
-    },
-    "technical": {
-      "medium": "The specific artistic medium chosen for its qualities — e.g., 'wet-plate collodion photography' or 'Japanese woodblock print (ukiyo-e)' or 'mixed media combining ink drawing with watercolor washes'",
-      "quality": "The rendering intention — e.g., 'hand-crafted feel with visible material texture' or 'hyper-detailed photorealistic with shallow depth of field'",
-      "negative": "Avoid generic stock-photo aesthetics"
+    if (options.refineText) {
+        parts.push(await getPrompt(env, chatId || '', 'handwrite_refine', lang));
     }
-  }` : ''}
-}`;
+    if (options.generateImagePrompt) {
+        parts.push(await getPrompt(env, chatId || '', 'handwrite_image', lang));
+    }
 
-    const userPrompt = `${instruction}
+    // Append runtime rules (dynamic — depends on tweet count, format, options)
+    parts.push(buildHandwriteRules(content, options));
 
-${tweetsText}`;
+    const systemPrompt = parts.join('\n\n');
+
+    const userPrompt = `${instruction}\n\n${tweetsText}`;
 
     const responseText = await callGeminiText(env, systemPrompt, userPrompt);
     const result = parseContentResponse(responseText).content;
@@ -645,7 +408,6 @@ ${tweetsText}`;
     // Ensure tweet count matches
     if (result.tweets.length !== content.tweets.length) {
         logError('AI refinement returned wrong tweet count:', result.tweets.length, 'expected:', content.tweets.length);
-        // Fall back to original content but keep imagePrompt if generated
         return {
             ...content,
             imagePrompt: result.imagePrompt || content.imagePrompt,
@@ -661,11 +423,65 @@ ${tweetsText}`;
 }
 
 /**
+ * Build the runtime rules section for handwrite refinement.
+ * This part is dynamic (tweet count, format, options) so it stays in code.
+ */
+function buildHandwriteRules(
+    content: DraftContent,
+    options: { refineText: boolean; generateImagePrompt: boolean },
+): string {
+    const imagePromptRule = options.generateImagePrompt
+        ? '- The imagePrompt MUST be a structured JSON object'
+        : '- Do NOT include an imagePrompt field';
+
+    const imagePromptJson = options.generateImagePrompt ? `,
+  "imagePrompt": {
+    "concept": {
+      "main_subject": "The ONE specific visual metaphor for this post — concrete, vivid, not abstract",
+      "symbolic_elements": "Supporting visual details that reinforce the metaphor with sensory richness",
+      "mood": "The emotional atmosphere — described with feeling, not adjectives"
+    },
+    "composition": {
+      "style": "Specific art movement or technique",
+      "perspective": "Camera angle with technical precision",
+      "focal_point": "What the eye lands on first and what leads it through the composition"
+    },
+    "environment": {
+      "setting": "A fully realized world — not 'abstract space' but a specific place with texture, atmosphere, and story",
+      "lighting": "Named lighting technique with color temperature",
+      "color_palette": "3-4 precisely named colors with their emotional role"
+    },
+    "technical": {
+      "medium": "The specific artistic medium chosen for its qualities",
+      "quality": "The rendering intention",
+      "negative": "Avoid generic stock-photo aesthetics"
+    }
+  }` : '';
+
+    return `RULES:
+- Each tweet MUST be ≤ 280 characters
+- You MUST return EXACTLY ${content.tweets.length} tweet(s) in the same order
+- Preserve the author's personality, word choices, and intent
+- Only fix grammar issues, awkward phrasing, and improve clarity
+- Include relevant emojis — they increase engagement
+- Do NOT add hashtags unless the author used them
+- Do NOT dramatically change the tone or meaning
+- This is PERSONAL content — keep it feeling like a real person, not a brand
+${imagePromptRule}
+
+Respond ONLY with valid JSON:
+{
+  "format": "${content.format}",
+  "tweets": [{ "text": "...", "index": 0 }, ...]${imagePromptJson}
+}`;
+}
+
+/**
  * Build the prompt for content generation
  * SECURITY: Sanitizes input content to prevent prompt injection and excessive size
  * Sends ONLY commit messages and file names — no title, body, author, or stats
  */
-function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null): string {
+function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string): string {
     const { data } = source;
 
     // Sanitize commit messages
@@ -706,6 +522,8 @@ ${isSimple
         ? 'This is a focused change — create a single impactful tweet.'
         : 'This is a substantial change — create a thread (2-5 tweets). First tweet hooks, rest adds depth.'}
 
+**Language:** Write all tweet text in ${language === 'he' ? 'Hebrew' : 'English'}.
+
 Remember: Valid JSON only. Each tweet ≤ 280 chars. imagePrompt must be a structured JSON object.`;
 }
 
@@ -723,64 +541,7 @@ const LENGTH_CALIBRATION: Record<string, { words: number; minScenes: number; max
     '5m': { words: 800, minScenes: 5, maxScenes: 10 },
 };
 
-const VIDEO_SCRIPT_SYSTEM_PROMPT = `You are a professional video script writer for short-form social media videos featuring an AI avatar presenter.
-
-Your job is to write engaging, natural-sounding scripts for a developer/tech persona who presents code updates, feature announcements, and project news to their audience.
-
-The video will be rendered by an AI avatar (HeyGen Avatar IV with full body movement), so the script must sound natural when spoken aloud. Write conversationally — like a YouTuber or tech influencer talking to their audience, not like a blog post read aloud.
-
-SCRIPT STRUCTURE:
-- Each video has one or more SCENES. Each scene is a continuous segment with its own emotion, motion prompt, and optional text overlay.
-- Scenes should flow naturally with transitions ("Now let me show you...", "But here's the exciting part...", "And finally...").
-- The first scene should HOOK the viewer immediately — start with the most interesting/impactful point.
-- The last scene should have a clear wrap-up or call-to-action.
-
-PER-SCENE GUIDELINES:
-- Each scene targets 50-120 words of spoken text.
-- Choose an emotion per scene that matches the content (Excited for launches, Serious for security fixes, Friendly for general updates, etc.).
-- Text overlays should be SHORT key phrases (5-10 words max) that reinforce the spoken content — like chapter titles or key stats.
-
-MOTION PROMPT GUIDELINES:
-Each scene MUST include a motionPrompt describing the avatar's body movement, hand gestures, and facial expressions.
-- Format: "[Subject] + [Action] + [Emotion/intensity]" — 1-2 short clauses
-- Use strong action verbs: gesture, lean, nod, point, wave, smile, raise, tilt, shrug, count on fingers
-- Describe concrete physical actions, NOT abstract emotions
-- Avoid negative phrasing ("don't move arms") — describe what to DO
-- Match the motion to the scene content and emotion
-
-Good examples:
-- Excited Launch: "Avatar raises both hands excitedly, beaming with enthusiasm"
-- Technical Deep Dive: "Avatar leans forward thoughtfully, counting points on fingers"
-- Casual Update: "Avatar shrugs casually with a relaxed smile"
-- Professional: "Avatar nods confidently while making an open palm gesture"
-- Wrap-up: "Avatar tilts head and gestures with right hand while explaining"
-
-TONE ADAPTATION:
-- "Casual Update": Relaxed, conversational, like chatting with a friend about what you built
-- "Professional Announcement": Confident, clear, structured — suitable for company channels
-- "Technical Deep Dive": Detailed, precise, educational — walks through the "how" and "why"
-- "Excited Launch": High energy, celebratory — this is a big deal and you want people to know
-- "Community Chat": Warm, inclusive, appreciative — acknowledging contributors and community
-
-CAPTION GUIDELINES:
-- Instagram caption: Up to 2200 chars. Include context, key points, and 3-5 relevant hashtags. Written for discoverability.
-- Twitter caption: Max 280 chars. Concise standalone hook that makes people want to watch. No hashtags unless they fit naturally.
-
-Respond ONLY with valid JSON matching this structure:
-{
-  "title": "Short descriptive title for the video",
-  "scenes": [
-    {
-      "scriptText": "The spoken text for this scene segment",
-      "emotion": "Excited|Friendly|Serious|Soothing|Broadcaster",
-      "motionPrompt": "Avatar gestures enthusiastically while leaning forward",
-      "textOverlay": "Optional short key phrase shown on screen"
-    }
-  ],
-  "caption": "Instagram caption (max 2200 chars with hashtags)",
-  "twitterCaption": "Twitter caption (max 280 chars)",
-  "totalWordCount": 123
-}`;
+// VIDEO_SCRIPT_SYSTEM_PROMPT moved to DB — resolved via getPrompt()
 
 interface VideoScriptOptions {
     overview?: RepoOverview | null;
@@ -799,7 +560,9 @@ interface VideoScriptOptions {
  */
 export async function generateVideoScript(
     env: Env,
-    options: VideoScriptOptions
+    options: VideoScriptOptions,
+    chatId?: string,
+    language?: string,
 ): Promise<VideoScriptResponse> {
     const calibration = LENGTH_CALIBRATION[options.length] || LENGTH_CALIBRATION['60s'];
 
@@ -856,7 +619,8 @@ export async function generateVideoScript(
     promptParts.push('Respond with valid JSON only.');
 
     const userPrompt = promptParts.join('\n');
-    const responseText = await callGeminiText(env, VIDEO_SCRIPT_SYSTEM_PROMPT, userPrompt);
+    const videoSystemPrompt = await getPrompt(env, chatId || '', 'video', language || 'en');
+    const responseText = await callGeminiText(env, videoSystemPrompt, userPrompt);
 
     return parseAndValidateVideoScript(responseText, options, calibration);
 }

@@ -3,32 +3,34 @@
  */
 
 import type { ViewResult, InlineButton, TwitterAccountConfig } from '../types';
+import { t } from '../ui/strings';
+import type { Lang } from '../ui/strings';
+import { escapeHtml } from '../ui/utils';
+import { cancelRow, selectedItemLabel } from '../ui/components';
 
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function getToneLabels(lang: Lang): Record<string, string> {
+    return {
+        professional: t(lang, 'repost.tonePro'),
+        casual: t(lang, 'repost.toneCasual'),
+        analytical: t(lang, 'repost.toneAnalytical'),
+        enthusiastic: t(lang, 'repost.toneEnthusiastic'),
+        witty: t(lang, 'repost.toneWitty'),
+        sarcastic: t(lang, 'repost.toneSarcastic'),
+    };
 }
 
-const TONE_LABELS: Record<string, string> = {
-    professional: '💼 Pro',
-    casual: '😎 Casual',
-    analytical: '🔬 Analytical',
-    enthusiastic: '🔥 Enthus',
-    witty: '🧠 Witty',
-    sarcastic: '😏 Sarcastic',
-};
-
-export function renderRepostPrompt(): ViewResult {
+export function renderRepostPrompt(lang: Lang = 'en'): ViewResult {
     return {
-        text: `🔄 <b>Manual RePost</b>
+        text: `${t(lang, 'repost.promptTitle')}
 
-Send me a tweet URL to create a repost.
+${t(lang, 'repost.promptDesc')}
 
-<b>Supported formats:</b>
+${t(lang, 'repost.supportedFormats')}
 <code>https://x.com/username/status/123456</code>
 <code>https://twitter.com/username/status/123456</code>
 
-I'll fetch the tweet, show you a preview, and let you choose a tone before generating.`,
-        keyboard: [[{ text: '❌ Cancel', callback_data: 'view:home' }]],
+${t(lang, 'repost.promptHint')}`,
+        keyboard: [cancelRow('view:home', lang)],
     };
 }
 
@@ -43,12 +45,12 @@ export function renderRepostPreview(params: {
     selectedTone: TwitterAccountConfig['tone'];
     existingDraftId?: string | null;
     hasImage?: boolean;
-}): ViewResult {
+}, lang: Lang = 'en'): ViewResult {
     const { tweetId, username, displayName, tweetText, isThread, threadCount, metrics, selectedTone, existingDraftId, hasImage } = params;
 
     const nameDisplay = displayName ? `${displayName} (@${username})` : `@${username}`;
     const preview = tweetText.length > 200 ? tweetText.substring(0, 197) + '...' : tweetText;
-    const imageLabel = hasImage ? '\n🖼 Has image — will be analyzed by AI' : '';
+    const imageLabel = hasImage ? `\n${t(lang, 'repost.hasImage')}` : '';
     const threadLabel = isThread ? `\n📎 Thread (${threadCount || '?'} tweets)` : '';
 
     let metricsLine = '';
@@ -56,20 +58,22 @@ export function renderRepostPreview(params: {
         metricsLine = `\n❤️ ${formatNum(metrics.likes)} · 🔄 ${formatNum(metrics.retweets)} · 💬 ${formatNum(metrics.replies)} · 🔗 ${formatNum(metrics.quotes)}`;
     }
 
-    let text = `🔄 <b>RePost Preview</b>
+    const toneLabels = getToneLabels(lang);
+
+    let text = `${t(lang, 'repost.previewTitle')}
 
 <b>${escapeHtml(nameDisplay)}</b>${threadLabel}${imageLabel}${metricsLine}
 
 ${escapeHtml(preview)}
 
-<b>Tone:</b> ${TONE_LABELS[selectedTone] || selectedTone}
-Tap a tone below, then Generate:`;
+${t(lang, 'repost.toneLabel')} ${toneLabels[selectedTone] || selectedTone}
+${t(lang, 'repost.toneSelectHint')}`;
 
     // Build keyboard
     const keyboard: InlineButton[][] = [];
 
     // Tone selector row (split into 2 rows of 3)
-    const tones = Object.entries(TONE_LABELS);
+    const tones = Object.entries(toneLabels);
     const toneRow1: InlineButton[] = [];
     const toneRow2: InlineButton[] = [];
 
@@ -77,7 +81,7 @@ Tap a tone below, then Generate:`;
         const [key, label] = tones[i];
         const isSelected = key === selectedTone;
         const btn: InlineButton = {
-            text: isSelected ? `[${label}]` : label,
+            text: selectedItemLabel(label, isSelected),
             callback_data: `rp_tone:${key}:${tweetId}`,
         };
         if (i < 3) toneRow1.push(btn);
@@ -87,28 +91,28 @@ Tap a tone below, then Generate:`;
 
     // Duplicate warning + generate
     if (existingDraftId) {
-        text = `⚠️ <b>Duplicate Detected</b>\n\nYou already have a repost draft for this tweet.\n\n` + text;
+        text = `${t(lang, 'repost.duplicateWarning')}\n\n` + text;
         keyboard.push([
-            { text: '👁 View Existing', callback_data: `tw_view:${existingDraftId}` },
-            { text: '⚡ Generate Anyway', callback_data: `rp_gen_anyway:${tweetId}`, style: 'primary' },
+            { text: t(lang, 'repost.viewExisting'), callback_data: `tw_view:${existingDraftId}` },
+            { text: t(lang, 'repost.generateAnyway'), callback_data: `rp_gen_anyway:${tweetId}`, style: 'primary' },
         ]);
     } else {
-        keyboard.push([{ text: '⚡ Generate RePost', callback_data: `rp_gen:${tweetId}`, style: 'primary' }]);
+        keyboard.push([{ text: t(lang, 'repost.generateRepost'), callback_data: `rp_gen:${tweetId}`, style: 'primary' }]);
     }
 
     keyboard.push([
-        { text: '🔗 Open Tweet', url: `https://x.com/${username}/status/${tweetId}` },
-        { text: 'Cancel', callback_data: 'rp_cancel:0', style: 'danger' },
+        { text: t(lang, 'repost.openTweet'), url: `https://x.com/${username}/status/${tweetId}` },
+        { text: t(lang, 'common.cancel'), callback_data: 'rp_cancel:0', style: 'danger' },
     ]);
 
     return { text, keyboard };
 }
 
-export function renderRepostGenerating(username: string): ViewResult {
+export function renderRepostGenerating(username: string, lang: Lang = 'en'): ViewResult {
     return {
-        text: `⏳ <b>Generating repost for @${username}...</b>
+        text: `${t(lang, 'repost.generatingTitle').replace('{username}', username)}
 
-Fetching context and creating your quote tweet.`,
+${t(lang, 'repost.generatingDesc')}`,
         keyboard: [],
     };
 }

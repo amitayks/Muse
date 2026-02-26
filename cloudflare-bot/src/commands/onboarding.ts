@@ -101,6 +101,14 @@ export async function handleOnboardingCallback(
         } else {
             await sendMessage(env, telegramChatId, view.text, view.keyboard);
         }
+    } else if (data === 'onboard:skip_x') {
+        await updateUser(env, chatId, { onboarding_step: 'github_token' });
+        const view = renderGitHubTokenPrompt();
+        if (messageId) {
+            await editMessage(env, telegramChatId, messageId, view.text, view.keyboard);
+        } else {
+            await sendMessage(env, telegramChatId, view.text, view.keyboard);
+        }
     } else if (data === 'onboard:skip_github') {
         await completeOnboarding(env, chatId, telegramChatId, messageId);
     } else if (data === 'view:home' || data === 'view:settings') {

@@ -6,15 +6,57 @@ The home dashboard SHALL include a "Settings" button that navigates to the setti
 - **THEN** the bot displays the settings view showing current timezone
 
 ### Requirement: Settings view displays current timezone
-The settings view SHALL display the user's current timezone, page size, and API key connection status. It SHALL NOT display video settings (those are in Video Studio). It SHALL include an API Keys management section.
+The settings view SHALL display the user's current timezone, page size, language preference, system prompts button (with stale badge when applicable), and API key connection status. It SHALL NOT display video settings (those are in Video Studio). It SHALL include an API Keys management section. For admin users, a separate admin prompts button SHALL also appear.
 
 #### Scenario: User views settings
 - **WHEN** user opens settings
-- **THEN** the view shows timezone, page size, API Keys section, and a Home button. No video settings button is shown.
+- **THEN** the view shows language, timezone, page size, API Keys section, and a Home button. No video settings button is shown.
+- **AND** the language button SHALL display the current language with flag emoji (e.g., `🌐 🇺🇸 English` or `🌐 🇮🇱 עברית`)
+
+#### Scenario: User views settings with stale prompts
+- **WHEN** user opens settings and has stale custom prompts
+- **THEN** the System Prompts button SHALL show a notification badge (e.g., `📝 System Prompts 🔔`)
+
+#### Scenario: User views settings without stale prompts
+- **WHEN** user opens settings and has no stale custom prompts
+- **THEN** the System Prompts button SHALL appear without a badge
+
+#### Scenario: Admin views settings
+- **WHEN** an admin opens settings
+- **THEN** an additional "📝 System Prompts (Admin)" button SHALL appear that opens `/app/admin-prompts`
+- **AND** the regular "System Prompts" button SHALL also be present (for testing user experience)
 
 #### Scenario: User views API Keys section
 - **WHEN** user navigates to API Keys in settings
 - **THEN** each service (Gemini, X/Twitter, GitHub, HeyGen) shows connected/disconnected status with Update or Connect buttons
+
+### Requirement: Language picker in settings
+The settings view SHALL include a language toggle button that cycles between English and Hebrew. Tapping the button SHALL immediately update the user's language and re-render the settings view in the new language.
+
+#### Scenario: Switch from English to Hebrew
+- **WHEN** user taps the language button while in English
+- **THEN** `user.language` SHALL be updated to `'he'` in the database
+- **AND** the settings view SHALL re-render entirely in Hebrew
+
+#### Scenario: Switch from Hebrew to English
+- **WHEN** user taps the language button while in Hebrew
+- **THEN** `user.language` SHALL be updated to `'en'` in the database
+- **AND** the settings view SHALL re-render entirely in English
+
+#### Scenario: Language persists across sessions
+- **WHEN** a user sets their language to Hebrew and later returns to the bot
+- **THEN** the bot SHALL display in Hebrew from the first interaction
+
+### Requirement: Language stored per user
+The `users` table SHALL have a `language` column of type `TEXT` with default value `'en'`. Valid values are `'en'` and `'he'`.
+
+#### Scenario: New user default language
+- **WHEN** a new user completes onboarding
+- **THEN** their language is `'en'` by default in the `users` table
+
+#### Scenario: Language column in user record
+- **WHEN** `getUser(env, chatId)` is called
+- **THEN** the returned user object SHALL include the `language` field
 
 ### Requirement: Timezone selection via presets
 When the user clicks "Change Timezone", the bot SHALL present common UTC offset presets as buttons plus an option to type a custom offset.

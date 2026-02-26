@@ -7,6 +7,9 @@ import type { ViewResult, HeyGenCharacter, VideoSettings, InlineButton } from '.
 import { getVideoSettings, updateVideoSettings, updateChatState, getChatState, parseContext } from '../services/db';
 import { sendMessage, editMessage } from '../services/telegram';
 import { logInfo, logError } from '../services/security';
+import { errorWithBackView, selectedItemLabel, backButton, cancelRow } from '../ui/components';
+import type { Lang } from '../ui/strings';
+import { escapeHtml } from '../ui/utils';
 import {
     renderVideoSettingsHome,
     renderCharacterList,
@@ -78,7 +81,7 @@ export async function videoSettingsAction(
                     `• High resolution, face clearly visible\n\n` +
                     `Send your first photo to begin.`,
                 keyboard: [
-                    [{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }],
+                    cancelRow('vsettings:cancel_character', (ctx.lang || 'en') as Lang),
                 ],
             };
         }
@@ -108,7 +111,7 @@ export async function videoSettingsAction(
             return {
                 text: `✅ <b>${cc.assetIds.length} photo${cc.assetIds.length !== 1 ? 's' : ''} uploaded!</b>\n\nNow enter a <b>display name</b> for this character:`,
                 keyboard: [
-                    [{ text: '❌ Cancel', callback_data: 'vsettings:cancel_character' }],
+                    cancelRow('vsettings:cancel_character', (ctx.lang || 'en') as Lang),
                 ],
             };
         }
@@ -138,7 +141,7 @@ export async function videoSettingsAction(
                     `Current: ${char.personality || '(none)'}\n\n` +
                     `Example: "Energetic tech educator who explains complex concepts simply"`,
                 keyboard: [
-                    [{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${groupId}` }],
+                    cancelRow(`vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang),
                 ],
             };
         }
@@ -214,7 +217,7 @@ export async function videoSettingsAction(
                     };
                 } catch (error) {
                     logError('Training check failed:', error instanceof Error ? error.message : String(error));
-                    const safeMsg = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
+                    const safeMsg = escapeHtml((error instanceof Error ? error.message : String(error)).substring(0, 200));
                     return {
                         text: `⚠️ <b>Could not check training status</b>\n\n<code>${safeMsg}</code>`,
                         keyboard: [
@@ -248,11 +251,8 @@ export async function videoSettingsAction(
                 return; // handled messaging ourselves
             } catch (error) {
                 logError('Avatar training failed:', error instanceof Error ? error.message : String(error));
-                const safeMsg = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
-                return {
-                    text: `❌ Failed to start training:\n<code>${safeMsg}</code>`,
-                    keyboard: [[{ text: '◀️ Back', callback_data: `vsettings:char_detail:${groupId}` }]],
-                };
+                const safeMsg = escapeHtml((error instanceof Error ? error.message : String(error)).substring(0, 200));
+                return errorWithBackView(`Failed to start training:\n<code>${safeMsg}</code>`, `vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang);
             }
         }
 
@@ -333,11 +333,8 @@ export async function videoSettingsAction(
                 return renderCharacterDetail(char);
             } catch (error) {
                 logError('Sync looks failed:', error instanceof Error ? error.message : String(error));
-                const safeMsg = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
-                return {
-                    text: `❌ Failed to sync looks:\n<code>${safeMsg}</code>`,
-                    keyboard: [[{ text: '◀️ Back', callback_data: `vsettings:char_detail:${groupId}` }]],
-                };
+                const safeMsg = escapeHtml((error instanceof Error ? error.message : String(error)).substring(0, 200));
+                return errorWithBackView(`Failed to sync looks:\n<code>${safeMsg}</code>`, `vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang);
             }
         }
 
@@ -370,11 +367,8 @@ export async function videoSettingsAction(
                 return;
             } catch (error) {
                 logError('Avatar re-training failed:', error instanceof Error ? error.message : String(error));
-                const safeMsg = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
-                return {
-                    text: `❌ Failed to start training:\n<code>${safeMsg}</code>`,
-                    keyboard: [[{ text: '◀️ Back', callback_data: `vsettings:char_detail:${groupId}` }]],
-                };
+                const safeMsg = escapeHtml((error instanceof Error ? error.message : String(error)).substring(0, 200));
+                return errorWithBackView(`Failed to start training:\n<code>${safeMsg}</code>`, `vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang);
             }
         }
 
@@ -401,7 +395,7 @@ export async function videoSettingsAction(
                     `• Different outfit or setting from existing looks\n` +
                     `• High resolution, face clearly visible`,
                 keyboard: [
-                    [{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${groupId}` }],
+                    cancelRow(`vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang),
                 ],
             };
         }
@@ -473,11 +467,8 @@ export async function videoSettingsAction(
                 return renderVoiceSelect(char, voices);
             } catch (error) {
                 logError('Failed to list voices:', error instanceof Error ? error.message : String(error));
-                const safeMsg = (error instanceof Error ? error.message : String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;').substring(0, 200);
-                return {
-                    text: `❌ Failed to load voices:\n<code>${safeMsg}</code>`,
-                    keyboard: [[{ text: '◀️ Back', callback_data: `vsettings:char_detail:${groupId}` }]],
-                };
+                const safeMsg = escapeHtml((error instanceof Error ? error.message : String(error)).substring(0, 200));
+                return errorWithBackView(`Failed to load voices:\n<code>${safeMsg}</code>`, `vsettings:char_detail:${groupId}`, (ctx.lang || 'en') as Lang);
             }
         }
 
@@ -554,10 +545,10 @@ export async function videoSettingsAction(
                 text: '📐 <b>Default Aspect Ratio</b>\n\nSelect the default for new videos:',
                 keyboard: [
                     ...ratios.map(r => [{
-                        text: r === (settings.defaults.aspectRatio || '16:9') ? `✅ ${r}` : r,
+                        text: selectedItemLabel(r, r === (settings.defaults.aspectRatio || '16:9')),
                         callback_data: `vsettings:set_def_aspect:${r}`,
                     }]),
-                    [{ text: '◀️ Back', callback_data: 'vsettings:defaults' }],
+                    [backButton('vsettings:defaults', (ctx.lang || 'en') as Lang)],
                 ],
             };
         }
@@ -574,11 +565,11 @@ export async function videoSettingsAction(
                 text: '⏱️ <b>Max Video Length</b>\n\nSelect the maximum length for new videos:',
                 keyboard: [
                     ...lengths.map(l => [{
-                        text: l === settings.defaults.maxLength ? `✅ ${l}` : l,
+                        text: selectedItemLabel(l, l === settings.defaults.maxLength),
                         callback_data: `vsettings:set_def_length:${l}`,
                     }]),
                     [{ text: 'No limit', callback_data: 'vsettings:set_def_length:none' }],
-                    [{ text: '◀️ Back', callback_data: 'vsettings:defaults' }],
+                    [backButton('vsettings:defaults', (ctx.lang || 'en') as Lang)],
                 ],
             };
         }
@@ -603,11 +594,11 @@ export async function videoSettingsAction(
                 text: '👤 <b>Default Character</b>\n\nSelect the default character for new videos:',
                 keyboard: [
                     ...settings.characters.map(c => [{
-                        text: c.heygenGroupId === settings.defaults.defaultCharacterId ? `✅ ${c.name}` : c.name,
+                        text: selectedItemLabel(c.name, c.heygenGroupId === settings.defaults.defaultCharacterId),
                         callback_data: `vsettings:set_def_character:${c.heygenGroupId}`,
                     }]),
                     [{ text: 'None', callback_data: 'vsettings:set_def_character:none' }],
-                    [{ text: '◀️ Back', callback_data: 'vsettings:defaults' }],
+                    [backButton('vsettings:defaults', (ctx.lang || 'en') as Lang)],
                 ],
             };
         }
@@ -624,10 +615,10 @@ export async function videoSettingsAction(
                 text: '🎨 <b>Default Background</b>\n\nSelect a default background color:',
                 keyboard: [
                     ...colors.map(c => [{
-                        text: c === (settings.defaults.defaultBackground || '#ffffff') ? `✅ ${c}` : c,
+                        text: selectedItemLabel(c, c === (settings.defaults.defaultBackground || '#ffffff')),
                         callback_data: `vsettings:set_def_bg:${c}`,
                     }]),
-                    [{ text: '◀️ Back', callback_data: 'vsettings:defaults' }],
+                    [backButton('vsettings:defaults', (ctx.lang || 'en') as Lang)],
                 ],
             };
         }
@@ -657,10 +648,6 @@ export async function videoSettingsAction(
 }
 
 // ==================== TRAINING PROGRESS POLLING ====================
-
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 function buildProgressBar(percent: number): string {
     const filled = Math.round(percent / 10);

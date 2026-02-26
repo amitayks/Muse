@@ -7,6 +7,8 @@
  */
 
 import type { Env, Draft, VideoDraft } from '../types';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 import {
     getDueDraftsByUser,
     updateDraftStatus,
@@ -15,6 +17,7 @@ import {
     getScheduledVideoDraftsByUser,
     updateVideoDraft,
     createVideoPublished,
+    getUserLanguage,
 } from '../services/db';
 import { sendMessage, sendVideo } from '../services/telegram';
 import { publishDraft } from '../core/publish';
@@ -76,6 +79,7 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     logInfo(`[cron] Starting per-user cron for chat ${chatId}`);
 
     const userEnv = await hydrateEnv(env, chatId);
+    const lang = (await getUserLanguage(env, chatId)) as Lang;
 
     const results: Record<string, string> = {};
 
@@ -88,7 +92,7 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     }
 
     try {
-        await publishUserDrafts(userEnv, chatId);
+        await publishUserDrafts(userEnv, chatId, lang);
         results.drafts = 'ok';
     } catch (error) {
         logError(`[cron] Draft publishing failed for chat ${chatId}:`, sanitizeError(error));
@@ -96,7 +100,7 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     }
 
     try {
-        await checkUserStaleVideos(userEnv, chatId);
+        await checkUserStaleVideos(userEnv, chatId, lang);
         results.staleVideos = 'ok';
     } catch (error) {
         logError(`[cron] Stale video check failed for chat ${chatId}:`, sanitizeError(error));
@@ -104,7 +108,7 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     }
 
     try {
-        await publishUserScheduledVideos(userEnv, chatId);
+        await publishUserScheduledVideos(userEnv, chatId, lang);
         results.scheduledVideos = 'ok';
     } catch (error) {
         logError(`[cron] Scheduled video publishing failed for chat ${chatId}:`, sanitizeError(error));
@@ -120,7 +124,7 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
  * Publish due scheduled drafts for a specific user
  * Called with already-hydrated env
  */
-export async function publishUserDrafts(env: Env, chatId: string): Promise<void> {
+export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
     const drafts = await getDueDraftsByUser(env, chatId);
 
     if (drafts.length === 0) return;
@@ -142,11 +146,11 @@ export async function publishUserDrafts(env: Env, chatId: string): Promise<void>
                 await sendMessage(
                     env,
                     chatId,
-                    `⚠️ <b>Scheduled Post Failed</b>\n\n` +
+                    `${t(lang, 'notifications.scheduledPostFailed')}\n\n` +
                     `PR #${draft.pr_number}: ${draft.pr_title}\n\n` +
                     `${sanitizeError(error)}\n\n` +
-                    `The draft has been returned to pending status.`,
-                    [[{ text: '📝 View Drafts', callback_data: 'view:drafts' }]]
+                    t(lang, 'notifications.draftReturnedToPending'),
+                    [[{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]]
                 );
             } catch (notifyError) {
                 logError('Failed to send error notification:', notifyError);
@@ -160,11 +164,11 @@ export async function publishUserDrafts(env: Env, chatId: string): Promise<void>
             await sendMessage(
                 env,
                 chatId,
-                `📤 <b>Scheduled Post Published!</b>\n\n` +
+                `${t(lang, 'notifications.scheduledPostPublished')}\n\n` +
                 `PR #${draft.pr_number}: ${draft.pr_title}\n` +
-                `🕐 Published ${publishTime}\n\n` +
+                `${t(lang, 'notifications.publishedAt').replace('{time}', publishTime)}\n\n` +
                 `${publishResult.url}`,
-                [[{ text: '🏠 Dashboard', callback_data: 'view:home' }]]
+                [[{ text: t(lang, 'notifications.btnDashboard'), callback_data: 'view:home' }]]
             );
         } catch (notifyError) {
             logError('Failed to send publish notification (draft is published):', notifyError);
@@ -176,7 +180,7 @@ export async function publishUserDrafts(env: Env, chatId: string): Promise<void>
  * Check for stale generating video drafts for a specific user (>30 min)
  * Called with already-hydrated env
  */
-export async function checkUserStaleVideos(env: Env, chatId: string): Promise<void> {
+export async function checkUserStaleVideos(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
     try {
         const staleDrafts = await getStaleGeneratingDraftsByUser(env, chatId, 30);
 
@@ -197,14 +201,14 @@ export async function checkUserStaleVideos(env: Env, chatId: string): Promise<vo
 
                     const workerUrl = env.WORKER_URL!;
                     const mediaUrl = `${workerUrl}/media/${r2Key}`;
-                    const caption = `✅ <b>Video Ready!</b>\n\nYour video has been generated successfully.`;
+                    const caption = `${t(lang, 'notifications.videoReady')}\n\n${t(lang, 'notifications.videoReadyMsg')}`;
                     const buttons = [
                         [
-                            { text: '📢 Publish', callback_data: `action:video_publish:${draft.id}` },
-                            { text: '📅 Schedule', callback_data: `action:video_schedule:${draft.id}` },
+                            { text: t(lang, 'notifications.btnPublish'), callback_data: `action:video_publish:${draft.id}` },
+                            { text: t(lang, 'notifications.btnSchedule'), callback_data: `action:video_schedule:${draft.id}` },
                         ],
-                        [{ text: '🗑 Delete', callback_data: `action:video_delete:${draft.id}` }],
-                        [{ text: '🏠 Home', callback_data: 'view:home' }],
+                        [{ text: t(lang, 'notifications.btnDelete'), callback_data: `action:video_delete:${draft.id}` }],
+                        [{ text: t(lang, 'common.home'), callback_data: 'view:home' }],
                     ];
 
                     try {
@@ -213,22 +217,22 @@ export async function checkUserStaleVideos(env: Env, chatId: string): Promise<vo
                         logError('Cron sendVideo failed, falling back to text:', videoSendErr instanceof Error ? videoSendErr.message : String(videoSendErr));
                         await sendMessage(env, chatId, caption, [
                             ...buttons.slice(0, -1),
-                            [{ text: '🎬 View Details', callback_data: `view:video_detail:${draft.id}` }],
-                            [{ text: '🏠 Home', callback_data: 'view:home' }],
+                            [{ text: t(lang, 'notifications.btnViewDetails'), callback_data: `view:video_detail:${draft.id}` }],
+                            [{ text: t(lang, 'common.home'), callback_data: 'view:home' }],
                         ]);
                     }
                 } else if (status.status === 'failed') {
                     await updateVideoDraft(env, draft.id, chatId, { status: 'failed' });
                     await sendMessage(env, chatId,
-                        `❌ Video generation failed: ${status.error || 'Unknown error'}`,
-                        [[{ text: '🔄 View Draft', callback_data: `view:video_detail:${draft.id}` }]]
+                        t(lang, 'notifications.videoGenerationFailed').replace('{error}', status.error || 'Unknown error'),
+                        [[{ text: t(lang, 'notifications.btnViewDraft'), callback_data: `view:video_detail:${draft.id}` }]]
                     );
                 } else {
                     logInfo('Marking stale video as failed:', draft.id);
                     await updateVideoDraft(env, draft.id, chatId, { status: 'failed' });
                     await sendMessage(env, chatId,
-                        `❌ Video generation timed out after 30 minutes. Please try again.`,
-                        [[{ text: '🔄 View Draft', callback_data: `view:video_detail:${draft.id}` }]]
+                        t(lang, 'notifications.videoGenerationTimedOut'),
+                        [[{ text: t(lang, 'notifications.btnViewDraft'), callback_data: `view:video_detail:${draft.id}` }]]
                     );
                 }
             } catch (err) {
@@ -245,7 +249,7 @@ export async function checkUserStaleVideos(env: Env, chatId: string): Promise<vo
  * Publish scheduled videos for a specific user when scheduled_at <= NOW()
  * Called with already-hydrated env
  */
-export async function publishUserScheduledVideos(env: Env, chatId: string): Promise<void> {
+export async function publishUserScheduledVideos(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
     try {
         const scheduled = await getScheduledVideoDraftsByUser(env, chatId);
 
@@ -271,14 +275,14 @@ export async function publishUserScheduledVideos(env: Env, chatId: string): Prom
                 await updateVideoDraft(env, draft.id, chatId, { status: 'published' });
 
                 await sendMessage(env, chatId,
-                    `📤 <b>Scheduled Video Published!</b>\n\n${draft.title || 'Video'}\n${twitterUrl || 'Published successfully.'}`,
-                    [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+                    `${t(lang, 'notifications.scheduledVideoPublished')}\n\n${draft.title || 'Video'}\n${twitterUrl || t(lang, 'common.success')}`,
+                    [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
                 );
             } catch (err) {
                 logError('Failed to publish scheduled video:', draft.id, err instanceof Error ? err.message : String(err));
                 await sendMessage(env, chatId,
-                    `⚠️ <b>Scheduled Video Publish Failed</b>\n\n${draft.title || 'Video'}\n\nThe video has been returned to completed status.`,
-                    [[{ text: '📋 View', callback_data: `view:video_detail:${draft.id}` }]]
+                    `${t(lang, 'notifications.scheduledVideoFailed')}\n\n${draft.title || 'Video'}\n\n${t(lang, 'notifications.videoReturnedToCompleted')}`,
+                    [[{ text: t(lang, 'notifications.btnViewVideo'), callback_data: `view:video_detail:${draft.id}` }]]
                 );
                 await updateVideoDraft(env, draft.id, chatId, { status: 'completed' });
             }

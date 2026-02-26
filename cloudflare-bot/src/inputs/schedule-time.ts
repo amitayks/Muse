@@ -7,22 +7,30 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
+import type { Lang } from '../ui/strings';
+import { cancelRow } from '../ui/components';
+import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { updateChatState, scheduleDraft, getTimezone } from '../services/db';
-import { renderDraftDetail } from '../views/drafts';
+import { updateChatState, scheduleDraft, getTimezone, getPageSize } from '../services/db';
+import { renderDraftDetail, renderDraftsList } from '../views/drafts';
+import type { DraftListType } from '../views/drafts';
 import { sendMessage } from '../services/telegram';
 import { toUTC, formatLocalTime } from '../services/timezone';
+import { scheduleCancelTarget } from '../actions/schedule';
 
 export async function scheduleTimeInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: input, context } = ctx;
+    const lang = ((ctx as any).lang || 'en') as Lang;
 
     const draftId = context.selected_draft_id;
     const date = context.schedule_date; // May be undefined if user is on day picker screen
+    const returnView = context.schedule_return_view;
+    const cancelTarget = scheduleCancelTarget(returnView, draftId || '');
 
     if (!draftId) {
         await sendMessage(env, chatId,
-            '❌ Schedule context lost. Please try again from the draft.',
-            [[{ text: '🏠 Home', callback_data: 'view:home' }]]
+            t(lang, 'schedule.contextLost'),
+            [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]]
         );
         return;
     }
@@ -35,11 +43,11 @@ export async function scheduleTimeInput(ctx: HandlerContext & { text: string; co
 
     if (!fullMatch && !timeMatch) {
         const hint = date
-            ? `Send time: <code>HH:MM</code>\nOr full date: <code>YYYY-MM-DD HH:MM</code>`
-            : `Send a full date and time: <code>YYYY-MM-DD HH:MM</code>`;
+            ? `${t(lang, 'schedule.sendTime')}\n${t(lang, 'schedule.orFullDate')}`
+            : t(lang, 'schedule.sendFullDateTime');
         await sendMessage(env, chatId,
-            `❌ Invalid format.\n\n${hint}`,
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            `${t(lang, 'schedule.invalidFormat')}\n\n${hint}`,
+            [cancelRow(cancelTarget, lang)]
         );
         return;
     }
@@ -47,8 +55,8 @@ export async function scheduleTimeInput(ctx: HandlerContext & { text: string; co
     // If only time provided but no pre-selected date, require full format
     if (timeMatch && !date) {
         await sendMessage(env, chatId,
-            `❌ No date selected.\n\nPlease send a full date and time: <code>YYYY-MM-DD HH:MM</code>\n\nExample: <code>2026-03-15 14:30</code>`,
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            `${t(lang, 'schedule.noDateSelected')}\n\n${t(lang, 'schedule.sendFullDateTime')}\n\n${t(lang, 'schedule.dateExample')}`,
+            [cancelRow(cancelTarget, lang)]
         );
         return;
     }
@@ -69,8 +77,8 @@ export async function scheduleTimeInput(ctx: HandlerContext & { text: string; co
 
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
         await sendMessage(env, chatId,
-            `❌ Invalid time. Hours must be 0-23, minutes 0-59.\n\nExample: <code>14:30</code>`,
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            `${t(lang, 'schedule.invalidTime')}\n\n${t(lang, 'schedule.timeExample')}`,
+            [cancelRow(cancelTarget, lang)]
         );
         return;
     }
@@ -83,8 +91,8 @@ export async function scheduleTimeInput(ctx: HandlerContext & { text: string; co
 
     if (isNaN(localDate.getTime())) {
         await sendMessage(env, chatId,
-            '❌ Invalid date/time combination. Please try again.',
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            t(lang, 'schedule.invalidDateTimeCombination'),
+            [cancelRow(cancelTarget, lang)]
         );
         return;
     }
@@ -95,29 +103,36 @@ export async function scheduleTimeInput(ctx: HandlerContext & { text: string; co
     // Validate not in the past
     if (scheduledAtUTC.getTime() <= Date.now()) {
         await sendMessage(env, chatId,
-            `❌ That time is in the past.\n\nPlease provide a future time.\n\nFormat: <code>HH:MM</code>`,
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            `${t(lang, 'schedule.timeInPast')}\n\n${t(lang, 'schedule.provideFutureTime')}\n\n${t(lang, 'schedule.formatHHMM')}`,
+            [cancelRow(cancelTarget, lang)]
         );
         return;
     }
 
     try {
         await scheduleDraft(env, draftId, chatId, scheduledAtUTC.toISOString());
-        await updateChatState(env, chatId, {
-            current_view: 'draft_detail',
-            context: { selected_draft_id: draftId },
-        });
 
-        const view = await renderDraftDetail(env, chatId, draftId, tz);
-        await respond(env, chatId, view, {
-            viewName: 'draft_detail',
-            context: { selected_draft_id: draftId },
-        });
+        // Navigate back to origin: draft list or draft detail
+        if (returnView?.startsWith('drafts_')) {
+            const listType = returnView.replace('drafts_', '') as DraftListType;
+            const ps = await getPageSize(env, chatId);
+            const view = await renderDraftsList(env, chatId, 0, listType, ps, lang);
+            await respond(env, chatId, view, {
+                viewName: returnView,
+                context: { page: 0 },
+            });
+        } else {
+            const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
+            await respond(env, chatId, view, {
+                viewName: 'draft_detail',
+                context: { selected_draft_id: draftId },
+            });
+        }
     } catch (error) {
         console.error('[schedule-time] Error:', error);
         await sendMessage(env, chatId,
-            `❌ Failed to schedule draft. Please try again.`,
-            [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]]
+            t(lang, 'schedule.failedToSchedule'),
+            [cancelRow(cancelTarget, lang)]
         );
     }
 }

@@ -3,24 +3,23 @@
  */
 
 import type { Env, ViewResult, InlineButton, TwitterAccountConfig } from '../types';
+import { t, type Lang } from '../ui/strings';
 import { getTwitterAccounts, getTwitterAccount, parseTwitterAccountConfig, getTwitterAccountOverview } from '../services/db';
 import { renderError } from './home';
+import { homeButton, backButton, backHomeRow, addButtonRow, paginationRows, toggleButton, confirmDeleteView, emptyListView, inputPromptView } from '../ui/components';
 
-export async function renderAccountsList(env: Env, chatId: string, page = 0): Promise<ViewResult> {
+export async function renderAccountsList(env: Env, chatId: string, page = 0, lang: Lang = 'en'): Promise<ViewResult> {
     const allAccounts = await getTwitterAccounts(env, chatId);
 
     if (allAccounts.length === 0) {
-        return {
-            text: `👤 <b>Followed Accounts</b>
-
-No accounts are being followed yet.
-
-Add a Twitter/X account to start auto-detecting new tweets for repost!`,
-            keyboard: [
-                [{ text: '➕ Add account', callback_data: 'action:add_account', style: 'primary' as const }],
-                [{ text: '🏠 Home', callback_data: 'view:home' }],
-            ],
-        };
+        return emptyListView(
+            t(lang, 'accounts.title'),
+            t(lang, 'accounts.noAccounts'),
+            t(lang, 'accounts.addAccount'),
+            'action:add_account',
+            'view:home',
+            lang
+        );
     }
 
     const limit = 10;
@@ -41,45 +40,36 @@ Add a Twitter/X account to start auto-detecting new tweets for repost!`,
         },
     ]);
 
-    const navButtons: InlineButton[] = [];
-    if (page > 0) {
-        navButtons.push({ text: '⬅️ Prev', callback_data: `page:accounts:${page - 1}` });
-    }
-    if (page < totalPages - 1) {
-        navButtons.push({ text: 'Next ➡️', callback_data: `page:accounts:${page + 1}` });
-    }
-
     return {
-        text: `👤 <b>Followed Accounts</b> (${allAccounts.length} total)
+        text: `${t(lang, 'accounts.title')} (${allAccounts.length} ${t(lang, 'common.total')})
 
 ${accountList}
 
-Tap an account to manage settings.${totalPages > 1 ? `\n\nPage ${page + 1} of ${totalPages}` : ''}`,
+${t(lang, 'accounts.tapToManage')}${totalPages > 1 ? `\n\n${t(lang, 'common.page')} ${page + 1} ${t(lang, 'common.of')} ${totalPages}` : ''}`,
         keyboard: [
-            [{ text: '➕ Add account', callback_data: 'action:add_account', style: 'primary' as const }],
+            addButtonRow(t(lang, 'accounts.addAccount'), 'action:add_account'),
             ...accountButtons,
-            navButtons.length > 0 ? navButtons : [],
-            [{ text: '🏠 Home', callback_data: 'view:home' }],
-        ].filter((row) => row.length > 0),
+            ...paginationRows('accounts', page, page < totalPages - 1, lang),
+            [homeButton(lang)],
+        ],
         disableLinkPreview: true,
     };
 }
 
-export async function renderAccountDetail(env: Env, chatId: string, accountId: string): Promise<ViewResult> {
+export async function renderAccountDetail(env: Env, chatId: string, accountId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const account = await getTwitterAccount(env, accountId, chatId);
 
     if (!account) {
-        return renderError('Account not found.');
+        return renderError(t(lang, 'error.accountNotFound'));
     }
 
     const config = parseTwitterAccountConfig(account);
-    const watchStatus = account.is_watching ? '👁 Watching' : '⏸️ Paused';
+    const watchStatus = account.is_watching ? t(lang, 'repos.watching') : t(lang, 'repos.paused');
 
     const hashtagOn = config.includeHashtags;
     const imgOn = config.alwaysGenerateImage;
     const hashtagIcon = hashtagOn ? '✅' : '❌';
     const imgIcon = imgOn ? '✅' : '❌';
-    const langLabel = config.language === 'en' ? '🇺🇸 EN' : '🇮🇱 HE';
     const autoApproveOn = config.autoApprove;
     const mediaAiOn = config.analyzeMedia !== false;
     const autoApproveIcon = autoApproveOn ? '✅' : '❌';
@@ -87,12 +77,12 @@ export async function renderAccountDetail(env: Env, chatId: string, accountId: s
     const batchSize = config.batchPageSize || 5;
 
     const toneLabels: Record<string, string> = {
-        professional: '💼 Professional',
-        casual: '😎 Casual',
-        analytical: '🔬 Analytical',
-        enthusiastic: '🔥 Enthusiastic',
-        witty: '🧠 Witty',
-        sarcastic: '😏 Sarcastic',
+        professional: t(lang, 'accounts.toneProfessional'),
+        casual: t(lang, 'accounts.toneCasual'),
+        analytical: t(lang, 'accounts.toneAnalytical'),
+        enthusiastic: t(lang, 'accounts.toneEnthusiastic'),
+        witty: t(lang, 'accounts.toneWitty'),
+        sarcastic: t(lang, 'accounts.toneSarcastic'),
     };
     const toneLabel = toneLabels[config.tone] || config.tone;
 
@@ -104,9 +94,9 @@ export async function renderAccountDetail(env: Env, chatId: string, accountId: s
         const personaPreview = overview.persona.length > 120
             ? overview.persona.substring(0, 117) + '...'
             : overview.persona;
-        overviewSection = `\n<b>Persona:</b>\n${personaPreview}`;
+        overviewSection = `\n${t(lang, 'accounts.personaLabel')}\n${personaPreview}`;
     } else {
-        overviewSection = `\n<b>Persona:</b>\nNo persona yet — tap Bootstrap to generate one.`;
+        overviewSection = `\n${t(lang, 'accounts.personaLabel')}\n${t(lang, 'accounts.noPersona')}`;
     }
 
     const displayName = account.display_name ? ` (${account.display_name})` : '';
@@ -115,89 +105,76 @@ export async function renderAccountDetail(env: Env, chatId: string, accountId: s
         text: `👤 <b><a href="https://x.com/${account.username}">@${account.username}</a></b>${displayName}
 ${watchStatus}
 
-<b>Repost Settings:</b>
-${hashtagIcon} Hashtags: <b>${config.includeHashtags ? 'Yes' : 'No'}</b>
-🌐 Language: <b>${config.language.toUpperCase()}</b>
-🎯 Threshold: <b>${config.relevanceThreshold}/10</b>
-🎭 Tone: <b>${toneLabel}</b>
-${autoApproveIcon} Auto-approve: <b>${config.autoApprove ? 'Yes' : 'No'}</b>
-📋 Batch page: <b>${batchSize}</b>
-${mediaAiIcon} Media AI: <b>${config.analyzeMedia !== false ? 'Yes' : 'No'}</b>
+${t(lang, 'accounts.repostSettings')}
+${hashtagIcon} ${t(lang, 'repos.hashtags')} <b>${config.includeHashtags ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${t(lang, 'accounts.threshold')} <b>${config.relevanceThreshold}/10</b>
+${t(lang, 'accounts.tone')} <b>${toneLabel}</b>
+${autoApproveIcon} ${t(lang, 'accounts.autoApprove')} <b>${config.autoApprove ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${t(lang, 'accounts.batchPage')} <b>${batchSize}</b>
+${mediaAiIcon} Media AI: <b>${config.analyzeMedia !== false ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
 
-<b>Image Settings:</b>
-${imgIcon} Always Image: <b>${config.alwaysGenerateImage ? 'Yes' : 'No'}</b>
-🎲 Single Prob: <b>${Math.round(config.singleImageProbability * 100)}%</b>
+${t(lang, 'repos.imageSettings')}
+${imgIcon} ${t(lang, 'accounts.alwaysImage')} <b>${config.alwaysGenerateImage ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${t(lang, 'repos.singleProb')} <b>${Math.round(config.singleImageProbability * 100)}%</b>
 ${overviewSection}
 
-Tap a setting to change it:`,
+${t(lang, 'common.tapToChange')}`,
         keyboard: [
             [
-                { text: langLabel, callback_data: `tw_config:language:${account.id}` },
-                { text: `Tags: ${hashtagOn ? 'On' : 'Off'}`, callback_data: `tw_config:hashtags:${account.id}`, style: hashtagOn ? 'success' : 'danger' },
+                toggleButton('accounts.tags', hashtagOn, `tw_config:hashtags:${account.id}`, lang),
             ],
             [
                 { text: `🎯 ${config.relevanceThreshold}/10`, callback_data: `tw_config:threshold:${account.id}` },
                 { text: toneLabel, callback_data: `tw_config:tone:${account.id}` },
             ],
             [
-                { text: `Img: ${imgOn ? 'On' : 'Off'}`, callback_data: `tw_config:img:${account.id}`, style: imgOn ? 'success' : 'danger' },
+                toggleButton('accounts.img', imgOn, `tw_config:img:${account.id}`, lang),
                 { text: `🎲 ${Math.round(config.singleImageProbability * 100)}%`, callback_data: `tw_config:img_pct:${account.id}` },
             ],
             [
-                { text: `Auto: ${autoApproveOn ? 'On' : 'Off'}`, callback_data: `tw_config:auto_approve:${account.id}`, style: autoApproveOn ? 'success' : 'danger' },
+                toggleButton('accounts.auto', autoApproveOn, `tw_config:auto_approve:${account.id}`, lang),
                 { text: `📋 Page: ${batchSize}`, callback_data: `tw_config:batch_size:${account.id}` },
             ],
             [
-                { text: `Media AI: ${mediaAiOn ? 'On' : 'Off'}`, callback_data: `tw_config:analyze_media:${account.id}`, style: mediaAiOn ? 'success' : 'danger' },
+                toggleButton('accounts.mediaAi', mediaAiOn, `tw_config:analyze_media:${account.id}`, lang),
             ],
             [
-                { text: overview?.persona ? '🔍 Update Persona' : '🔍 Bootstrap Persona', callback_data: `action:tw_bootstrap:${account.id}`, style: overview?.persona ? 'success' as const : 'primary' as const },
+                { text: overview?.persona ? t(lang, 'accounts.updatePersona') : t(lang, 'accounts.bootstrapPersona'), callback_data: `action:tw_bootstrap:${account.id}`, style: overview?.persona ? 'success' as const : 'primary' as const },
             ],
             [
                 account.is_watching
-                    ? { text: 'Unfollow', callback_data: `action:tw_unfollow:${account.id}`, style: 'danger' as const }
-                    : { text: 'Follow', callback_data: `action:tw_follow:${account.id}`, style: 'success' as const },
+                    ? { text: t(lang, 'accounts.unfollow'), callback_data: `action:tw_unfollow:${account.id}`, style: 'danger' as const }
+                    : { text: t(lang, 'accounts.follow'), callback_data: `action:tw_follow:${account.id}`, style: 'success' as const },
             ],
-            [{ text: 'Delete', callback_data: `action:tw_delete:${account.id}`, style: 'danger' }],
-            [{ text: '◀️ Back', callback_data: 'view:accounts' }],
+            [{ text: t(lang, 'common.delete'), callback_data: `action:tw_delete:${account.id}`, style: 'danger' }],
+            backHomeRow('view:accounts', lang),
         ],
         disableLinkPreview: true,
     };
 }
 
-export function renderAddAccount(): ViewResult {
-    return {
-        text: `➕ <b>Add Twitter Account</b>
-
-Send me the Twitter/X username to follow.
-
-<b>Example:</b>
-<code>@vercel</code> or <code>vercel</code>
-
-I'll start watching for their new tweets and notify you when there's something worth reposting.`,
-        keyboard: [[{ text: '❌ Cancel', callback_data: 'view:accounts' }]],
-    };
+export function renderAddAccount(lang: Lang = 'en'): ViewResult {
+    return inputPromptView(
+        t(lang, 'accounts.addAccountTitle'),
+        t(lang, 'accounts.addAccountDesc'),
+        t(lang, 'accounts.addAccountExample'),
+        'view:accounts',
+        lang
+    );
 }
 
-export async function renderDeleteAccountConfirm(env: Env, chatId: string, accountId: string): Promise<ViewResult> {
+export async function renderDeleteAccountConfirm(env: Env, chatId: string, accountId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const account = await getTwitterAccount(env, accountId, chatId);
 
     if (!account) {
-        return renderError('Account not found.');
+        return renderError(t(lang, 'error.accountNotFound'));
     }
 
-    return {
-        text: `🗑️ <b>Delete Account?</b>
-
-Are you sure you want to stop following:
-<b>@${account.username}</b>
-
-This will also delete all stored tweets and persona data for this account.`,
-        keyboard: [
-            [
-                { text: 'Yes, delete', callback_data: `action:tw_delete_yes:${account.id}`, style: 'danger' },
-                { text: 'Cancel', callback_data: `account:${account.id}` },
-            ],
-        ],
-    };
+    return confirmDeleteView(
+        t(lang, 'accounts.deleteAccountTitle'),
+        t(lang, 'accounts.deleteAccountMsg').replace('{username}', account.username),
+        `action:tw_delete_yes:${account.id}`,
+        `account:${account.id}`,
+        lang
+    );
 }

@@ -7,7 +7,8 @@
 
 import type { Env } from '../types';
 import { getTwitterAccount, getRecentTweetsByAccount, upsertTwitterAccountOverview } from './db';
-import { PERSONA_SYSTEM_PROMPT, buildPersonaUserPrompt } from './persona-prompt';
+import { buildPersonaUserPrompt } from './persona-prompt';
+import { getPrompt } from './prompts';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_MODEL = 'gemini-2.0-flash';
@@ -39,6 +40,8 @@ export async function bootstrapPersona(env: Env, accountId: string, chatId: stri
         recentTweets: recentTweets.map(t => t.text),
     });
 
+    const personaSystemPrompt = await getPrompt(env, chatId, 'persona', 'en');
+
     try {
         const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
 
@@ -50,7 +53,7 @@ export async function bootstrapPersona(env: Env, accountId: string, chatId: stri
                     { role: 'user', parts: [{ text: userPrompt }] },
                 ],
                 systemInstruction: {
-                    parts: [{ text: PERSONA_SYSTEM_PROMPT }],
+                    parts: [{ text: personaSystemPrompt }],
                 },
                 generationConfig: {
                     temperature: 0.5,

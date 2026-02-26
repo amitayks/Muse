@@ -8,9 +8,15 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
-import { updateChatState } from '../services/db';
+import { cancelRow } from '../ui/components';
+import { homeButton } from '../ui/components';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
+import { getChatState, parseContext, updateChatState } from '../services/db';
+import { scheduleCancelTarget } from './schedule';
 
 export async function schedDayAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
+    const lang = (ctx.lang || 'en') as Lang;
     // Callback: action:sched_day:DRAFT_ID:YYYY-MM-DD
     // Router gives us: value="sched_day", extra="DRAFT_ID:YYYY-MM-DD"
     // Parse extra to split draft ID and date
@@ -20,25 +26,32 @@ export async function schedDayAction(ctx: HandlerContext & { value: string; extr
 
     if (!draftId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return {
-            text: '❌ Invalid date format.',
-            keyboard: [[{ text: '🏠 Home', callback_data: 'view:home' }]],
+            text: t(lang, 'actions.invalidDateFormat'),
+            keyboard: [[homeButton(lang)]],
         };
     }
+
+    // Preserve schedule_return_view from previous context
+    const currentState = await getChatState(ctx.env, ctx.chatId);
+    const currentContext = parseContext(currentState);
+    const returnView = currentContext.schedule_return_view;
 
     await updateChatState(ctx.env, ctx.chatId, {
         context: {
             awaiting_input: 'schedule_time',
             selected_draft_id: draftId,
             schedule_date: date,
+            schedule_return_view: returnView,
         },
     });
 
+    const cancelTarget = scheduleCancelTarget(returnView, draftId);
     return {
-        text: `📅 <b>Schedule for ${date}</b>
+        text: `${t(lang, 'actions.scheduleForDate').replace('{date}', date)}
 
-Send the time in <b>HH:MM</b> format (e.g. <code>14:30</code>)
+${t(lang, 'actions.sendTimeHHMM')}
 
-Or send a full date and time: <code>YYYY-MM-DD HH:MM</code>`,
-        keyboard: [[{ text: '❌ Cancel', callback_data: `draft:${draftId}` }]],
+${t(lang, 'actions.orFullDateTime')}`,
+        keyboard: [cancelRow(cancelTarget, lang)],
     };
 }

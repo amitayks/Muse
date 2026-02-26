@@ -9,6 +9,7 @@ import type { TwitterAccountConfig, ViewResult } from '../types';
 import {
     getChatState, parseContext, updateChatState, createDraft,
     getTwitterAccounts, getTwitterAccountOverview, parseTwitterAccountConfig,
+    getTimezone,
 } from '../services/db';
 import { renderRepostPreview, renderRepostGenerating } from '../views/repost';
 import { renderError } from '../views';
@@ -16,11 +17,15 @@ import { editMessage, sendMessage, deleteMessage, sendPhoto } from '../services/
 import { generateRepostContent } from '../services/repost-generate';
 import { getOrCreatePersona } from '../services/persona-cache';
 import { ensureImage } from '../services/storage';
-import { renderDraftDetail, truncateHtml } from '../views/drafts';
-import { getTimezone } from '../services/db';
+import { renderDraftDetail } from '../views/drafts';
+import { truncateHtml } from '../ui/utils';
+import { homeButton } from '../ui/components';
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
 
 /** Tone selection — edit preview message with new tone */
 export const rpToneAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     const tone = ctx.value as TwitterAccountConfig['tone'];
     const tweetId = ctx.extra!;
 
@@ -29,7 +34,7 @@ export const rpToneAction: ActionHandler = async (ctx) => {
     const preview = context.repost_preview;
 
     if (!preview || preview.tweet_id !== tweetId) {
-        return renderError('Preview context lost. Please try /repost again.');
+        return renderError('Preview context lost. Please try /repost again.', lang);
     }
 
     // Update tone in context
@@ -46,7 +51,7 @@ export const rpToneAction: ActionHandler = async (ctx) => {
         isThread: !!preview.thread_text,
         selectedTone: tone,
         hasImage: !!preview.media_url,
-    });
+    }, lang);
 
     // Edit the message in place
     if (ctx.messageId) {
@@ -57,6 +62,7 @@ export const rpToneAction: ActionHandler = async (ctx) => {
 
 /** Generate repost (and rp_gen_anyway for duplicates) */
 export const rpGenAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     const tweetId = ctx.value;
 
     const state = await getChatState(ctx.env, ctx.chatId);
@@ -64,12 +70,12 @@ export const rpGenAction: ActionHandler = async (ctx) => {
     const preview = context.repost_preview;
 
     if (!preview) {
-        return renderError('Preview context lost. Please try /repost again.');
+        return renderError('Preview context lost. Please try /repost again.', lang);
     }
 
     // Show generating state
     if (ctx.messageId) {
-        const genView = renderRepostGenerating(preview.username);
+        const genView = renderRepostGenerating(preview.username, lang);
         await editMessage(ctx.env, ctx.chatId, ctx.messageId, genView.text, genView.keyboard);
     }
 
@@ -104,7 +110,6 @@ export const rpGenAction: ActionHandler = async (ctx) => {
 
     // Use followed account config or defaults with tone override
     const effectiveConfig = config || {
-        language: 'en' as const,
         includeHashtags: true,
         alwaysGenerateImage: false,
         singleImageProbability: 0.3,
@@ -148,8 +153,8 @@ export const rpGenAction: ActionHandler = async (ctx) => {
     if (!content) {
         if (ctx.messageId) {
             await editMessage(ctx.env, ctx.chatId, ctx.messageId,
-                '❌ <b>Generation failed</b>\n\nCouldn\'t generate content. Please try again.',
-                [[{ text: '🔄 Retry', callback_data: `rp_gen:${tweetId}` }, { text: '🏠 Home', callback_data: 'view:home' }]]
+                `${t(lang, 'actions.generationFailed')}\n\n${t(lang, 'actions.generationFailedMsg')}`,
+                [[{ text: t(lang, 'actions.btnRetry'), callback_data: `rp_gen:${tweetId}` }, homeButton(lang)]]
             );
         }
         return;
@@ -176,7 +181,7 @@ export const rpGenAction: ActionHandler = async (ctx) => {
     // Generate image
     let imageUrl: string | null = null;
     if (ctx.messageId) {
-        await editMessage(ctx.env, ctx.chatId, ctx.messageId, '🎨 Generating image...');
+        await editMessage(ctx.env, ctx.chatId, ctx.messageId, t(lang, 'actions.generatingImage'));
     }
     try {
         imageUrl = await ensureImage(ctx.env, ctx.chatId, { id: draftId, content: JSON.stringify(content) });
@@ -186,7 +191,7 @@ export const rpGenAction: ActionHandler = async (ctx) => {
 
     // Show draft detail
     const tz = await getTimezone(ctx.env, ctx.chatId);
-    const view = await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz);
+    const view = await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz, lang);
 
     if (imageUrl && ctx.messageId) {
         try { await deleteMessage(ctx.env, ctx.chatId, ctx.messageId); } catch { /* ignore */ }
@@ -200,11 +205,11 @@ export const rpGenAction: ActionHandler = async (ctx) => {
     // Follow prompt for non-followed accounts
     if (!preview.is_followed) {
         await sendMessage(ctx.env, ctx.chatId,
-            `💡 Want to follow <b>@${preview.username}</b> for automatic repost notifications?`,
+            t(lang, 'actions.followPrompt').replace('{username}', preview.username),
             [
                 [
-                    { text: '👁 Follow', callback_data: `rp_follow:${preview.username}` },
-                    { text: '👋 No thanks', callback_data: `rp_no_follow:0` },
+                    { text: t(lang, 'actions.btnFollow'), callback_data: `rp_follow:${preview.username}` },
+                    { text: t(lang, 'actions.btnNoThanks'), callback_data: `rp_no_follow:0` },
                 ],
             ]
         );
@@ -215,7 +220,8 @@ export const rpGenAction: ActionHandler = async (ctx) => {
 
 /** Cancel repost — return home */
 export const rpCancelAction: ActionHandler = async (ctx) => {
+    const lang = (ctx.lang || 'en') as Lang;
     await updateChatState(ctx.env, ctx.chatId, { current_view: 'home', context: null });
     const { renderHome } = await import('../views');
-    return renderHome(ctx.env, ctx.chatId);
+    return renderHome(ctx.env, ctx.chatId, lang);
 };

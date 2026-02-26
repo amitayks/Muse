@@ -7,14 +7,16 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
+import type { Lang } from '../ui/strings';
 import { updateChatState } from '../services/db';
 import { sendMessage } from '../services/telegram';
 import { renderCompose } from '../views';
 
 export async function handwriteCommand(ctx: HandlerContext): Promise<ViewResult | void> {
     const { env, chatId } = ctx;
+    const lang = (ctx.lang || 'en') as Lang;
 
-    const view = renderCompose([], [], false, false);
+    const view = renderCompose([], [], false, false, lang);
     const msgId = await sendMessage(env, chatId, view.text, view.keyboard);
 
     await updateChatState(env, chatId, {

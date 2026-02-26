@@ -41,11 +41,11 @@ The `drafts` table SHALL have two new columns: `original_tweet_id` (TEXT) and `o
 - **THEN** the system SHALL skip draft creation
 
 ### Requirement: TwitterAccountConfig type
-The system SHALL define a `TwitterAccountConfig` interface with fields: `language` ('en' | 'he'), `includeHashtags` (boolean), `alwaysGenerateImage` (boolean), `singleImageProbability` (number 0-1), `relevanceThreshold` (number 1-10, default 6), `tone` (string — e.g. 'professional', 'casual', 'analytical', 'enthusiastic', 'witty'), `autoApprove` (boolean, default false).
+The system SHALL define a `TwitterAccountConfig` interface with fields: `includeHashtags` (boolean), `alwaysGenerateImage` (boolean), `singleImageProbability` (number 0-1), `relevanceThreshold` (number 1-10, default 6), `tone` (string — e.g. 'professional', 'casual', 'analytical', 'enthusiastic', 'witty'), `autoApprove` (boolean, default false). The `language` field is NOT included — language is a global user-level setting stored in the `users` table.
 
 #### Scenario: Default config
 - **WHEN** a new account is added without custom config
-- **THEN** it SHALL use defaults: language='en', includeHashtags=true, alwaysGenerateImage=false, singleImageProbability=0.3, relevanceThreshold=6, tone='professional', autoApprove=false
+- **THEN** it SHALL use defaults: includeHashtags=true, alwaysGenerateImage=false, singleImageProbability=0.3, relevanceThreshold=6, tone='professional', autoApprove=false
 
 ### Requirement: Add account by @username
 The system SHALL validate an @username input, look up the X user via API (`GET /2/users/by/username/:username`), and create a `twitter_accounts` record with the resolved `user_id` and `display_name`.
@@ -59,7 +59,7 @@ The system SHALL validate an @username input, look up the X user via API (`GET /
 - **THEN** the system SHALL respond with "Account not found" error
 
 ### Requirement: Account detail settings view
-The account detail view SHALL display the account info and toggle buttons for all configurable settings: follow/unfollow, Bootstrap Overview, language (en/he toggle), hashtags (on/off toggle), image generation (on/off toggle), image probability (cycle: 0/30/50/70/100%), relevance threshold (cycle: 1-10), tone (cycle through options), auto-approve (on/off toggle).
+The account detail view SHALL display the account info and toggle buttons for all configurable settings: follow/unfollow, Bootstrap Overview, hashtags (on/off toggle), image generation (on/off toggle), image probability (cycle: 0/30/50/70/100%), relevance threshold (cycle: 1-10), tone (cycle through options), auto-approve (on/off toggle). The language toggle button SHALL NOT be included (language is now a global user setting).
 
 #### Scenario: Toggle relevance threshold
 - **WHEN** user clicks the relevance threshold button

@@ -3,28 +3,28 @@
  */
 
 import type { ViewResult, InlineButton, HeyGenCharacter, VideoSettings } from '../types';
-
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import type { Lang } from '../ui/strings';
+import { t } from '../ui/strings';
+import { escapeHtml } from '../ui/utils';
+import { backButton, selectedItemLabel, cancelRow } from '../ui/components';
 
 /**
  * Video settings home — subsection buttons
  */
-export function renderVideoSettingsHome(settings: VideoSettings): ViewResult {
+export function renderVideoSettingsHome(settings: VideoSettings, lang: Lang = 'en'): ViewResult {
     const charCount = settings.characters.length;
 
     return {
-        text: `🎬 <b>Video Settings</b>\n\n` +
-            `👤 Characters: ${charCount} configured\n` +
-            `🎙️ Voices: Configure per character\n` +
-            `⚙️ Defaults: Pre-populate new video configs`,
+        text: `${t(lang, 'videoSettings.title')}\n\n` +
+            `${t(lang, 'videoSettings.characters')} ${charCount} ${t(lang, 'videoSettings.configured')}\n` +
+            `${t(lang, 'videoSettings.voices')}\n` +
+            `${t(lang, 'videoSettings.defaults')}`,
         keyboard: [
-            [{ text: `👤 Characters (${charCount})`, callback_data: 'vsettings:characters' }],
-            [{ text: '⚙️ Defaults', callback_data: 'vsettings:defaults' }],
-            [{ text: '🔑 HeyGen Account', callback_data: 'vsettings:heygen' }],
-            [{ text: '📸 Instagram', callback_data: 'vsettings:instagram' }],
-            [{ text: '◀️ Video Studio', callback_data: 'view:video_studio' }],
+            [{ text: `${t(lang, 'videoSettings.btnCharacters')} (${charCount})`, callback_data: 'vsettings:characters' }],
+            [{ text: t(lang, 'videoSettings.btnDefaults'), callback_data: 'vsettings:defaults' }],
+            [{ text: t(lang, 'videoSettings.btnHeygen'), callback_data: 'vsettings:heygen' }],
+            [{ text: t(lang, 'videoSettings.btnInstagram'), callback_data: 'vsettings:instagram' }],
+            [backButton('view:video_studio', lang)],
         ],
     };
 }
@@ -32,26 +32,26 @@ export function renderVideoSettingsHome(settings: VideoSettings): ViewResult {
 /**
  * Character listing view
  */
-export function renderCharacterList(settings: VideoSettings): ViewResult {
+export function renderCharacterList(settings: VideoSettings, lang: Lang = 'en'): ViewResult {
     const chars = settings.characters;
 
     if (chars.length === 0) {
         return {
-            text: `👤 <b>Characters</b>\n\nNo characters configured yet.\n\nAdd a character to start creating videos with Photo Avatars.`,
+            text: `${t(lang, 'videoSettings.charListTitle')}\n\n${t(lang, 'videoSettings.noChars')}\n\nAdd a character to start creating videos with Photo Avatars.`,
             keyboard: [
-                [{ text: '➕ Add Character', callback_data: 'vsettings:add_character' }],
-                [{ text: '◀️ Video Settings', callback_data: 'vsettings:home' }],
+                [{ text: t(lang, 'videoSettings.addCharacter'), callback_data: 'vsettings:add_character' }],
+                [backButton('vsettings:home', lang)],
             ],
         };
     }
 
     const statusIcon = (s: string) => s === 'ready' ? '✅' : s === 'training' ? '⏳' : '❌';
 
-    let text = `👤 <b>Characters</b>\n`;
+    let text = `${t(lang, 'videoSettings.charListTitle')}\n`;
     for (const c of chars) {
         const looksCount = (c.looks || []).length;
         text += `\n${statusIcon(c.status)} <b>${escapeHtml(c.name)}</b>`;
-        text += ` — ${looksCount} look${looksCount !== 1 ? 's' : ''}`;
+        text += ` — ${looksCount} ${looksCount !== 1 ? t(lang, 'videoSettings.looks') : t(lang, 'videoSettings.look')}`;
         if (c.voiceId) text += ' 🎙️';
         if (c.personality) text += `\n    <i>${escapeHtml(c.personality.substring(0, 60))}</i>`;
     }
@@ -62,8 +62,8 @@ export function renderCharacterList(settings: VideoSettings): ViewResult {
             { text: `👁️ ${c.name}`, callback_data: `vsettings:char_detail:${c.heygenGroupId}` },
         ]);
     }
-    buttons.push([{ text: '➕ Add Character', callback_data: 'vsettings:add_character' }]);
-    buttons.push([{ text: '◀️ Video Settings', callback_data: 'vsettings:home' }]);
+    buttons.push([{ text: t(lang, 'videoSettings.addCharacter'), callback_data: 'vsettings:add_character' }]);
+    buttons.push([backButton('vsettings:home', lang)]);
 
     return { text, keyboard: buttons };
 }
@@ -71,9 +71,9 @@ export function renderCharacterList(settings: VideoSettings): ViewResult {
 /**
  * Character detail view — shows looks with pagination, edit, remove options
  */
-export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0): ViewResult {
+export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0, lang: Lang = 'en'): ViewResult {
     const statusIcon = character.status === 'ready' ? '✅' : character.status === 'training' ? '⏳' : '❌';
-    const statusLabel = character.status === 'ready' ? 'Ready' : character.status === 'training' ? 'Training...' : 'Failed';
+    const statusLabel = character.status === 'ready' ? t(lang, 'videoSettings.statusReady') : character.status === 'training' ? t(lang, 'videoSettings.statusTraining') : t(lang, 'videoSettings.statusFailed');
     const looks = character.looks || [];
 
     const LOOKS_PAGE_SIZE = 5;
@@ -83,13 +83,13 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0):
     const shownLooks = looks.slice(lookStart, lookStart + LOOKS_PAGE_SIZE);
 
     let text = `${statusIcon} <b>${escapeHtml(character.name)}</b>\n\n`;
-    text += `📊 Status: ${statusLabel}\n`;
-    text += `🎙️ Voice: ${character.voiceId || 'Not set'}\n`;
-    text += `😊 Emotion: ${character.defaultEmotion || 'Friendly'}\n`;
-    if (character.personality) text += `📝 Personality: <i>${escapeHtml(character.personality.substring(0, 100))}</i>\n`;
+    text += `${t(lang, 'videoSettings.statusLabel')} ${statusLabel}\n`;
+    text += `${t(lang, 'videoSettings.voiceLabel')} ${character.voiceId || t(lang, 'video.notSet')}\n`;
+    text += `${t(lang, 'videoSettings.emotionLabel')} ${character.defaultEmotion || 'Friendly'}\n`;
+    if (character.personality) text += `${t(lang, 'videoSettings.personalityLabel')} <i>${escapeHtml(character.personality.substring(0, 100))}</i>\n`;
 
     if (looks.length > 0) {
-        text += `\n🎭 <b>Looks (${looks.length}):</b>`;
+        text += `\n${t(lang, 'videoSettings.looksTitle')} (${looks.length}):</b>`;
         if (totalLookPages > 1) {
             text += ` <i>page ${safePage + 1}/${totalLookPages}</i>`;
         }
@@ -98,9 +98,9 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0):
             text += `\n  ${hasKey} ${lookStart + i + 1}. ${escapeHtml(shownLooks[i].name)}`;
         }
     } else {
-        text += `\n🎭 <b>Looks:</b> None yet`;
+        text += `\n${t(lang, 'videoSettings.looksNone')}`;
         if (character.status !== 'training') {
-            text += `\n<i>Upload photos to add looks.</i>`;
+            text += `\n${t(lang, 'videoSettings.uploadPhotos')}`;
         }
     }
 
@@ -108,28 +108,28 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0):
 
     // Primary actions row — short `vs:` prefix, groupId stored in context
     keyboard.push([
-        { text: '🎙️ Voice', callback_data: 'vs:voice' },
-        { text: '✏️ Personality', callback_data: 'vs:edit_char' },
+        { text: t(lang, 'videoSettings.btnVoice'), callback_data: 'vs:voice' },
+        { text: t(lang, 'videoSettings.btnPersonality'), callback_data: 'vs:edit_char' },
     ]);
 
     // Training & sync — contextual buttons based on status
     if (character.status === 'training') {
         keyboard.push([
-            { text: '⏳ Check Training...', callback_data: 'vs:train_char' },
-            { text: '🔄 Sync Looks', callback_data: 'vs:sync_looks' },
+            { text: t(lang, 'videoSettings.checkTraining'), callback_data: 'vs:train_char' },
+            { text: t(lang, 'videoSettings.syncLooks'), callback_data: 'vs:sync_looks' },
         ]);
     } else if (character.status === 'ready') {
         keyboard.push([
-            { text: '🔄 Sync Looks', callback_data: 'vs:sync_looks' },
-            { text: '🧠 Re-Train', callback_data: 'vs:train_char' },
+            { text: t(lang, 'videoSettings.syncLooks'), callback_data: 'vs:sync_looks' },
+            { text: t(lang, 'videoSettings.reTrain'), callback_data: 'vs:train_char' },
         ]);
     } else {
-        keyboard.push([{ text: '🧠 Train Avatar', callback_data: 'vs:train_char' }]);
+        keyboard.push([{ text: t(lang, 'videoSettings.trainAvatar'), callback_data: 'vs:train_char' }]);
     }
 
     // Look management (only when trained)
     if (character.status === 'ready') {
-        keyboard.push([{ text: '➕ Add Look', callback_data: 'vs:add_look' }]);
+        keyboard.push([{ text: t(lang, 'videoSettings.addLook'), callback_data: 'vs:add_look' }]);
 
         // Remove buttons for looks on current page
         for (let i = 0; i < shownLooks.length; i++) {
@@ -138,22 +138,22 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0):
                 ? shownLooks[i].name.substring(0, 18) + '..'
                 : shownLooks[i].name;
             keyboard.push([
-                { text: `🗑️ Remove "${lookName}"`, callback_data: `vs:rl:${absIndex}` },
+                { text: `${t(lang, 'videoSettings.removeLook')} "${lookName}"`, callback_data: `vs:rl:${absIndex}` },
             ]);
         }
 
         // Look pagination
         if (totalLookPages > 1) {
             const nav: InlineButton[] = [];
-            if (safePage > 0) nav.push({ text: '◀️ Prev', callback_data: `vs:lp:${safePage - 1}` });
-            if (safePage < totalLookPages - 1) nav.push({ text: 'Next ▶️', callback_data: `vs:lp:${safePage + 1}` });
+            if (safePage > 0) nav.push({ text: t(lang, 'common.prev'), callback_data: `vs:lp:${safePage - 1}` });
+            if (safePage < totalLookPages - 1) nav.push({ text: t(lang, 'common.next'), callback_data: `vs:lp:${safePage + 1}` });
             keyboard.push(nav);
         }
     }
 
     // Danger zone + nav
-    keyboard.push([{ text: '🗑️ Remove Character', callback_data: 'vs:remove_char' }]);
-    keyboard.push([{ text: '◀️ Characters', callback_data: 'vs:characters' }]);
+    keyboard.push([{ text: t(lang, 'videoSettings.removeCharacter'), callback_data: 'vs:remove_char' }]);
+    keyboard.push([{ text: t(lang, 'videoSettings.btnCharactersList'), callback_data: 'vs:characters' }]);
 
     return { text, keyboard };
 }
@@ -161,15 +161,15 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0):
 /**
  * Character removal confirmation
  */
-export function renderRemoveCharacterConfirm(character: HeyGenCharacter): ViewResult {
+export function renderRemoveCharacterConfirm(character: HeyGenCharacter, lang: Lang = 'en'): ViewResult {
     return {
-        text: `⚠️ <b>Remove Character?</b>\n\n` +
-            `"${escapeHtml(character.name)}" will be removed from your local configuration.\n\n` +
-            `Note: The avatar group on HeyGen will NOT be deleted. You can manage it in the HeyGen dashboard.\n` +
-            `Existing video drafts using this character will not be affected.`,
+        text: `${t(lang, 'videoSettings.removeCharTitle')}\n\n` +
+            `"${escapeHtml(character.name)}" ${t(lang, 'videoSettings.removeCharDesc')}\n\n` +
+            `${t(lang, 'videoSettings.removeCharNote')}\n` +
+            `${t(lang, 'videoSettings.removeCharDrafts')}`,
         keyboard: [
-            [{ text: '🗑️ Yes, Remove', callback_data: `vsettings:confirm_remove_char:${character.heygenGroupId}` }],
-            [{ text: '❌ Cancel', callback_data: `vsettings:char_detail:${character.heygenGroupId}` }],
+            [{ text: t(lang, 'videoSettings.yesRemove'), callback_data: `vsettings:confirm_remove_char:${character.heygenGroupId}` }],
+            cancelRow(`vsettings:char_detail:${character.heygenGroupId}`, lang),
         ],
     };
 }
@@ -181,7 +181,8 @@ export function renderRemoveCharacterConfirm(character: HeyGenCharacter): ViewRe
 export function renderVoiceSelect(
     character: HeyGenCharacter,
     voices: Array<{ voice_id: string; name: string; language?: string; gender?: string }>,
-    page = 0
+    page = 0,
+    lang: Lang = 'en'
 ): ViewResult {
     const PAGE_SIZE = 8;
     const start = page * PAGE_SIZE;
@@ -190,11 +191,11 @@ export function renderVoiceSelect(
 
     const currentName = character.voiceId
         ? voices.find(v => v.voice_id === character.voiceId)?.name || character.voiceId.substring(0, 12)
-        : 'Not set';
+        : t(lang, 'video.notSet');
 
-    let text = `🎙️ <b>Select Voice for ${escapeHtml(character.name)}</b>\n\n`;
-    text += `Current: ${escapeHtml(currentName)}\n`;
-    text += `Showing ${start + 1}–${start + shown.length} of ${voices.length}`;
+    let text = `${t(lang, 'videoSettings.voiceSelectTitle').replace('{name}', escapeHtml(character.name))}\n\n`;
+    text += `${t(lang, 'videoSettings.currentVoice')} ${escapeHtml(currentName)}\n`;
+    text += `${t(lang, 'videoSettings.showing')} ${start + 1}–${start + shown.length} of ${voices.length}`;
 
     const keyboard: InlineButton[][] = [];
     for (let i = 0; i < shown.length; i++) {
@@ -202,7 +203,7 @@ export function renderVoiceSelect(
         const label = `${v.name}${v.gender ? ` (${v.gender})` : ''}${v.language ? ` [${v.language}]` : ''}`;
         const selected = v.voice_id === character.voiceId;
         keyboard.push([{
-            text: selected ? `✅ ${label}` : label,
+            text: selectedItemLabel(label, selected),
             callback_data: `vsettings:sv:${start + i}`,
         }]);
     }
@@ -210,12 +211,12 @@ export function renderVoiceSelect(
     // Pagination
     if (totalPages > 1) {
         const nav: InlineButton[] = [];
-        if (page > 0) nav.push({ text: '◀️ Prev', callback_data: `vsettings:vp:${page - 1}` });
-        if (page < totalPages - 1) nav.push({ text: 'Next ▶️', callback_data: `vsettings:vp:${page + 1}` });
+        if (page > 0) nav.push({ text: t(lang, 'common.prev'), callback_data: `vsettings:vp:${page - 1}` });
+        if (page < totalPages - 1) nav.push({ text: t(lang, 'common.next'), callback_data: `vsettings:vp:${page + 1}` });
         keyboard.push(nav);
     }
 
-    keyboard.push([{ text: '◀️ Back', callback_data: `vsettings:char_detail:${character.heygenGroupId}` }]);
+    keyboard.push([backButton(`vsettings:char_detail:${character.heygenGroupId}`, lang)]);
 
     return { text, keyboard };
 }
@@ -223,17 +224,17 @@ export function renderVoiceSelect(
 /**
  * Emotion selector for character
  */
-export function renderEmotionSelect(character: HeyGenCharacter): ViewResult {
+export function renderEmotionSelect(character: HeyGenCharacter, lang: Lang = 'en'): ViewResult {
     const emotions = ['Excited', 'Friendly', 'Serious', 'Soothing', 'Broadcaster'];
 
     return {
-        text: `😊 <b>Default Emotion for ${escapeHtml(character.name)}</b>\n\nSelect the default emotion for video scenes:`,
+        text: `${t(lang, 'videoSettings.emotionSelectTitle').replace('{name}', escapeHtml(character.name))}\n\n${t(lang, 'videoSettings.emotionSelectDesc')}`,
         keyboard: [
             ...emotions.map(e => [{
-                text: e === character.defaultEmotion ? `✅ ${e}` : e,
+                text: selectedItemLabel(e, e === character.defaultEmotion),
                 callback_data: `vs:set_emotion:${e}`,
             }]),
-            [{ text: '◀️ Back', callback_data: `vsettings:char_detail:${character.heygenGroupId}` }],
+            [backButton(`vsettings:char_detail:${character.heygenGroupId}`, lang)],
         ],
     };
 }
@@ -241,28 +242,28 @@ export function renderEmotionSelect(character: HeyGenCharacter): ViewResult {
 /**
  * Default video settings view
  */
-export function renderDefaultSettings(settings: VideoSettings): ViewResult {
+export function renderDefaultSettings(settings: VideoSettings, lang: Lang = 'en'): ViewResult {
     const d = settings.defaults;
 
     return {
-        text: `⚙️ <b>Default Video Settings</b>\n\n` +
-            `These values pre-populate new video configurations:\n\n` +
-            `📐 Aspect Ratio: ${d.aspectRatio || '16:9'}\n` +
-            `⏱️ Max Length: ${d.maxLength || 'No limit'}\n` +
-            `👤 Character: ${d.defaultCharacterId ? settings.characters.find(c => c.heygenGroupId === d.defaultCharacterId)?.name || d.defaultCharacterId : 'None'}\n` +
-            `🎨 Background: ${d.defaultBackground || '#ffffff'}\n` +
-            `📝 Captions: ${d.defaultCaptions !== undefined ? (d.defaultCaptions ? 'ON' : 'OFF') : 'OFF'}`,
+        text: `${t(lang, 'videoSettings.defaultsTitle')}\n\n` +
+            `${t(lang, 'videoSettings.defaultsDesc')}\n\n` +
+            `${t(lang, 'videoSettings.aspectRatio')} ${d.aspectRatio || '16:9'}\n` +
+            `${t(lang, 'videoSettings.maxLength')} ${d.maxLength || t(lang, 'videoSettings.noLimit')}\n` +
+            `${t(lang, 'videoSettings.characterDefault')} ${d.defaultCharacterId ? settings.characters.find(c => c.heygenGroupId === d.defaultCharacterId)?.name || d.defaultCharacterId : t(lang, 'videoSettings.none')}\n` +
+            `${t(lang, 'videoSettings.background')} ${d.defaultBackground || '#ffffff'}\n` +
+            `${t(lang, 'videoSettings.captionsLabel')} ${d.defaultCaptions !== undefined ? (d.defaultCaptions ? 'ON' : 'OFF') : 'OFF'}`,
         keyboard: [
             [
-                { text: '📐 Aspect Ratio', callback_data: 'vsettings:def_aspect' },
-                { text: '⏱️ Max Length', callback_data: 'vsettings:def_length' },
+                { text: t(lang, 'videoSettings.btnAspectRatio'), callback_data: 'vsettings:def_aspect' },
+                { text: t(lang, 'videoSettings.btnMaxLength'), callback_data: 'vsettings:def_length' },
             ],
-            [{ text: '👤 Character', callback_data: 'vsettings:def_character' }],
+            [{ text: t(lang, 'videoSettings.btnCharacter'), callback_data: 'vsettings:def_character' }],
             [
-                { text: '🎨 Background', callback_data: 'vsettings:def_bg' },
-                { text: `📝 Captions: ${d.defaultCaptions ? 'ON' : 'OFF'}`, callback_data: 'vsettings:def_captions_toggle' },
+                { text: t(lang, 'videoSettings.btnBackground'), callback_data: 'vsettings:def_bg' },
+                { text: `${t(lang, 'videoSettings.captionsLabel')} ${d.defaultCaptions ? 'ON' : 'OFF'}`, callback_data: 'vsettings:def_captions_toggle' },
             ],
-            [{ text: '◀️ Video Settings', callback_data: 'vsettings:home' }],
+            [backButton('vsettings:home', lang)],
         ],
     };
 }
@@ -270,16 +271,16 @@ export function renderDefaultSettings(settings: VideoSettings): ViewResult {
 /**
  * HeyGen account settings view
  */
-export function renderHeyGenSettings(hasApiKey: boolean): ViewResult {
+export function renderHeyGenSettings(hasApiKey: boolean, lang: Lang = 'en'): ViewResult {
     return {
-        text: `🔑 <b>HeyGen Account</b>\n\n` +
-            `API Key: ${hasApiKey ? '✅ Configured' : '❌ Not configured'}\n\n` +
-            `<b>Credit Costs:</b>\n` +
-            `• Avatar III: 1 credit per minute of video\n` +
-            `• Avatar IV: 6 credits per minute of video\n` +
-            `• Photo Avatar training: 4 credits per look`,
+        text: `${t(lang, 'videoSettings.heygenTitle')}\n\n` +
+            `${t(lang, 'videoSettings.apiKey')} ${hasApiKey ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n\n` +
+            `${t(lang, 'videoSettings.creditCosts')}\n` +
+            `${t(lang, 'videoSettings.avatarIII')}\n` +
+            `${t(lang, 'videoSettings.avatarIV')}\n` +
+            `${t(lang, 'videoSettings.photoAvatarTraining')}`,
         keyboard: [
-            [{ text: '◀️ Video Settings', callback_data: 'vsettings:home' }],
+            [backButton('vsettings:home', lang)],
         ],
     };
 }
@@ -287,16 +288,16 @@ export function renderHeyGenSettings(hasApiKey: boolean): ViewResult {
 /**
  * Instagram settings view
  */
-export function renderInstagramSettings(hasCredentials: boolean): ViewResult {
+export function renderInstagramSettings(hasCredentials: boolean, lang: Lang = 'en'): ViewResult {
     return {
-        text: `📸 <b>Instagram Settings</b>\n\n` +
-            `Business Account ID: ${hasCredentials ? '✅ Configured' : '❌ Not configured'}\n` +
-            `Access Token: ${hasCredentials ? '✅ Configured' : '❌ Not configured'}\n\n` +
+        text: `${t(lang, 'videoSettings.instagramTitle')}\n\n` +
+            `${t(lang, 'videoSettings.businessAccountId')} ${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n` +
+            `${t(lang, 'videoSettings.accessToken')} ${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n\n` +
             (hasCredentials
-                ? 'Instagram Reels publishing is enabled.'
-                : 'Configure your Instagram Business Account credentials to enable Reels publishing.'),
+                ? t(lang, 'videoSettings.instagramEnabled')
+                : t(lang, 'videoSettings.instagramDisabled')),
         keyboard: [
-            [{ text: '◀️ Video Settings', callback_data: 'vsettings:home' }],
+            [backButton('vsettings:home', lang)],
         ],
     };
 }
