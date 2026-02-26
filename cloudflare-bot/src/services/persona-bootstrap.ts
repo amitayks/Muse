@@ -9,9 +9,7 @@ import type { Env } from '../types';
 import { getTwitterAccount, getRecentTweetsByAccount, upsertTwitterAccountOverview } from './db';
 import { buildPersonaUserPrompt } from './persona-prompt';
 import { getPrompt } from './prompts';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+import { callGeminiText } from './gemini';
 
 interface PersonaResult {
     persona: string;
@@ -43,52 +41,16 @@ export async function bootstrapPersona(env: Env, accountId: string, chatId: stri
     const personaSystemPrompt = await getPrompt(env, chatId, 'persona', 'en');
 
     try {
-        const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [
-                    { role: 'user', parts: [{ text: userPrompt }] },
-                ],
-                systemInstruction: {
-                    parts: [{ text: personaSystemPrompt }],
-                },
-                generationConfig: {
-                    temperature: 0.5,
-                },
-                tools: [{
-                    googleSearch: {},
-                }],
-            }),
+        const responseText = await callGeminiText(env, personaSystemPrompt, userPrompt, {
+            temperature: 0.5,
+            jsonMode: false,
+            tools: [{ googleSearch: {} }],
         });
 
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[persona] Gemini API error:', response.status, error);
-            return false;
-        }
-
-        const data = await response.json() as {
-            candidates?: Array<{
-                content?: { parts?: Array<{ text?: string }> };
-            }>;
-        };
-
-        // With googleSearch enabled, response may have multiple parts (text + search grounding)
-        // Find the first text part and extract JSON from it
-        const parts = data.candidates?.[0]?.content?.parts || [];
-        const textPart = parts.find(p => p.text)?.text;
-        if (!textPart) {
-            console.error('[persona] No response text from Gemini');
-            return false;
-        }
-
         // Extract JSON from freeform response (may be wrapped in ```json blocks)
-        const jsonMatch = textPart.match(/```json\s*([\s\S]*?)```/) || textPart.match(/(\{[\s\S]*\})/);
+        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/) || responseText.match(/(\{[\s\S]*\})/);
         if (!jsonMatch) {
-            console.error('[persona] Could not extract JSON from Gemini response:', textPart.substring(0, 200));
+            console.error('[persona] Could not extract JSON from Gemini response:', responseText.substring(0, 200));
             return false;
         }
 

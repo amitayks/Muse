@@ -10,9 +10,7 @@ import { getPersonaCache, upsertPersonaCache } from './db';
 import { lookupUserByUsername } from './x';
 import { buildPersonaUserPrompt } from './persona-prompt';
 import { getPrompt } from './prompts';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+import { callGeminiText } from './gemini';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export interface CachedPersona {
@@ -77,39 +75,10 @@ export async function getOrCreatePersona(
         // Persona cache is global (no user context), use empty chatId
         const personaSystemPrompt = await getPrompt(env, '', 'persona', 'en');
 
-        const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [
-                    { role: 'user', parts: [{ text: userPrompt }] },
-                ],
-                systemInstruction: {
-                    parts: [{ text: personaSystemPrompt }],
-                },
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.5,
-                },
-                tools: [{
-                    googleSearch: {},
-                }],
-            }),
+        const text = await callGeminiText(env, personaSystemPrompt, userPrompt, {
+            temperature: 0.5,
+            tools: [{ googleSearch: {} }],
         });
-
-        if (!response.ok) {
-            console.error('[persona-cache] Gemini error:', response.status);
-            return null;
-        }
-
-        const data = await response.json() as {
-            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        };
-
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) return null;
 
         const result = JSON.parse(text) as {
             persona: string;

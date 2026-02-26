@@ -10,6 +10,7 @@ import { deleteMessage } from '../services/telegram';
 import { encrypt } from '../services/crypto';
 import { storeEncryptedKey, updateUser, getUser } from '../services/user-db';
 import { renderApiKeys } from '../views/settings';
+import { validateGeminiKey } from '../services/gemini';
 
 export async function settingsKeyInput(
     ctx: HandlerContext & { text: string; context: ChatContext }
@@ -28,15 +29,10 @@ export async function settingsKeyInput(
 
     if (service === 'gemini') {
         try {
-            const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${text}`;
-            const response = await fetch(testUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: 'Say "hello" in one word.' }] }] }),
-            });
-            if (!response.ok) {
+            const valid = await validateGeminiKey(text);
+            if (!valid) {
                 return {
-                    text: t(lang, 'settingsKeys.geminiValidationFailed').replace('{status}', String(response.status)),
+                    text: t(lang, 'settingsKeys.geminiValidationFailed').replace('{status}', 'invalid'),
                     keyboard: [[backButton]],
                 };
             }

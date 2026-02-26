@@ -9,9 +9,7 @@ import type { Env, DraftContent, TwitterTweet, TwitterAccountConfig } from '../t
 import { getTwitterAccountOverview, getRecentTweetsByAccount } from './db';
 import { buildRepostUserPrompt } from './repost-prompt';
 import { getPrompt } from './prompts';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+import { callGeminiText } from './gemini';
 
 /**
  * Generate repost content for a tweet
@@ -52,8 +50,6 @@ export async function generateRepostContent(
     const repostSystemPrompt = await getPrompt(env, tweet.chat_id, 'repost', language || 'en');
 
     try {
-        const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-
         // Build parts — text + optional image
         const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
             { text: userPrompt },
@@ -76,41 +72,7 @@ export async function generateRepostContent(
             }
         }
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [
-                    { role: 'user', parts },
-                ],
-                systemInstruction: {
-                    parts: [{ text: repostSystemPrompt }],
-                },
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.8,
-                },
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[repost-gen] Gemini API error:', response.status, error);
-            return null;
-        }
-
-        const data = await response.json() as {
-            candidates?: Array<{
-                content?: { parts?: Array<{ text?: string }> };
-            }>;
-        };
-
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-            console.error('[repost-gen] No response text from Gemini');
-            return null;
-        }
-
+        const text = await callGeminiText(env, repostSystemPrompt, parts, { temperature: 0.8 });
         const content = JSON.parse(text) as DraftContent;
 
         if (!content.tweets || content.tweets.length === 0) {

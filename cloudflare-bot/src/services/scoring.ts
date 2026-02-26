@@ -6,9 +6,7 @@ import type { Env, TwitterTweet } from '../types';
 import { updateTwitterTweet } from './db';
 import { buildScoringUserPrompt } from './scoring-prompt';
 import { getPrompt } from './prompts';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+import { callGeminiText } from './gemini';
 
 interface ScoringResult {
     scores: Array<{
@@ -36,43 +34,7 @@ export async function scoreTweetBatch(env: Env, tweets: TwitterTweet[]): Promise
     const scoringSystemPrompt = await getPrompt(env, chatId, 'scoring', 'en');
 
     try {
-        const url = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [
-                    { role: 'user', parts: [{ text: userPrompt }] },
-                ],
-                systemInstruction: {
-                    parts: [{ text: scoringSystemPrompt }],
-                },
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.3,
-                },
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[scoring] Gemini API error:', response.status, error);
-            return;
-        }
-
-        const data = await response.json() as {
-            candidates?: Array<{
-                content?: { parts?: Array<{ text?: string }> };
-            }>;
-        };
-
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-            console.error('[scoring] No response text from Gemini');
-            return;
-        }
-
+        const text = await callGeminiText(env, scoringSystemPrompt, userPrompt, { temperature: 0.3 });
         const result = JSON.parse(text) as ScoringResult;
 
         // Update each tweet with its score

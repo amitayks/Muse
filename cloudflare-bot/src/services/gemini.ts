@@ -139,23 +139,46 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
     return parseContentResponse(responseText);
 }
 
+export interface GeminiOptions {
+    temperature?: number;
+    jsonMode?: boolean;
+    tools?: Array<Record<string, unknown>>;
+}
+
 /**
- * Call Gemini text model with system instruction and user prompt
+ * Call Gemini text model with system instruction and user prompt.
+ * userPrompt accepts a string or an array of parts (for multimodal content).
  */
-async function callGeminiText(env: Env, systemPrompt: string, userPrompt: string): Promise<string> {
+export async function callGeminiText(
+    env: Env,
+    systemPrompt: string,
+    userPrompt: string | Array<{ text: string } | { inline_data: { mime_type: string; data: string } }>,
+    options?: GeminiOptions,
+): Promise<string> {
+    const temperature = options?.temperature ?? 0.7;
+    const jsonMode = options?.jsonMode ?? true;
+
+    const parts = typeof userPrompt === 'string' ? [{ text: userPrompt }] : userPrompt;
+
     const url = `${GEMINI_API}/models/${GEMINI_TEXT_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
+
+    const body: Record<string, unknown> = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+            temperature,
+            ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+        },
+    };
+
+    if (options?.tools) {
+        body.tools = options.tools;
+    }
 
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-            generationConfig: {
-                temperature: 0.7,
-                responseMimeType: 'application/json',
-            },
-        }),
+        body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -165,15 +188,28 @@ async function callGeminiText(env: Env, systemPrompt: string, userPrompt: string
     }
 
     const data = await response.json() as {
-        candidates?: [{ content?: { parts?: [{ text?: string }] } }];
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
 
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!content) {
+    const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+    if (!text) {
         throw new Error('No content generated');
     }
 
-    return content;
+    return text;
+}
+
+/**
+ * Validate a Gemini API key by making a lightweight test call.
+ */
+export async function validateGeminiKey(key: string): Promise<boolean> {
+    const url = `${GEMINI_API}/models/${GEMINI_TEXT_MODEL}:generateContent?key=${key}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'Say "hello" in one word.' }] }] }),
+    });
+    return response.ok;
 }
 
 /**

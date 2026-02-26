@@ -19,6 +19,7 @@ import {
     renderKeyError,
 } from '../views/onboarding';
 import { logInfo, logError, sanitizeError } from '../services/security';
+import { validateGeminiKey } from '../services/gemini';
 
 /**
  * Handle a message from a user in the onboarding flow.
@@ -128,17 +129,9 @@ async function handleGeminiKeyInput(
 
     // Validate with a test API call
     try {
-        const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
-        const response = await fetch(testUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: 'Say "hello" in one word.' }] }],
-            }),
-        });
-
-        if (!response.ok) {
-            const view = renderKeyError('Gemini', `API returned status ${response.status}. Please check your key.`);
+        const valid = await validateGeminiKey(key);
+        if (!valid) {
+            const view = renderKeyError('Gemini', 'API key is invalid. Please check your key.');
             await sendMessage(env, telegramChatId, view.text, view.keyboard);
             return;
         }
