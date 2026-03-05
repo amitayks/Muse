@@ -153,15 +153,11 @@ When `analyzeMedia` is enabled and a tweet has a `media_url`, the repost generat
 - **THEN** media is always included regardless of account config (no toggle for manual)
 
 ### Requirement: Account config analyzeMedia toggle
-The `TwitterAccountConfig` SHALL include an `analyzeMedia: boolean` field (default `true`) that controls whether media is sent to the AI during repost generation for that account's tweets.
+The `TwitterAccountConfig` SHALL include an `analyzeMedia: boolean` field (default `true`) that controls whether media is sent to the AI during repost generation for that account's tweets. The config SHALL also retain `relevanceThreshold`, `autoApprove`, and `batchPageSize`. Fields `includeHashtags`, `alwaysGenerateImage`, `singleImageProbability`, and `tone` are removed.
 
 #### Scenario: Toggle in account settings
 - **WHEN** a user views account configuration for a followed account
-- **THEN** an "Analyze Media" toggle button is visible alongside existing toggles (hashtags, image generation, etc.)
-
-#### Scenario: Toggle changes config
-- **WHEN** a user toggles the analyzeMedia setting
-- **THEN** the config is updated and subsequent repost generations for that account respect the new setting
+- **THEN** an "Analyze Media" toggle button is visible alongside remaining toggles (auto-approve, threshold, batch size)
 
 ### Requirement: Prompt awareness of attached images
 When media is included in the Gemini call, the repost prompt SHALL inform the AI that an image is attached and instruct it to reference visual content when relevant.
@@ -177,15 +173,15 @@ When media is included in the Gemini call, the repost prompt SHALL inform the AI
 ## Content Generation
 
 ### Requirement: Dedicated repost content generation prompt
-The system SHALL have a dedicated generation prompt in its own file (`services/repost-prompt.ts`), separate from the existing content generation prompt. It SHALL instruct Gemini to create a quote-tweet response that adds genuine commentary, insight, or value to the original tweet. The prompt SHALL receive: the original tweet text, the account persona overview (if available), and the last 20-50 stored tweets from that account for conversation continuity.
+The system SHALL have a dedicated generation prompt in its own file (`ai/repost-prompt.ts`), separate from the existing content generation prompt. It SHALL instruct Gemini to create a quote-tweet response that adds genuine commentary, insight, or value to the original tweet. The prompt SHALL receive: the original tweet text, the account persona overview (if available), and language setting. Tone and hashtag preferences are no longer passed — they are controlled by the skills/identity system.
 
 #### Scenario: Generate with full context
 - **WHEN** generation is triggered for a tweet from @vercel
-- **THEN** the prompt SHALL include the original tweet, @vercel's persona overview, and recent tweet history
+- **THEN** the prompt SHALL include the original tweet, @vercel's persona overview, and language setting
 
 #### Scenario: Generate without persona
 - **WHEN** generation is triggered and no persona overview exists for the account
-- **THEN** the prompt SHALL still generate content using only the tweet text and any available tweet history
+- **THEN** the prompt SHALL still generate content using only the tweet text
 
 ### Requirement: AI generation with context
 The system SHALL generate a quote-tweet draft using the repost generation prompt, with context including: the tweet text (full thread if applicable), author profile info, persona overview (from account or persona cache), and the selected tone.
@@ -254,69 +250,12 @@ When a repost draft is generated, the system SHALL create a row in the `drafts` 
 - **WHEN** the account has `autoApprove=true` and the tweet scores above threshold
 - **THEN** the draft SHALL be created with `status='approved'` instead of `'draft'`
 
-### Requirement: Image generation for repost drafts
-Repost draft image generation SHALL follow the same pattern as existing drafts: controlled by the account's `alwaysGenerateImage` and `singleImageProbability` config values. The generation prompt SHALL include an `imagePrompt` field in its response when image generation is applicable.
-
-#### Scenario: Image generation disabled
-- **WHEN** account config has `alwaysGenerateImage=false` and `singleImageProbability=0`
-- **THEN** no image prompt SHALL be generated
-
-#### Scenario: Probabilistic image generation
-- **WHEN** account config has `singleImageProbability=0.3`
-- **THEN** approximately 30% of generated drafts SHALL include an image prompt
-
 ### Requirement: Link twitter_tweet to draft after generation
 After a draft is created from a scored tweet, the `twitter_tweets` row SHALL have its `status` updated to `'drafted'` and `draft_id` set to the created draft's ID.
 
 #### Scenario: Tweet status after draft creation
 - **WHEN** a draft is created for tweet "123"
 - **THEN** `twitter_tweets` row "123" SHALL have `status='drafted'` and `draft_id` set
-
-## Tone
-
-### Requirement: Tone selection in preview
-The system SHALL display tone selector buttons in the preview step. Available tones: professional, casual, analytical, enthusiastic, witty, sarcastic. The currently selected tone SHALL be visually indicated.
-
-#### Scenario: User selects tone before generating
-- **WHEN** user taps a tone button in the preview
-- **THEN** the preview message updates with the new tone highlighted, and the selected tone is used for generation
-
-#### Scenario: Default tone for followed accounts
-- **WHEN** the tweet is from a followed account
-- **THEN** the default tone in the preview is set to that account's configured tone
-
-#### Scenario: Default tone for unknown accounts
-- **WHEN** the tweet is from an account not being followed
-- **THEN** the default tone is "professional"
-
-### Requirement: Sarcastic tone option
-The system SHALL add "sarcastic" to the available tone options in both the TwitterAccountConfig type and the manual repost tone selector. The sarcastic tone generates content that is sharp and incisive with Twitter-style humor — making strong points with wit and a respectful edge, never mean-spirited or personal.
-
-#### Scenario: Sarcastic tone in account config
-- **WHEN** user cycles through tone options in account settings
-- **THEN** the tone cycle includes "sarcastic" as an option: professional → casual → analytical → enthusiastic → witty → sarcastic → professional
-
-#### Scenario: Sarcastic tone in manual repost
-- **WHEN** user selects "sarcastic" tone in the manual repost preview
-- **THEN** the generated content uses the sarcastic tone prompt guidelines
-
-### Requirement: Sarcastic tone prompt guidelines
-The system SHALL include specific prompt instructions for the sarcastic tone that guide the AI to produce content that: makes sharp observations with humor, uses irony and wit effectively, maintains a respectful edge (never punches down), brings legitimate insights wrapped in cleverness, matches Twitter/X culture of smart commentary.
-
-#### Scenario: Sarcastic tone generation
-- **WHEN** content is generated with sarcastic tone
-- **THEN** the output contains witty commentary that makes a genuine point, is engaging and shareable, and does not mock the original author personally
-
-### Requirement: Tone label display
-The system SHALL display the sarcastic tone with the label "😏 Sarcastic" in account settings and the tone selector UI.
-
-#### Scenario: Tone display in account detail
-- **WHEN** an account has tone set to "sarcastic"
-- **THEN** the account detail view shows "😏 Sarcastic" as the tone label
-
-#### Scenario: Tone display in repost preview
-- **WHEN** "sarcastic" is selected in the manual repost tone selector
-- **THEN** the button shows "😏 Sarcastic" with visual indication of selection
 
 ## Post-Generation
 
