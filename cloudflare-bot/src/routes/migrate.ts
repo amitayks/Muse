@@ -1,6 +1,7 @@
 import type { Env } from '../types';
 import { verifyAdminSecret, secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../infra/security';
 import { seedDefaultPrompts } from '../ai/prompts';
+import { deleteWebhook } from '../integrations/webhook';
 
 /**
  * Helper: run each SQL statement individually using prepare().run() to avoid D1 exec() issues
@@ -405,5 +406,95 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
         const sanitized = sanitizeError(error);
         logError('Migration error:', error instanceof Error ? error.message : String(error));
         return secureErrorResponse(sanitized, 500);
+    }
+}
+
+/**
+ * Wipe ALL data for a specific user (or all users).
+ * Admin-only. Deletes from all user-scoped tables and cleans up GitHub webhooks.
+ * POST /wipe-user?chat_id=<id>  (omit chat_id to wipe ALL users)
+ */
+export async function handleWipeUser(request: Request, url: URL, env: Env): Promise<Response> {
+    if (!await verifyAdminSecret(request, env)) {
+        return secureJsonResponse({ error: 'Unauthorized' }, 401);
+    }
+
+    const chatId = url.searchParams.get('chat_id');
+
+    try {
+        const deleted: Record<string, number> = {};
+
+        // Clean up GitHub webhooks before deleting repos
+        const reposQuery = chatId
+            ? env.DB.prepare('SELECT owner, repo, webhook_id FROM repos WHERE chat_id = ?').bind(chatId)
+            : env.DB.prepare('SELECT owner, repo, webhook_id FROM repos');
+        const repos = await reposQuery.all<{ owner: string; repo: string; webhook_id: string | null }>();
+
+        let webhooksDeleted = 0;
+        for (const r of repos.results || []) {
+            if (r.webhook_id) {
+                try {
+                    await deleteWebhook(env, r.owner, r.repo, r.webhook_id);
+                    webhooksDeleted++;
+                } catch (e) {
+                    logInfo(`Failed to delete webhook for ${r.owner}/${r.repo}: ${e}`);
+                }
+            }
+        }
+        deleted.webhooks = webhooksDeleted;
+
+        // Tables with chat_id column
+        const tables = [
+            'users', 'drafts', 'published', 'repos', 'repo_overviews',
+            'video_drafts', 'video_published', 'video_presets',
+            'twitter_accounts', 'twitter_account_overviews', 'twitter_tweets',
+            'user_prompts',
+        ];
+
+        for (const table of tables) {
+            try {
+                // Check table exists
+                const exists = await env.DB.prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+                ).bind(table).first();
+                if (!exists) continue;
+
+                let result;
+                if (table === 'repo_overviews') {
+                    // repo_overviews links via repo_id, not chat_id
+                    if (chatId) {
+                        result = await env.DB.prepare(
+                            'DELETE FROM repo_overviews WHERE repo_id IN (SELECT id FROM repos WHERE chat_id = ?)'
+                        ).bind(chatId).run();
+                    } else {
+                        result = await env.DB.prepare('DELETE FROM repo_overviews').run();
+                    }
+                } else if (table === 'twitter_account_overviews') {
+                    if (chatId) {
+                        result = await env.DB.prepare(
+                            'DELETE FROM twitter_account_overviews WHERE account_id IN (SELECT id FROM twitter_accounts WHERE chat_id = ?)'
+                        ).bind(chatId).run();
+                    } else {
+                        result = await env.DB.prepare('DELETE FROM twitter_account_overviews').run();
+                    }
+                } else {
+                    if (chatId) {
+                        result = await env.DB.prepare(`DELETE FROM ${table} WHERE chat_id = ?`).bind(chatId).run();
+                    } else {
+                        result = await env.DB.prepare(`DELETE FROM ${table}`).run();
+                    }
+                }
+                deleted[table] = result.meta?.changes ?? 0;
+            } catch (tableError) {
+                logInfo(`Wipe table ${table} note: ${tableError}`);
+            }
+        }
+
+        const scope = chatId ? `user ${chatId}` : 'ALL users';
+        logInfo(`Wiped data for ${scope}:`, JSON.stringify(deleted));
+        return secureJsonResponse({ success: true, scope, deleted });
+    } catch (error) {
+        logError('Wipe user error:', error instanceof Error ? error.message : String(error));
+        return secureErrorResponse(sanitizeError(error), 500);
     }
 }

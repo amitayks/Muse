@@ -21,7 +21,7 @@ import {
 import { handleTelegramWebhook } from './routes/webhook';
 import { handleGitHubWebhookEndpoint } from './routes/github';
 import { handleSetup } from './routes/setup';
-import { handleMigrate } from './routes/migrate';
+import { handleMigrate, handleWipeUser } from './routes/migrate';
 import { handleTestX } from './routes/test-x';
 import { handleTestGenerate } from './routes/test-generate';
 import { handleImageRequest } from './routes/image';
@@ -67,6 +67,13 @@ export default {
                 const rateLimit = checkRateLimit(`admin:${clientIP}`, RATE_LIMITS.admin);
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
                 const response = await handleMigrate(request, env);
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
+            }
+
+            if (url.pathname === '/wipe-user' && request.method === 'POST') {
+                const rateLimit = checkRateLimit(`admin:${clientIP}`, RATE_LIMITS.admin);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
+                const response = await handleWipeUser(request, url, env);
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
             }
 

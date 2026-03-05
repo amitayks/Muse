@@ -45,23 +45,35 @@ export async function handleGitHubWebhook(
 
     const repoFullName = payload.repository?.full_name;
     if (!repoFullName) {
+        logInfo('[WEBHOOK] No repository in payload');
         return { processed: false, message: 'No repository in payload' };
     }
 
     const [owner, repo] = repoFullName.split('/');
+    logInfo(`[WEBHOOK] Incoming event="${event}" repo="${repoFullName}" owner="${owner}" repo="${repo}"`);
+    logInfo(`[WEBHOOK] Signature present: ${!!signature}, length: ${signature.length}`);
 
     // Look up all repos matching this owner/repo and verify signature against each
     const candidateRepos = await getAllReposByOwnerRepo(env, owner, repo);
+    logInfo(`[WEBHOOK] Found ${candidateRepos.length} candidate repo(s) in DB for ${owner}/${repo}`);
+    for (const c of candidateRepos) {
+        logInfo(`[WEBHOOK]   candidate: id=${c.id} owner="${c.owner}" repo="${c.repo}" chat_id=${c.chat_id} has_secret=${!!c.webhook_secret} watching=${c.is_watching}`);
+    }
+
     if (candidateRepos.length === 0) {
-        logInfo(`Ignoring webhook for unwatched repo: ${repoFullName}`);
+        logInfo(`[WEBHOOK] No repos found — ignoring webhook for: ${repoFullName}`);
         return { processed: false, message: 'Repo not watched' };
     }
 
     // Try each repo's webhook_secret until one verifies
     let matchedRepo = null;
     for (const candidate of candidateRepos) {
-        if (!candidate.webhook_secret) continue; // Skip legacy rows with NULL secret
+        if (!candidate.webhook_secret) {
+            logInfo(`[WEBHOOK]   skipping candidate ${candidate.id} — no webhook_secret`);
+            continue;
+        }
         const isValid = await verifyWebhookSignature(candidate.webhook_secret, body, signature);
+        logInfo(`[WEBHOOK]   candidate ${candidate.id} signature valid: ${isValid}`);
         if (isValid) {
             matchedRepo = candidate;
             break;
@@ -69,11 +81,11 @@ export async function handleGitHubWebhook(
     }
 
     if (!matchedRepo) {
-        logInfo('No matching webhook secret for:', repoFullName);
+        logInfo(`[WEBHOOK] No matching webhook secret for: ${repoFullName}`);
         return { processed: false, message: 'Invalid signature' };
     }
 
-    logInfo(`Received GitHub webhook: ${event} for ${repoFullName} (user: ${matchedRepo.chat_id})`);
+    logInfo(`[WEBHOOK] Matched repo ${matchedRepo.id} for ${repoFullName} (user: ${matchedRepo.chat_id}) — flow OK`);
 
     const config = parseRepoConfig(matchedRepo);
     const chatId = matchedRepo.chat_id;
