@@ -16,7 +16,7 @@ import {
     RATE_LIMITS,
     logInfo,
     logError,
-} from './services/security';
+} from './infra/security';
 
 import { handleTelegramWebhook } from './routes/webhook';
 import { handleGitHubWebhookEndpoint } from './routes/github';
@@ -29,7 +29,7 @@ import { handleHeyGenWebhook } from './routes/heygen-webhook';
 import { handleMediaRequest } from './routes/media';
 import { handlePromptEditorPage } from './routes/app';
 import { handleAdminPromptEditorPage } from './routes/app-admin';
-import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi } from './routes/api-prompt';
+import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi, handleIdentityApi } from './routes/api-prompt';
 
 
 export default {
@@ -146,6 +146,17 @@ export default {
                 const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleAcknowledgeApi(request, env);
+                return addRateLimitHeaders(
+                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
+                );
+            }
+
+            // Identity document API
+            if (url.pathname === '/api/identity') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleIdentityApi(request, env);
                 return addRateLimitHeaders(
                     addSecurityHeaders(response, { skipFrameOptions: true }),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,

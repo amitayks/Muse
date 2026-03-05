@@ -2,14 +2,14 @@ import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { setTimezone, getTimezone, getPageSize, updateChatState } from '../services/db';
+import { setTimezone, getTimezone, getPageSize, updateChatState } from '../data/db';
 import { respond } from '../core/respond';
 import { renderSettings } from '../views/settings';
-import { isValidTimezone } from '../services/timezone';
+import { isValidTimezone } from '../infra/timezone';
 import { cancelRow } from '../ui/components';
-import { sendMessage } from '../services/telegram';
-import { countStalePrompts } from '../services/prompts';
-import { isAdmin } from '../services/security';
+import { sendMessage } from '../integrations/telegram';
+import { countStalePrompts } from '../ai/prompts';
+import { isAdmin } from '../infra/security';
 
 export async function timezoneInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: input } = ctx;

@@ -6,7 +6,7 @@
  */
 
 import type { Env } from '../types';
-import { addSecurityHeaders, logError, sanitizeError } from '../services/security';
+import { addSecurityHeaders, logError, sanitizeError } from '../infra/security';
 
 export async function handleMediaRequest(url: URL, env: Env): Promise<Response> {
     const key = decodeURIComponent(url.pathname.replace('/media/', ''));

@@ -1,10 +1,10 @@
 import type { HandlerContext } from '../core/router';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getRepoByOwnerRepo, getRepo, upsertRepoOverview } from '../services/db';
-import { fetchRepoReadme, fetchRecentMergedPRs } from '../services/github';
-import { extractRepoOverview } from '../services/gemini';
-import { sendMessage } from '../services/telegram';
+import { getRepoByOwnerRepo, getRepo, upsertRepoOverview } from '../data/db';
+import { fetchRepoReadme, fetchRecentMergedPRs } from '../integrations/github';
+import { extractRepoOverview } from '../ai/gemini';
+import { sendMessage } from '../integrations/telegram';
 
 export async function overviewCommand(ctx: HandlerContext) {
     const { env, chatId, args } = ctx;

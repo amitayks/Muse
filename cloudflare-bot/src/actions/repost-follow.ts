@@ -7,8 +7,8 @@
 import type { ActionHandler } from '../core/router';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { createTwitterAccount } from '../services/db';
-import { editMessage } from '../services/telegram';
+import { createTwitterAccount } from '../data/db';
+import { editMessage } from '../integrations/telegram';
 
 /** Follow the account — create twitter account entry */
 export const rpFollowAction: ActionHandler = async (ctx) => {

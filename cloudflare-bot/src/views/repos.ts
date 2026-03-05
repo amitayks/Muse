@@ -5,7 +5,7 @@
 import type { Env, ViewResult, InlineButton } from '../types';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
-import { getRepos, getRepo, parseRepoConfig, getRepoOverview } from '../services/db';
+import { getRepos, getRepo, parseRepoConfig, getRepoOverview, getPageSize } from '../data/db';
 import { renderError } from './home';
 import { homeButton, backButton, backHomeRow, addButtonRow, paginationRows, toggleButton, confirmDeleteView, emptyListView, inputPromptView, cancelRow } from '../ui/components';
 
@@ -23,10 +23,10 @@ export async function renderReposList(env: Env, chatId: string, page = 0, lang: 
         );
     }
 
-    const limit = 10;
-    const offset = page * limit;
-    const totalPages = Math.ceil(allRepos.length / limit);
-    const repos = allRepos.slice(offset, offset + limit);
+    const pageSize = await getPageSize(env, chatId);
+    const offset = page * pageSize;
+    const totalPages = Math.ceil(allRepos.length / pageSize);
+    const repos = allRepos.slice(offset, offset + pageSize);
 
     const repoList = repos.map((r, i) => {
         const status = r.is_watching ? '👁' : '⏸️';
@@ -66,14 +66,10 @@ export async function renderRepoDetail(env: Env, chatId: string, repoId: string,
     const config = parseRepoConfig(repo);
     const watchStatus = repo.is_watching ? t(lang, 'repos.watching') : t(lang, 'repos.paused');
 
-    const hashtagOn = config.includeHashtags;
     const prOn = config.watchPRs;
     const pushOn = config.watchPushes;
-    const imgOn = config.alwaysGenerateThreadImage;
-    const hashtagIcon = hashtagOn ? '✅' : '❌';
     const prIcon = prOn ? '✅' : '❌';
     const pushIcon = pushOn ? '✅' : '❌';
-    const imgIcon = imgOn ? '✅' : '❌';
     // Fetch overview for display
     const overview = await getRepoOverview(env, repoId, chatId);
     let overviewSection: string;
@@ -103,39 +99,25 @@ ${t(lang, 'repos.noOverviewYet').replace('{repo}', `${repo.owner}/${repo.repo}`)
         text: `📦 <b>${repo.owner}/${repo.repo}</b>
 ${watchStatus}
 
-${t(lang, 'repos.contentSettings')}
-${hashtagIcon} ${t(lang, 'repos.hashtags')}: <b>${config.includeHashtags ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
-
 ${t(lang, 'repos.watchSettings')}
 ${prIcon} ${t(lang, 'repos.prs')}: <b>${config.watchPRs ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
 ${pushIcon} ${t(lang, 'repos.pushes')}: <b>${config.watchPushes ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
 ${t(lang, 'repos.branches')} <b>${config.branches.join(', ')}</b>
-
-${t(lang, 'repos.imageSettings')}
-${imgIcon} ${t(lang, 'repos.threadImage')}: <b>${config.alwaysGenerateThreadImage ? t(lang, 'repos.always') : t(lang, 'common.off')}</b>
-${t(lang, 'repos.singleProb')} <b>${Math.round(config.singleTweetImageProbability * 100)}%</b>
 ${overviewSection}
 
 ${t(lang, 'common.tapToChange')}`,
         keyboard: [
             [
-                toggleButton('repos.tags', hashtagOn, `config:hashtags:${repo.id}`, lang),
-            ],
-            [
                 toggleButton('repos.prs', prOn, `config:watchPRs:${repo.id}`, lang),
                 toggleButton('repos.push', pushOn, `config:watchPushes:${repo.id}`, lang),
-            ],
-            [
-                toggleButton('repos.img', imgOn, `config:threadImage:${repo.id}`, lang),
-                { text: `🎲 ${Math.round(config.singleTweetImageProbability * 100)}%`, callback_data: `config:singleImage:${repo.id}` },
             ],
             ...overviewButtons,
             [
                 repo.is_watching
                     ? { text: t(lang, 'repos.stopWatching'), callback_data: `action:unwatch:${repo.id}`, style: 'danger' as const }
                     : { text: t(lang, 'repos.startWatching'), callback_data: `action:watch:${repo.id}`, style: 'success' as const },
+                { text: t(lang, 'common.delete'), callback_data: `action:delete_repo:${repo.id}`, style: 'danger' },
             ],
-            [{ text: t(lang, 'common.delete'), callback_data: `action:delete_repo:${repo.id}`, style: 'danger' }],
             backHomeRow('view:repos', lang),
         ],
     };

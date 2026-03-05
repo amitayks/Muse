@@ -12,14 +12,14 @@
  */
 
 import type { Env, TwitterAccount, TwitterAccountConfig, TwitterTweet, ThreadBufferEntry } from '../types';
-import { getUserTweets, searchConversation, getMediaUrl, lookupUserByUsername, type XTweet } from './x';
+import { getUserTweets, searchConversation, getMediaUrl, lookupUserByUsername, type XTweet } from '../integrations/x';
 import {
     getWatchingTwitterAccountsByUser,
     updateTwitterAccount,
     parseTwitterAccountConfig,
     createTwitterTweet,
     updateTwitterTweet,
-} from './db';
+} from '../data/db';
 
 const ACCOUNTS_PER_CYCLE = 10;
 
@@ -81,7 +81,7 @@ export async function pollUserAccounts(env: Env, chatId: string): Promise<void> 
 
     // Score tweets
     try {
-        const { scoreTweetBatch } = await import('./scoring');
+        const { scoreTweetBatch } = await import('../ai/scoring');
         await scoreTweetBatch(env, allPendingTweets.map(t => t.tweet));
     } catch (error) {
         console.error('[poller] Scoring failed:', error);

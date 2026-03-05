@@ -1,6 +1,6 @@
 /**
  * Admin WebApp route — serves the admin prompt editor HTML page.
- * Separate from user editor, shows all 7 prompt types with language toggle and push-to-users.
+ * Separate from user editor, shows all 9 skill types with language toggle and push-to-users.
  * No X-Frame-Options header so Telegram can load it in an iframe.
  */
 
@@ -133,13 +133,15 @@ export function handleAdminPromptEditorPage(): Response {
     <h1>📝 System Prompts (Admin)</h1>
     <div class="prompt-select-wrap">
       <select class="prompt-select" id="promptSelect">
-        <option value="content">Content — Tweet generation from commits</option>
-        <option value="edit">Edit — Refine existing tweets</option>
-        <option value="repost">Repost — Quote tweet responses</option>
-        <option value="video">Video — AI avatar script writing</option>
-        <option value="overview">Overview — Repo analysis &amp; summary</option>
-        <option value="persona">Persona — Twitter account research</option>
-        <option value="scoring">Scoring — Tweet relevance scoring</option>
+        <option value="work-progress">/work-progress — Tweet generation from commits</option>
+        <option value="refine">/refine — Refine existing tweets</option>
+        <option value="quote">/quote — Quote tweet responses</option>
+        <option value="video">/video — AI avatar script writing</option>
+        <option value="know-my-project">/know-my-project — Repo analysis &amp; summary</option>
+        <option value="persona">/persona — Twitter account research</option>
+        <option value="what-i-like">/what-i-like — Tweet relevance scoring</option>
+        <option value="who-am-i">/who-am-i — Identity document</option>
+        <option value="image-gen">/image-gen — Visual direction module</option>
       </select>
     </div>
     <div class="lang-toggle">
@@ -177,7 +179,7 @@ export function handleAdminPromptEditorPage(): Response {
   var editor = document.getElementById('editor');
   var adminError = document.getElementById('adminError');
   var promptSelect = document.getElementById('promptSelect');
-  var currentType = 'content';
+  var currentType = 'work-progress';
   var currentLang = 'en';
   var apiBase = location.origin;
   var isAdminVerified = false;
@@ -319,7 +321,7 @@ export function handleAdminPromptEditorPage(): Response {
 
   // Show editor and load initial prompt
   editor.style.display = 'block';
-  loadPrompt('content', 'en');
+  loadPrompt('work-progress', 'en');
 })();
 </script>
 </body>

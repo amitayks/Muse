@@ -1,12 +1,12 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent } from '../types';
 import type { Lang } from '../ui/strings';
-import { getDraft, getChatState, parseContext, updateChatState, getTimezone } from '../services/db';
-import { ensureImage } from '../services/storage';
-import { editMessage, editMessageCaption, deleteMessage, sendPhoto } from '../services/telegram';
+import { getDraft, getChatState, parseContext, updateChatState, getTimezone } from '../data/db';
+import { ensureImage } from '../data/storage';
+import { editMessage, editMessageCaption, deleteMessage, sendPhoto } from '../integrations/telegram';
 import { renderDraftDetail, renderError } from '../views';
 import { truncateHtml } from '../ui/utils';
-import { sanitizeError } from '../services/security';
+import { sanitizeError } from '../infra/security';
 
 export async function draftDetailAction(ctx: HandlerContext & { value: string }): Promise<ViewResult | void> {
     const lang = (ctx.lang || 'en') as Lang;

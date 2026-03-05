@@ -2,7 +2,7 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getDraft, getTimezone } from '../services/db';
+import { getDraft, getTimezone } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderDraftDetail, renderError, renderSuccess } from '../views';
 

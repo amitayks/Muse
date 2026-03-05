@@ -1,6 +1,6 @@
 import type { Env } from '../types';
 import { handleGitHubWebhook } from '../handlers/github-webhook';
-import { secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../services/security';
+import { secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../infra/security';
 
 export async function handleGitHubWebhookEndpoint(request: Request, env: Env): Promise<Response> {
     try {

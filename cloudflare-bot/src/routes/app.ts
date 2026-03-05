@@ -38,7 +38,7 @@ export function handlePromptEditorPage(): Response {
   }
   .tab {
     flex: 1; padding: 10px 0; text-align: center;
-    font-size: 14px; font-weight: 500;
+    font-size: 12px; font-weight: 500;
     cursor: pointer; border: none; background: transparent;
     color: var(--hint); transition: all 0.2s;
   }
@@ -119,6 +119,12 @@ export function handlePromptEditorPage(): Response {
     color: var(--hint); gap: 12px;
   }
   .blocked-icon { font-size: 48px; }
+
+  .identity-hint {
+    font-size: 13px; line-height: 1.5; color: var(--hint);
+    margin-bottom: 10px; padding: 10px 12px;
+    background: var(--secondary-bg); border-radius: 10px;
+  }
 </style>
 </head>
 <body>
@@ -131,11 +137,15 @@ export function handlePromptEditorPage(): Response {
   <div id="editor" style="display:none;">
     <h1>📝 System Prompts</h1>
     <div class="tabs">
-      <button class="tab active" data-type="content">Content</button>
-      <button class="tab" data-type="edit">Edit</button>
-      <button class="tab" data-type="repost">Repost</button>
+      <button class="tab active" data-type="work-progress">/work-progress</button>
+      <button class="tab" data-type="refine">/refine</button>
+      <button class="tab" data-type="quote">/quote</button>
+      <button class="tab" data-type="identity">My Identity</button>
     </div>
-    <div><span class="badge default" id="badge">Default</span></div>
+    <div id="promptMeta"><span class="badge default" id="badge">Default</span></div>
+    <div class="identity-hint" id="identityHint" style="display:none;">
+      This is your identity document — it tells the AI who you are, your writing style, and personality. It's used in every post the bot creates for you.
+    </div>
     <div class="stale-banner" id="staleBanner">
       <div class="stale-text">⚠️ New default available</div>
       <div class="stale-actions">
@@ -147,9 +157,13 @@ export function handlePromptEditorPage(): Response {
     <div class="default-overlay-header" id="defaultOverlayHeader">Current Default:</div>
     <div class="default-overlay" id="defaultOverlay"></div>
     <textarea id="textarea" placeholder="Loading..."></textarea>
-    <div class="actions">
+    <div class="actions" id="promptActions">
       <button class="btn btn-secondary" id="resetBtn">Reset to Default</button>
       <button class="btn btn-primary" id="saveBtn">Save</button>
+    </div>
+    <div class="actions" id="identityActions" style="display:none;">
+      <div></div>
+      <button class="btn btn-primary" id="saveIdentityBtn">Save Identity</button>
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -180,8 +194,14 @@ export function handlePromptEditorPage(): Response {
   var keepMineBtn = document.getElementById('keepMineBtn');
   var defaultOverlay = document.getElementById('defaultOverlay');
   var defaultOverlayHeader = document.getElementById('defaultOverlayHeader');
+  var promptMeta = document.getElementById('promptMeta');
+  var identityHint = document.getElementById('identityHint');
+  var promptActions = document.getElementById('promptActions');
+  var identityActions = document.getElementById('identityActions');
+  var saveIdentityBtn = document.getElementById('saveIdentityBtn');
   var tabs = document.querySelectorAll('.tab');
-  var currentType = 'content';
+  var currentType = 'work-progress';
+  var isIdentityMode = false;
   var currentIsStale = false;
   var userLang = null;
   var apiBase = location.origin;
@@ -309,12 +329,82 @@ export function handlePromptEditorPage(): Response {
     }
   });
 
+  function setMode(identity) {
+    isIdentityMode = identity;
+    promptMeta.style.display = identity ? 'none' : 'block';
+    identityHint.style.display = identity ? 'block' : 'none';
+    promptActions.style.display = identity ? 'none' : 'flex';
+    identityActions.style.display = identity ? 'flex' : 'none';
+    staleBanner.style.display = 'none';
+    defaultOverlay.style.display = 'none';
+    defaultOverlayHeader.style.display = 'none';
+  }
+
+  async function loadIdentity() {
+    setMode(true);
+    textarea.value = '';
+    textarea.placeholder = 'Loading...';
+    setStatus('Loading...', 'loading');
+    saveIdentityBtn.disabled = true;
+
+    try {
+      var lang = userLang || 'en';
+      var res = await fetch(apiBase + '/api/identity?lang=' + lang, {
+        headers: authHeaders()
+      });
+      if (!res.ok) throw new Error('Failed to load');
+      var data = await res.json();
+      textarea.value = data.content || '';
+      textarea.placeholder = data.hasIdentity
+        ? 'Edit your identity document...'
+        : 'No identity document yet. Use the bot settings to analyze your tweets, or write your own here.';
+      setStatus('', '');
+      autoResize();
+    } catch (e) {
+      setStatus('Failed to load identity', 'error');
+      textarea.placeholder = 'Error loading identity';
+    }
+    saveIdentityBtn.disabled = false;
+  }
+
+  // Save Identity
+  saveIdentityBtn.addEventListener('click', async function() {
+    var content = textarea.value.trim();
+    if (!content) { setStatus('Content cannot be empty', 'error'); return; }
+
+    saveIdentityBtn.disabled = true;
+    setStatus('Saving...', 'loading');
+
+    try {
+      var lang = userLang || 'en';
+      var res = await fetch(apiBase + '/api/identity', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ lang: lang, content: content })
+      });
+      if (!res.ok) {
+        var err = await res.json();
+        throw new Error(err.error || 'Save failed');
+      }
+      setStatus('Identity saved!', 'success');
+    } catch (e) {
+      setStatus(e.message || 'Save failed', 'error');
+    }
+    saveIdentityBtn.disabled = false;
+  });
+
   // Tab switching
   tabs.forEach(function(tab) {
     tab.addEventListener('click', function() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
-      loadPrompt(tab.dataset.type);
+      var type = tab.dataset.type;
+      if (type === 'identity') {
+        loadIdentity();
+      } else {
+        setMode(false);
+        loadPrompt(type);
+      }
     });
   });
 
@@ -379,7 +469,7 @@ export function handlePromptEditorPage(): Response {
   } catch(e) { userLang = 'en'; }
 
   // Load initial tab
-  loadPrompt('content');
+  loadPrompt('work-progress');
 })();
 </script>
 </body>

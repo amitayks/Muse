@@ -3,8 +3,8 @@
  */
 
 import type { Env, ViewResult, ChatContext } from '../types';
-import { sendMessage, editMessage } from '../services/telegram';
-import { updateChatState } from '../services/db';
+import { sendMessage, editMessage } from '../integrations/telegram';
+import { updateChatState } from '../data/db';
 
 export interface RespondOpts {
     /** If true, edit the existing message instead of sending a new one */

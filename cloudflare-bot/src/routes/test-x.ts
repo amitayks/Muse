@@ -1,5 +1,5 @@
 import type { Env } from '../types';
-import { verifyAdminSecret, addSecurityHeaders, secureJsonResponse } from '../services/security';
+import { verifyAdminSecret, addSecurityHeaders, secureJsonResponse } from '../infra/security';
 
 export async function handleTestX(request: Request, env: Env): Promise<Response> {
     if (!verifyAdminSecret(request, env)) {
@@ -8,7 +8,7 @@ export async function handleTestX(request: Request, env: Env): Promise<Response>
             headers: { 'Content-Type': 'application/json' },
         }));
     }
-    const { verifyCredentials } = await import('../services/x');
+    const { verifyCredentials } = await import('../integrations/x');
     const isValid = await verifyCredentials(env);
     return secureJsonResponse({
         success: isValid,

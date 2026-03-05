@@ -4,9 +4,9 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, HeyGenCharacter, VideoSettings, InlineButton } from '../types';
-import { getVideoSettings, updateVideoSettings, updateChatState, getChatState, parseContext } from '../services/db';
-import { sendMessage, editMessage } from '../services/telegram';
-import { logInfo, logError } from '../services/security';
+import { getVideoSettings, updateVideoSettings, updateChatState, getChatState, parseContext } from '../data/db';
+import { sendMessage, editMessage } from '../integrations/telegram';
+import { logInfo, logError } from '../infra/security';
 import { errorWithBackView, selectedItemLabel, backButton, cancelRow } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { escapeHtml } from '../ui/utils';
@@ -175,7 +175,7 @@ export async function videoSettingsAction(
             if (char.status === 'training') {
                 // Already marked as training — check if looks now exist (= training done)
                 try {
-                    const { getAvatarGroupLooks, listTalkingPhotos } = await import('../services/heygen');
+                    const { getAvatarGroupLooks, listTalkingPhotos } = await import('../integrations/heygen');
 
                     // Prefer group-specific endpoint
                     let photos = await getAvatarGroupLooks(env, groupId);
@@ -229,7 +229,7 @@ export async function videoSettingsAction(
             }
 
             try {
-                const { trainAvatarGroup } = await import('../services/heygen');
+                const { trainAvatarGroup } = await import('../integrations/heygen');
                 await trainAvatarGroup(env, groupId);
                 char.status = 'training';
                 await updateVideoSettings(env, chatId, settings);
@@ -264,7 +264,7 @@ export async function videoSettingsAction(
             if (!char) return renderCharacterList(settings);
 
             try {
-                const { getAvatarGroupLooks, listTalkingPhotos } = await import('../services/heygen');
+                const { getAvatarGroupLooks, listTalkingPhotos } = await import('../integrations/heygen');
 
                 // Try group-specific endpoint first (only returns this character's looks)
                 let photos = await getAvatarGroupLooks(env, groupId);
@@ -347,7 +347,7 @@ export async function videoSettingsAction(
             if (!char) return renderCharacterList(settings);
 
             try {
-                const { trainAvatarGroup } = await import('../services/heygen');
+                const { trainAvatarGroup } = await import('../integrations/heygen');
                 await trainAvatarGroup(env, groupId);
                 char.status = 'training';
                 await updateVideoSettings(env, chatId, settings);
@@ -453,7 +453,7 @@ export async function videoSettingsAction(
             if (!char) return renderCharacterList(settings);
 
             try {
-                const { listVoices } = await import('../services/heygen');
+                const { listVoices } = await import('../integrations/heygen');
                 const voices = await listVoices(env);
 
                 // Store voices and groupId in context for indexed lookup
@@ -484,7 +484,7 @@ export async function videoSettingsAction(
             if (!char) return renderCharacterList(settings);
 
             try {
-                const { listVoices } = await import('../services/heygen');
+                const { listVoices } = await import('../integrations/heygen');
                 const voices = await listVoices(env);
                 return renderVoiceSelect(char, voices, page);
             } catch {
@@ -686,7 +686,7 @@ async function handleTrainingComplete(
     charName: string,
     settingsOverride?: import('../types').VideoSettings,
 ): Promise<void> {
-    const { getAvatarGroupLooks, listTalkingPhotos } = await import('../services/heygen');
+    const { getAvatarGroupLooks, listTalkingPhotos } = await import('../integrations/heygen');
     const settings = settingsOverride || await getVideoSettings(env, chatId);
     const char = settings.characters.find(c => c.heygenGroupId === groupId);
 
@@ -746,7 +746,7 @@ async function pollTrainingStatus(
     const backBtn: import('../types').InlineButton[][] = [[{ text: '◀️ Back', callback_data: `vsettings:char_detail:${groupId}` }]];
 
     try {
-        const { getAvatarGroupLooks, listTalkingPhotos } = await import('../services/heygen');
+        const { getAvatarGroupLooks, listTalkingPhotos } = await import('../integrations/heygen');
 
         for (let i = 0; i < MAX_POLLS; i++) {
             await new Promise(r => setTimeout(r, i === 0 ? 5_000 : POLL_INTERVAL_MS));

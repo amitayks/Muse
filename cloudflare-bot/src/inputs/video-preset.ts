@@ -4,8 +4,8 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext, VideoConfig } from '../types';
-import { createVideoPreset, updateChatState } from '../services/db';
-import { sendMessage } from '../services/telegram';
+import { createVideoPreset, updateChatState } from '../data/db';
+import { sendMessage } from '../integrations/telegram';
 import { renderVideoConfig } from '../views';
 
 export async function videoPresetNameInput(ctx: HandlerContext & { text: string; context: ChatContext }) {

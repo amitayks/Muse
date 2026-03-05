@@ -3,15 +3,15 @@ import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { updateChatState, createDraft, scheduleDraft, getDraft, getTimezone, getPageSize } from '../services/db';
-import { getContentSource } from '../services/github';
-import { generateContent } from '../services/gemini';
+import { updateChatState, createDraft, scheduleDraft, getDraft, getTimezone, getPageSize } from '../data/db';
+import { getContentSource } from '../integrations/github';
+import { generateContent } from '../ai/gemini';
 import { renderError, renderSuccess } from '../views';
 import { renderDraftDetail, renderDraftsList } from '../views/drafts';
 import type { DraftListType } from '../views/drafts';
 import { cancelRow } from '../ui/components';
-import { sendMessage } from '../services/telegram';
-import { toUTC, formatLocalTime } from '../services/timezone';
+import { sendMessage } from '../integrations/telegram';
+import { toUTC, formatLocalTime } from '../infra/timezone';
 import { scheduleCancelTarget } from '../actions/schedule';
 
 export async function scheduleInput(ctx: HandlerContext & { text: string; context: ChatContext }) {

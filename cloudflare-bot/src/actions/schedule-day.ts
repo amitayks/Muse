@@ -12,7 +12,7 @@ import { cancelRow } from '../ui/components';
 import { homeButton } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getChatState, parseContext, updateChatState } from '../services/db';
+import { getChatState, parseContext, updateChatState } from '../data/db';
 import { scheduleCancelTarget } from './schedule';
 
 export async function schedDayAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {

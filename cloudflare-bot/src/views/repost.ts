@@ -1,23 +1,12 @@
 /**
- * Repost views — prompt, preview with tone selector, generating
+ * Repost views — prompt, preview, generating
  */
 
-import type { ViewResult, InlineButton, TwitterAccountConfig } from '../types';
+import type { ViewResult, InlineButton } from '../types';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
 import { escapeHtml } from '../ui/utils';
-import { cancelRow, selectedItemLabel } from '../ui/components';
-
-function getToneLabels(lang: Lang): Record<string, string> {
-    return {
-        professional: t(lang, 'repost.tonePro'),
-        casual: t(lang, 'repost.toneCasual'),
-        analytical: t(lang, 'repost.toneAnalytical'),
-        enthusiastic: t(lang, 'repost.toneEnthusiastic'),
-        witty: t(lang, 'repost.toneWitty'),
-        sarcastic: t(lang, 'repost.toneSarcastic'),
-    };
-}
+import { cancelRow } from '../ui/components';
 
 export function renderRepostPrompt(lang: Lang = 'en'): ViewResult {
     return {
@@ -42,11 +31,10 @@ export function renderRepostPreview(params: {
     isThread: boolean;
     threadCount?: number;
     metrics?: { likes: number; retweets: number; quotes: number; replies: number };
-    selectedTone: TwitterAccountConfig['tone'];
     existingDraftId?: string | null;
     hasImage?: boolean;
 }, lang: Lang = 'en'): ViewResult {
-    const { tweetId, username, displayName, tweetText, isThread, threadCount, metrics, selectedTone, existingDraftId, hasImage } = params;
+    const { tweetId, username, displayName, tweetText, isThread, threadCount, metrics, existingDraftId, hasImage } = params;
 
     const nameDisplay = displayName ? `${displayName} (@${username})` : `@${username}`;
     const preview = tweetText.length > 200 ? tweetText.substring(0, 197) + '...' : tweetText;
@@ -58,36 +46,14 @@ export function renderRepostPreview(params: {
         metricsLine = `\n❤️ ${formatNum(metrics.likes)} · 🔄 ${formatNum(metrics.retweets)} · 💬 ${formatNum(metrics.replies)} · 🔗 ${formatNum(metrics.quotes)}`;
     }
 
-    const toneLabels = getToneLabels(lang);
-
     let text = `${t(lang, 'repost.previewTitle')}
 
 <b>${escapeHtml(nameDisplay)}</b>${threadLabel}${imageLabel}${metricsLine}
 
-${escapeHtml(preview)}
-
-${t(lang, 'repost.toneLabel')} ${toneLabels[selectedTone] || selectedTone}
-${t(lang, 'repost.toneSelectHint')}`;
+${escapeHtml(preview)}`;
 
     // Build keyboard
     const keyboard: InlineButton[][] = [];
-
-    // Tone selector row (split into 2 rows of 3)
-    const tones = Object.entries(toneLabels);
-    const toneRow1: InlineButton[] = [];
-    const toneRow2: InlineButton[] = [];
-
-    for (let i = 0; i < tones.length; i++) {
-        const [key, label] = tones[i];
-        const isSelected = key === selectedTone;
-        const btn: InlineButton = {
-            text: selectedItemLabel(label, isSelected),
-            callback_data: `rp_tone:${key}:${tweetId}`,
-        };
-        if (i < 3) toneRow1.push(btn);
-        else toneRow2.push(btn);
-    }
-    keyboard.push(toneRow1, toneRow2);
 
     // Duplicate warning + generate
     if (existingDraftId) {

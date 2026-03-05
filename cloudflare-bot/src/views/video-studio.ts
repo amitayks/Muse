@@ -4,8 +4,8 @@
 
 import type { Env, ViewResult, InlineButton, VideoDraft, VideoConfig, VideoScriptResponse } from '../types';
 import { DEFAULT_VIDEO_CONFIG } from '../types';
-import { getWatchingRepos, countVideoDraftsByRepo, getVideoDraftsByRepo, getVideoDraft } from '../services/db';
-import { estimateCreditCost } from '../services/heygen';
+import { getWatchingRepos, countVideoDraftsByRepo, getVideoDraftsByRepo, getVideoDraft } from '../data/db';
+import { estimateCreditCost } from '../integrations/heygen';
 import { homeButton, backButton, cancelRow } from '../ui/components';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';

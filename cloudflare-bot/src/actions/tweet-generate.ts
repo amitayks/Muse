@@ -11,9 +11,9 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getTwitterTweet, getTwitterAccount, updateTwitterTweet, getScoredTweetsByBatchMessage, createDraft, parseTwitterAccountConfig } from '../services/db';
-import { generateRepostContent } from '../services/repost-generate';
-import { editMessage, sendMessage } from '../services/telegram';
+import { getTwitterTweet, getTwitterAccount, updateTwitterTweet, getScoredTweetsByBatchMessage, createDraft, parseTwitterAccountConfig, getPageSize } from '../data/db';
+import { generateRepostContent } from '../ai/repost-generate';
+import { editMessage, sendMessage } from '../integrations/telegram';
 import { renderError } from '../views';
 
 export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string }): Promise<ViewResult | void> {
@@ -92,16 +92,15 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
     // Fetch accounts for all tweets
     const accountIds = [...new Set(tweets.map(t => t.account_id))];
     const accounts = new Map<string, import('../types').TwitterAccount>();
-    let pageSize = 5;
 
     for (const accountId of accountIds) {
         const account = await getTwitterAccount(env, accountId, chatId);
         if (account) {
             accounts.set(accountId, account);
-            const config = parseTwitterAccountConfig(account);
-            pageSize = config.batchPageSize || 5;
         }
     }
+
+    const pageSize = await getPageSize(env, chatId);
 
     // Always rebuild page 1 (user can navigate to other pages)
     const totalPages = Math.ceil(tweets.length / pageSize);

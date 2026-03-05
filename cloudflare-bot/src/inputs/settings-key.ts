@@ -6,11 +6,11 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult, ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { deleteMessage } from '../services/telegram';
-import { encrypt } from '../services/crypto';
-import { storeEncryptedKey, updateUser, getUser } from '../services/user-db';
+import { deleteMessage } from '../integrations/telegram';
+import { encrypt } from '../infra/crypto';
+import { storeEncryptedKey, updateUser, getUser } from '../data/user-db';
 import { renderApiKeys } from '../views/settings';
-import { validateGeminiKey } from '../services/gemini';
+import { validateGeminiKey } from '../ai/gemini';
 
 export async function settingsKeyInput(
     ctx: HandlerContext & { text: string; context: ChatContext }

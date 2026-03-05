@@ -11,11 +11,11 @@ import type { Lang } from '../ui/strings';
 import { cancelRow } from '../ui/components';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { updateChatState, scheduleDraft, getTimezone, getPageSize } from '../services/db';
+import { updateChatState, scheduleDraft, getTimezone, getPageSize } from '../data/db';
 import { renderDraftDetail, renderDraftsList } from '../views/drafts';
 import type { DraftListType } from '../views/drafts';
-import { sendMessage } from '../services/telegram';
-import { toUTC, formatLocalTime } from '../services/timezone';
+import { sendMessage } from '../integrations/telegram';
+import { toUTC, formatLocalTime } from '../infra/timezone';
 import { scheduleCancelTarget } from '../actions/schedule';
 
 export async function scheduleTimeInput(ctx: HandlerContext & { text: string; context: ChatContext }) {

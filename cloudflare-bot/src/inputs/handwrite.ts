@@ -5,9 +5,9 @@
 import type { HandlerContext } from '../core/router';
 import type { ChatContext, HandwriteState, HandwriteTweet } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState, getChatState, parseContext } from '../services/db';
-import { editMessage } from '../services/telegram';
-import { storeUserMedia } from '../services/storage';
+import { updateChatState, getChatState, parseContext } from '../data/db';
+import { editMessage } from '../integrations/telegram';
+import { storeUserMedia } from '../data/storage';
 import { renderCompose } from '../views';
 
 interface HandwriteInputContext extends HandlerContext {

@@ -168,16 +168,10 @@ export const en = {
         paused: '⏸️ Paused',
 
         // Detail
-        contentSettings: '<b>Content Settings:</b>',
-        hashtags: 'Hashtags',
         watchSettings: '<b>Watch Settings:</b>',
         prs: 'PRs',
         pushes: 'Pushes',
         branches: '📌 Branches:',
-        imageSettings: '<b>Image Settings:</b>',
-        threadImage: 'Thread Image',
-        always: 'Always',
-        singleProb: '🎲 Single Prob:',
 
         // Overview
         projectOverview: '<b>Project Overview:</b>',
@@ -201,8 +195,6 @@ export const en = {
         deleteRepoMsg: 'Are you sure you want to delete:\n<code>{repo}</code>\n\nThis will also remove the webhook from GitHub.',
 
         // Config
-        tags: 'Tags',
-        img: 'Img',
         push: 'Push',
 
         // Overview edit
@@ -235,18 +227,7 @@ export const en = {
         // Detail
         repostSettings: '<b>Repost Settings:</b>',
         threshold: '🎯 Threshold:',
-        tone: '🎭 Tone:',
         autoApprove: 'Auto-approve:',
-        batchPage: '📋 Batch page:',
-        alwaysImage: 'Always Image:',
-
-        // Tone labels
-        toneProfessional: '💼 Professional',
-        toneCasual: '😎 Casual',
-        toneAnalytical: '🔬 Analytical',
-        toneEnthusiastic: '🔥 Enthusiastic',
-        toneWitty: '🧠 Witty',
-        toneSarcastic: '😏 Sarcastic',
 
         // Persona
         personaLabel: '<b>Persona:</b>',
@@ -268,10 +249,8 @@ export const en = {
         deleteAccountMsg: 'Are you sure you want to stop following:\n<b>@{username}</b>\n\nThis will also delete all stored tweets and persona data for this account.',
 
         // Config toggles
-        tags: 'Tags',
-        img: 'Img',
         auto: 'Auto',
-        mediaAi: 'Media AI',
+        analyzeMedia: 'Analyze Media',
     },
 
     drafts: {
@@ -407,26 +386,16 @@ export const en = {
         promptTitle: '🔄 <b>Manual RePost</b>',
         promptDesc: 'Send me a tweet URL to create a repost.',
         supportedFormats: '<b>Supported formats:</b>',
-        promptHint: "I'll fetch the tweet, show you a preview, and let you choose a tone before generating.",
+        promptHint: "I'll fetch the tweet, show you a preview, then generate a quote tweet.",
 
         // Preview
         previewTitle: '🔄 <b>RePost Preview</b>',
-        toneLabel: '<b>Tone:</b>',
-        toneSelectHint: 'Tap a tone below, then Generate:',
         hasImage: '🖼 Has image — will be analyzed by AI',
         duplicateWarning: '⚠️ <b>Duplicate Detected</b>\n\nYou already have a repost draft for this tweet.',
         viewExisting: '👁 View Existing',
         generateAnyway: '⚡ Generate Anyway',
         generateRepost: '⚡ Generate RePost',
         openTweet: '🔗 Open Tweet',
-
-        // Tone labels
-        tonePro: '💼 Pro',
-        toneCasual: '😎 Casual',
-        toneAnalytical: '🔬 Analytical',
-        toneEnthusiastic: '🔥 Enthus',
-        toneWitty: '🧠 Witty',
-        toneSarcastic: '😏 Sarcastic',
 
         // Generating
         generatingTitle: '⏳ <b>Generating repost for @{username}...</b>',

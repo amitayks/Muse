@@ -2,7 +2,7 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateDraftStatus } from '../services/db';
+import { updateDraftStatus } from '../data/db';
 import { renderSuccess } from '../views';
 
 export async function unscheduleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {

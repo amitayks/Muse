@@ -6,15 +6,59 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getUser } from '../services/user-db';
-import { updateChatState } from '../services/db';
+import { getUser } from '../data/user-db';
+import { updateChatState } from '../data/db';
 import { renderApiKeys } from '../views/settings';
+import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
+import { hydrateEnv } from '../data/user-keys';
 
 export async function settingsKeysAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult | void> {
     const { env, chatId, value, extra } = ctx;
     const lang = (ctx.lang || 'en') as Lang;
+
+    if (value === 'reanalyze_identity') {
+        const user = await getUser(env, chatId);
+        if (user?.has_x !== 1) {
+            return {
+                text: '⚠️ X/Twitter credentials are required for identity analysis.\n\nPlease connect your X account first from API Keys settings.',
+                keyboard: [
+                    [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                ],
+            };
+        }
+
+        // Return analyzing message — actual analysis happens asynchronously
+        try {
+            const userEnv = await hydrateEnv(env, chatId);
+            const result = await analyzeIdentity(userEnv, chatId, user?.language || lang);
+
+            if (result) {
+                return {
+                    text: '✅ <b>Identity re-analysis complete!</b>\n\nYour Identity Document has been updated. You can view and edit it in the WebApp.',
+                    keyboard: [
+                        [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                    ],
+                };
+            } else {
+                return {
+                    text: '⚠️ Re-analysis failed. No tweets were found or an error occurred.\n\nYour existing identity remains unchanged.',
+                    keyboard: [
+                        [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                    ],
+                };
+            }
+        } catch (error) {
+            console.error('[settings] Identity re-analysis failed:', error);
+            return {
+                text: '⚠️ Re-analysis failed. Please try again later.\n\nYour existing identity remains unchanged.',
+                keyboard: [
+                    [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                ],
+            };
+        }
+    }
 
     if (value === 'keys') {
         const user = await getUser(env, chatId);

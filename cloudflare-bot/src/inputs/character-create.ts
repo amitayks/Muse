@@ -6,9 +6,9 @@ import type { HandlerContext } from '../core/router';
 import type { ChatContext, HeyGenCharacter } from '../types';
 import type { Lang } from '../ui/strings';
 import { cancelRow } from '../ui/components';
-import { updateChatState, getVideoSettings, updateVideoSettings } from '../services/db';
-import { sendMessage, getFileUrl } from '../services/telegram';
-import { logInfo, logError } from '../services/security';
+import { updateChatState, getVideoSettings, updateVideoSettings } from '../data/db';
+import { sendMessage, getFileUrl } from '../integrations/telegram';
+import { logInfo, logError } from '../infra/security';
 
 interface CharacterCreateInputContext extends HandlerContext {
     text: string;
@@ -50,7 +50,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
             const imageData = await response.arrayBuffer();
 
             // Upload to HeyGen
-            const { uploadAsset } = await import('../services/heygen');
+            const { uploadAsset } = await import('../integrations/heygen');
             const assetId = await uploadAsset(env, imageData, `character_${Date.now()}.jpg`);
 
             cc.assetIds.push(assetId);
@@ -99,7 +99,7 @@ export async function characterCreateInput(ctx: CharacterCreateInputContext): Pr
 
         let currentStep = 'init';
         try {
-            const { createAvatarGroup, addLooksToGroup, trainAvatarGroup } = await import('../services/heygen');
+            const { createAvatarGroup, addLooksToGroup, trainAvatarGroup } = await import('../integrations/heygen');
 
             await sendMessage(env, chatId,
                 `⏳ Creating character "<b>${name}</b>" with ${cc.assetIds.length} photo${cc.assetIds.length !== 1 ? 's' : ''}... This may take a moment.`,

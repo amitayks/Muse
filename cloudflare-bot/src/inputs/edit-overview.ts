@@ -1,7 +1,7 @@
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
-import { updateChatState, updateOverviewField } from '../services/db';
-import { sendMessage } from '../services/telegram';
+import { updateChatState, updateOverviewField } from '../data/db';
+import { sendMessage } from '../integrations/telegram';
 
 export async function editOverviewInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text, context } = ctx;

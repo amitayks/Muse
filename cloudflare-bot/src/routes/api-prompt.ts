@@ -1,13 +1,13 @@
 /**
  * API route for prompt CRUD — authenticated via Telegram initData.
  *
- * GET    /api/prompt?type=content&lang=en  → read prompt
+ * GET    /api/prompt?type=work-progress&lang=en  → read prompt
  * POST   /api/prompt  { type, lang, content }  → save custom prompt
- * DELETE /api/prompt?type=content&lang=en  → reset to default
+ * DELETE /api/prompt?type=work-progress&lang=en  → reset to default
  */
 
 import type { Env } from '../types';
-import { validateInitData } from '../services/telegram-auth';
+import { validateInitData } from '../integrations/telegram-auth';
 import {
     getPrompt,
     getUserPromptStatus,
@@ -18,12 +18,12 @@ import {
     countStalePrompts,
     acknowledgeStalePrompt,
     pushDefaultPrompt,
-    USER_EDITABLE_PROMPTS,
-    ADMIN_EDITABLE_PROMPTS,
-    ALL_PROMPTS,
+    USER_EDITABLE_SKILLS,
+    ADMIN_EDITABLE_SKILLS,
+    ALL_SKILLS,
     type PromptType,
-} from '../services/prompts';
-import { isAdmin } from '../services/security';
+} from '../ai/prompts';
+import { isAdmin } from '../infra/security';
 
 function jsonResponse(data: unknown, status = 200): Response {
     return new Response(JSON.stringify(data), {
@@ -59,15 +59,15 @@ async function authenticate(request: Request, env: Env): Promise<string | Respon
 }
 
 function isUserEditableType(type: string): type is PromptType {
-    return USER_EDITABLE_PROMPTS.includes(type as PromptType);
+    return USER_EDITABLE_SKILLS.includes(type as PromptType);
 }
 
 function isAdminEditableType(type: string): type is PromptType {
-    return ADMIN_EDITABLE_PROMPTS.includes(type as PromptType);
+    return ADMIN_EDITABLE_SKILLS.includes(type as PromptType);
 }
 
 function isAnyPromptType(type: string): type is PromptType {
-    return ALL_PROMPTS.includes(type as PromptType);
+    return ALL_SKILLS.includes(type as PromptType);
 }
 
 export async function handlePromptApi(request: Request, env: Env): Promise<Response> {
@@ -205,6 +205,54 @@ export async function handleAcknowledgeApi(request: Request, env: Env): Promise<
 
     await acknowledgeStalePrompt(env, chatId, type, lang);
     return jsonResponse({ success: true });
+}
+
+/**
+ * Identity document API — lets users view/edit their personal identity document.
+ * GET  /api/identity?lang=en  → read identity doc (from user_prompts where type='who-am-i')
+ * POST /api/identity { lang, content }  → save identity doc
+ */
+export async function handleIdentityApi(request: Request, env: Env): Promise<Response> {
+    if (request.method === 'OPTIONS') return jsonResponse(null, 204);
+
+    const authResult = await authenticate(request, env);
+    if (authResult instanceof Response) return authResult;
+    const chatId = authResult;
+
+    if (request.method === 'GET') {
+        const url = new URL(request.url);
+        const lang = url.searchParams.get('lang') || 'en';
+
+        // Read directly from user_prompts (not getPrompt, which falls back to default skill prompt)
+        const row = await env.DB.prepare(
+            'SELECT content FROM user_prompts WHERE chat_id = ? AND prompt_type = ? AND language = ?'
+        ).bind(chatId, 'who-am-i', lang).first<{ content: string }>();
+
+        return jsonResponse({
+            content: row?.content ?? '',
+            hasIdentity: !!row,
+        });
+    }
+
+    if (request.method === 'POST') {
+        let body: { lang?: string; content?: string };
+        try {
+            body = await request.json() as typeof body;
+        } catch {
+            return jsonResponse({ error: 'Invalid JSON body' }, 400);
+        }
+
+        const { lang = 'en', content } = body;
+
+        if (!content || content.trim().length === 0) {
+            return jsonResponse({ error: 'Content cannot be empty' }, 400);
+        }
+
+        await saveUserPrompt(env, chatId, 'who-am-i', lang, content);
+        return jsonResponse({ success: true });
+    }
+
+    return jsonResponse({ error: 'Method not allowed' }, 405);
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { Env } from '../types';
-import { validateR2Key, verifySignedImageUrl, addSecurityHeaders, sanitizeError, logError } from '../services/security';
+import { validateR2Key, verifySignedImageUrl, addSecurityHeaders, sanitizeError, logError } from '../infra/security';
 
 export async function handleImageRequest(url: URL, env: Env): Promise<Response> {
     const key = url.pathname.replace('/image/', '');

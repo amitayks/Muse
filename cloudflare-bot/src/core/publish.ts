@@ -3,9 +3,9 @@
  */
 
 import type { Env, Draft, DraftContent } from '../types';
-import { generateImage } from '../services/gemini';
-import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia } from '../services/x';
-import { updateDraftStatus, createPublished } from '../services/db';
+import { generateImage } from '../ai/gemini';
+import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia } from '../integrations/x';
+import { updateDraftStatus, createPublished } from '../data/db';
 
 export interface PublishResult {
     success: true;

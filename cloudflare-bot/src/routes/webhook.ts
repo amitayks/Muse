@@ -9,10 +9,10 @@ import {
     parseJsonBody,
     logInfo,
     logError,
-} from '../services/security';
-import { sendMessage, answerCallback } from '../services/telegram';
-import { createUser, getUserCount } from '../services/user-db';
-import { hydrateEnv } from '../services/user-keys';
+} from '../infra/security';
+import { sendMessage, answerCallback } from '../integrations/telegram';
+import { createUser, getUserCount } from '../data/user-db';
+import { hydrateEnv } from '../data/user-keys';
 import { handleOnboardingMessage, handleOnboardingCallback } from '../commands/onboarding';
 
 export async function handleTelegramWebhook(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {

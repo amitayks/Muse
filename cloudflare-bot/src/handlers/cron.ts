@@ -18,12 +18,12 @@ import {
     updateVideoDraft,
     createVideoPublished,
     getUserLanguage,
-} from '../services/db';
-import { sendMessage, sendVideo } from '../services/telegram';
+} from '../data/db';
+import { sendMessage, sendVideo } from '../integrations/telegram';
 import { publishDraft } from '../core/publish';
-import { sanitizeError, logInfo, logError } from '../services/security';
-import { formatLocalTime } from '../services/timezone';
-import { hydrateEnv } from '../services/user-keys';
+import { sanitizeError, logInfo, logError } from '../infra/security';
+import { formatLocalTime } from '../infra/timezone';
+import { hydrateEnv } from '../data/user-keys';
 import { pollUserAccounts } from '../services/poller';
 
 // ==================== COORDINATOR ====================
@@ -186,11 +186,11 @@ export async function checkUserStaleVideos(env: Env, chatId: string, lang: Lang 
 
         for (const draft of staleDrafts) {
             try {
-                const { checkVideoStatus, downloadVideo } = await import('../services/heygen');
+                const { checkVideoStatus, downloadVideo } = await import('../integrations/heygen');
                 const status = await checkVideoStatus(env, draft.heygen_video_id!);
 
                 if (status.status === 'completed' && status.video_url) {
-                    const { storeVideo } = await import('../services/storage');
+                    const { storeVideo } = await import('../data/storage');
                     const { data, contentType } = await downloadVideo(env, status.video_url);
                     const r2Key = await storeVideo(env, draft.id, data, contentType);
 

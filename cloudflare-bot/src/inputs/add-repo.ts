@@ -3,13 +3,13 @@ import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { updateChatState, createRepo, getRepoByOwnerRepo, updateRepo, upsertRepoOverview } from '../services/db';
-import { validateRepo, fetchRepoReadme, fetchRecentMergedPRs } from '../services/github';
-import { createWebhook } from '../services/webhook';
-import { sendMessage } from '../services/telegram';
-import { extractRepoOverview } from '../services/gemini';
+import { updateChatState, createRepo, getRepoByOwnerRepo, updateRepo, upsertRepoOverview } from '../data/db';
+import { validateRepo, fetchRepoReadme, fetchRecentMergedPRs } from '../integrations/github';
+import { createWebhook } from '../integrations/webhook';
+import { sendMessage } from '../integrations/telegram';
+import { extractRepoOverview } from '../ai/gemini';
 import { renderRepoDetail, renderError } from '../views';
-import { sanitizeError, logInfo, logError } from '../services/security';
+import { sanitizeError, logInfo, logError } from '../infra/security';
 
 export async function addRepoInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: input } = ctx;

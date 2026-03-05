@@ -6,8 +6,8 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getTwitterAccount, updateTwitterAccount, deleteTwitterAccount } from '../services/db';
-import { editMessage } from '../services/telegram';
+import { updateChatState, getTwitterAccount, updateTwitterAccount, deleteTwitterAccount } from '../data/db';
+import { editMessage } from '../integrations/telegram';
 import { renderAccountDetail, renderAddAccount, renderDeleteAccountConfirm, renderAccountsList } from '../views/accounts';
 import { renderError } from '../views';
 
@@ -80,7 +80,7 @@ export async function bootstrapAction(ctx: HandlerContext & { extra?: string }):
     );
 
     try {
-        const { bootstrapPersona } = await import('../services/persona-bootstrap');
+        const { bootstrapPersona } = await import('../ai/persona-bootstrap');
         const success = await bootstrapPersona(ctx.env, accountId, ctx.chatId);
 
         if (success) {

@@ -1,15 +1,15 @@
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState, createDraft, getTimezone, getRepoByOwnerRepo, applyOverviewPatches } from '../services/db';
-import { getContentSource } from '../services/github';
-import { generateContent } from '../services/gemini';
-import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../services/telegram';
-import { ensureImage } from '../services/storage';
+import { updateChatState, createDraft, getTimezone, getRepoByOwnerRepo, applyOverviewPatches } from '../data/db';
+import { getContentSource } from '../integrations/github';
+import { generateContent } from '../ai/gemini';
+import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
+import { ensureImage } from '../data/storage';
 import { renderGenerating, renderDraftDetail } from '../views';
 import { truncateHtml } from '../ui/utils';
 import { cancelRow } from '../ui/components';
-import { sanitizeError } from '../services/security';
+import { sanitizeError } from '../infra/security';
 
 export async function commitShaInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: sha } = ctx;

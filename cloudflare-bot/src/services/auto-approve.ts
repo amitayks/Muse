@@ -6,7 +6,7 @@
  */
 
 import type { Env, TwitterAccount, TwitterTweet } from '../types';
-import { parseTwitterAccountConfig, updateTwitterTweet, createDraft } from './db';
+import { parseTwitterAccountConfig, updateTwitterTweet, createDraft } from '../data/db';
 
 /**
  * Process auto-approve for accounts that have it enabled
@@ -54,7 +54,7 @@ async function generateAndApproveDraft(
     account: TwitterAccount,
     config: import('../types').TwitterAccountConfig
 ): Promise<void> {
-    const { generateRepostContent } = await import('./repost-generate');
+    const { generateRepostContent } = await import('../ai/repost-generate');
 
     const imageUrl = config.analyzeMedia ? tweet.media_url : null;
     // Pass undefined for personaOverride — lets repost-generate fetch from account overview

@@ -9,7 +9,7 @@ import { homeButton, backButton, backHomeRow, selectedItemLabel } from '../ui/co
 
 export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en', workerUrl?: string, staleCount = 0, isAdminUser = false): ViewResult {
     const displayTz = timezone === 'UTC' ? t(lang, 'settings.utcDefault') : timezone;
-    const langLabel = lang === 'en' ? '🌐 🇺🇸 English' : '🌐 🇮🇱 עברית';
+    const langLabel = lang === 'en' ? '🌐 🇮🇱 עברית' : '🌐 🇺🇸 English' ;
 
     const keyboard: InlineButton[][] = [
         [{ text: langLabel, callback_data: 'config:language' }],
@@ -29,6 +29,9 @@ export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en'
     } else {
         console.warn('WORKER_URL not configured — System Prompts WebApp button hidden');
     }
+
+    // Re-analyze identity button
+    keyboard.push([{ text: '🪞 Re-analyze my identity', callback_data: 'settings:reanalyze_identity' }]);
 
     keyboard.push(
         [{ text: t(lang, 'settings.btnTimezone'), callback_data: 'view:timezone_select' }],

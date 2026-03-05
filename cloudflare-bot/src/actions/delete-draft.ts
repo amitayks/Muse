@@ -6,8 +6,8 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import type { DraftListType } from '../views/drafts';
-import { getDraft, deleteDraft, getChatState, parseContext, updateChatState, getTimezone, getPageSize, countDrafts, countDraftsBySource } from '../services/db';
-import { deleteMessage, sendMessage } from '../services/telegram';
+import { getDraft, deleteDraft, getChatState, parseContext, updateChatState, getTimezone, getPageSize, countDrafts, countDraftsBySource } from '../data/db';
+import { deleteMessage, sendMessage } from '../integrations/telegram';
 import { renderDeleteDraftConfirm, renderDraftDetail, renderDraftCategories, renderDraftsList, renderError } from '../views';
 
 export async function deleteDraftAction(

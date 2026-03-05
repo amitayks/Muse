@@ -3,8 +3,8 @@ import type { ViewResult } from '../types';
 import { homeButton } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getTimezone, getPageSize, getVideoDraft } from '../services/db';
-import { isAdmin } from '../services/security';
+import { updateChatState, getTimezone, getPageSize, getVideoDraft } from '../data/db';
+import { isAdmin } from '../infra/security';
 import { renderHome, renderHelp, renderDraftCategories, renderDraftsList, renderGeneratePrompt, renderSchedulePrompt, renderDeletePrompt, renderReposList, renderCompose, renderSettings, renderPageSizeSelect, renderTimezoneSelect, renderVideoStudioHome, renderVideoRepoHome, renderVideoList, renderVideoDetail, renderAccountsList, renderAddAccount } from '../views';
 
 export async function viewChangeAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
@@ -76,7 +76,7 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             await updateChatState(env, chatId, { current_view: 'settings', context: null });
             const tz = await getTimezone(env, chatId);
             const ps = await getPageSize(env, chatId);
-            const { countStalePrompts } = await import('../services/prompts');
+            const { countStalePrompts } = await import('../ai/prompts');
             const staleCount = await countStalePrompts(env, chatId);
             const isAdminUser = isAdmin(chatId, env);
             return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
@@ -136,7 +136,7 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             return renderVideoDetail(env, chatId, videoDraftId, lang);
         }
         case 'video_settings': {
-            const { getVideoSettings } = await import('../services/db');
+            const { getVideoSettings } = await import('../data/db');
             const { renderVideoSettingsHome } = await import('../views/video-settings');
             const vSettings = await getVideoSettings(env, chatId);
             await updateChatState(env, chatId, { current_view: 'video_settings', context: null });

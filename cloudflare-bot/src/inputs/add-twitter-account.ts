@@ -10,9 +10,9 @@ import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { cancelRow } from '../ui/components';
-import { createTwitterAccount, updateChatState } from '../services/db';
+import { createTwitterAccount, updateChatState } from '../data/db';
 import { renderAccountsList } from '../views/accounts';
-import { sendMessage } from '../services/telegram';
+import { sendMessage } from '../integrations/telegram';
 import { respond } from '../core/respond';
 
 export const addTwitterAccountInput: InputHandler = async (
@@ -32,7 +32,7 @@ export const addTwitterAccountInput: InputHandler = async (
 
     try {
         // Try to look up the user via X API
-        const { lookupUserByUsername } = await import('../services/x');
+        const { lookupUserByUsername } = await import('../integrations/x');
         let userId: string | undefined;
         let displayName: string | undefined;
 

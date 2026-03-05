@@ -8,9 +8,9 @@
 
 import type { Env, TelegramCallbackQuery } from '../types';
 import type { Lang } from '../ui/strings';
-import { editMessage, editMessageCaption, answerCallback, sendMessage, deleteMessage } from '../services/telegram';
-import { getUserLanguage } from '../services/db';
-import { sanitizeError } from '../services/security';
+import { editMessage, editMessageCaption, answerCallback, sendMessage, deleteMessage } from '../integrations/telegram';
+import { getUserLanguage } from '../data/db';
+import { sanitizeError } from '../infra/security';
 import { callbackHandlers } from '../core/router';
 import { renderError } from '../views';
 import { truncateHtml } from '../ui/utils';

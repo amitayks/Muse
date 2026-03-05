@@ -3,9 +3,9 @@
  */
 
 import type { Env, TelegramUpdate, TelegramCallbackQuery } from '../types';
-import { sendMessage, deleteMessage, editMessage } from '../services/telegram';
-import { encrypt } from '../services/crypto';
-import { getUser, updateUser, storeEncryptedKey } from '../services/user-db';
+import { sendMessage, deleteMessage, editMessage } from '../integrations/telegram';
+import { encrypt } from '../infra/crypto';
+import { getUser, updateUser, storeEncryptedKey } from '../data/user-db';
 import {
     renderWelcome,
     renderLearnMore,
@@ -15,11 +15,17 @@ import {
     renderXSuccess,
     renderGitHubTokenPrompt,
     renderGitHubSuccess,
+    renderIdentityStep,
+    renderIdentityAnalyzing,
+    renderIdentitySuccess,
+    renderIdentityFailed,
     renderComplete,
     renderKeyError,
 } from '../views/onboarding';
-import { logInfo, logError, sanitizeError } from '../services/security';
-import { validateGeminiKey } from '../services/gemini';
+import { logInfo, logError, sanitizeError } from '../infra/security';
+import { validateGeminiKey } from '../ai/gemini';
+import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
+import { hydrateEnv } from '../data/user-keys';
 
 /**
  * Handle a message from a user in the onboarding flow.
@@ -111,7 +117,11 @@ export async function handleOnboardingCallback(
             await sendMessage(env, telegramChatId, view.text, view.keyboard);
         }
     } else if (data === 'onboard:skip_github') {
-        await completeOnboarding(env, chatId, telegramChatId, messageId);
+        await goToIdentityStep(env, chatId, telegramChatId, messageId);
+    } else if (data === 'onboard:identity_analyze') {
+        await handleIdentityAnalyze(env, chatId, telegramChatId, messageId);
+    } else if (data === 'onboard:identity_default') {
+        await handleIdentityDefault(env, chatId, telegramChatId, messageId);
     } else if (data === 'view:home' || data === 'view:settings') {
         // These are handled by the main router after onboarding completes
     }
@@ -242,8 +252,79 @@ async function handleGitHubTokenInput(
         return;
     }
 
-    // Complete onboarding
+    // Go to identity step
+    await goToIdentityStep(env, chatId, telegramChatId);
+}
+
+async function goToIdentityStep(
+    env: Env,
+    chatId: string,
+    telegramChatId: number,
+    editMessageId?: number,
+): Promise<void> {
+    await updateUser(env, chatId, { onboarding_step: 'identity' });
+    const user = await getUser(env, chatId);
+    const hasX = user?.has_x === 1;
+    const view = renderIdentityStep(hasX);
+
+    if (editMessageId) {
+        await editMessage(env, telegramChatId, editMessageId, view.text, view.keyboard);
+    } else {
+        await sendMessage(env, telegramChatId, view.text, view.keyboard);
+    }
+}
+
+async function handleIdentityAnalyze(
+    env: Env,
+    chatId: string,
+    telegramChatId: number,
+    editMessageId?: number,
+): Promise<void> {
+    // Show "analyzing..." message
+    const analyzing = renderIdentityAnalyzing();
+    if (editMessageId) {
+        await editMessage(env, telegramChatId, editMessageId, analyzing.text, analyzing.keyboard);
+    } else {
+        await sendMessage(env, telegramChatId, analyzing.text, analyzing.keyboard);
+    }
+
+    try {
+        // Hydrate env with user's API keys
+        const userEnv = await hydrateEnv(env, chatId);
+        const user = await getUser(env, chatId);
+        const lang = user?.language || 'en';
+
+        const result = await analyzeIdentity(userEnv, chatId, lang);
+
+        if (result) {
+            const success = renderIdentitySuccess();
+            await sendMessage(env, telegramChatId, success.text, success.keyboard);
+        } else {
+            // Analysis returned null — store default and show failure
+            await storeDefaultIdentity(env, chatId, user?.language || 'en');
+            const failed = renderIdentityFailed();
+            await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
+        }
+    } catch (error) {
+        logError('Identity analysis failed:', sanitizeError(error));
+        const user = await getUser(env, chatId);
+        await storeDefaultIdentity(env, chatId, user?.language || 'en');
+        const failed = renderIdentityFailed();
+        await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
+    }
+
     await completeOnboarding(env, chatId, telegramChatId);
+}
+
+async function handleIdentityDefault(
+    env: Env,
+    chatId: string,
+    telegramChatId: number,
+    editMessageId?: number,
+): Promise<void> {
+    const user = await getUser(env, chatId);
+    await storeDefaultIdentity(env, chatId, user?.language || 'en');
+    await completeOnboarding(env, chatId, telegramChatId, editMessageId);
 }
 
 async function completeOnboarding(

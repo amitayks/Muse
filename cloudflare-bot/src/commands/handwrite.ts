@@ -8,8 +8,8 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState } from '../services/db';
-import { sendMessage } from '../services/telegram';
+import { updateChatState } from '../data/db';
+import { sendMessage } from '../integrations/telegram';
 import { renderCompose } from '../views';
 
 export async function handwriteCommand(ctx: HandlerContext): Promise<ViewResult | void> {

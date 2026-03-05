@@ -1,6 +1,6 @@
 import type { Env } from '../types';
-import { verifyAdminSecret, secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../services/security';
-import { seedDefaultPrompts } from '../services/prompts';
+import { verifyAdminSecret, secureJsonResponse, secureErrorResponse, sanitizeError, logInfo, logError } from '../infra/security';
+import { seedDefaultPrompts } from '../ai/prompts';
 
 /**
  * Helper: run each SQL statement individually using prepare().run() to avoid D1 exec() issues

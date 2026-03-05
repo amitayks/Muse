@@ -133,6 +133,75 @@ export function renderGitHubSuccess(username?: string, lang: Lang = 'en'): ViewR
     };
 }
 
+export function renderIdentityStep(hasX: boolean, lang: Lang = 'en'): ViewResult {
+    if (!hasX) {
+        return {
+            text: [
+                '🪞 <b>Identity Analysis</b>',
+                '',
+                'To understand your writing style, I need access to your X/Twitter account.',
+                'You skipped X credentials earlier, so I\'ll use a neutral default identity.',
+                '',
+                'You can always re-analyze later from Settings once you connect X.',
+            ].join('\n'),
+            keyboard: [
+                [{ text: '📝 Use default identity', callback_data: 'onboard:identity_default', style: 'primary' }],
+            ],
+        };
+    }
+
+    return {
+        text: [
+            '🪞 <b>Understand Who You Are</b>',
+            '',
+            'This is the most important step. I\'ll analyze your recent tweets to understand:',
+            '• Your writing style and rhythm',
+            '• Your vocabulary and tone',
+            '• Your emotional patterns and reactions',
+            '• Your interests and perspective',
+            '',
+            'This creates your Identity Document — the foundation for everything I write.',
+            '',
+            'Or you can skip this and use a neutral default (you can always analyze later).',
+        ].join('\n'),
+        keyboard: [
+            [{ text: '🔍 Understand who I am', callback_data: 'onboard:identity_analyze', style: 'primary' }],
+            [{ text: '📝 Use default', callback_data: 'onboard:identity_default' }],
+        ],
+    };
+}
+
+export function renderIdentityAnalyzing(lang: Lang = 'en'): ViewResult {
+    return {
+        text: '🔍 Analyzing your tweets... This may take a moment.',
+        keyboard: [],
+    };
+}
+
+export function renderIdentitySuccess(lang: Lang = 'en'): ViewResult {
+    return {
+        text: [
+            '✅ <b>Identity analysis complete!</b>',
+            '',
+            'I now have a deep understanding of your writing style.',
+            'You can view and edit your identity anytime from the WebApp.',
+        ].join('\n'),
+        keyboard: [],
+    };
+}
+
+export function renderIdentityFailed(lang: Lang = 'en'): ViewResult {
+    return {
+        text: [
+            '⚠️ Identity analysis failed.',
+            '',
+            'I\'ll use a neutral default identity for now.',
+            'You can re-analyze anytime from Settings.',
+        ].join('\n'),
+        keyboard: [],
+    };
+}
+
 export function renderComplete(services: {
     hasGemini: boolean;
     hasX: boolean;

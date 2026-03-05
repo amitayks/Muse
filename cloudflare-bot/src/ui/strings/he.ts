@@ -166,16 +166,10 @@ export const he: StringsMap = {
         watching: '👁 במעקב',
         paused: '⏸️ מושהה',
 
-        contentSettings: '<b>הגדרות תוכן:</b>',
-        hashtags: 'האשטגים',
         watchSettings: '<b>הגדרות מעקב:</b>',
         prs: 'PRים',
         pushes: 'Pushים',
         branches: '📌 ענפים:',
-        imageSettings: '<b>הגדרות תמונה:</b>',
-        threadImage: 'תמונת שרשור',
-        always: 'תמיד',
-        singleProb: '🎲 הסתברות בודד:',
 
         projectOverview: '<b>סקירת פרויקט:</b>',
         noOverviewYet: 'אין סקירה עדיין — הרץ <code>/overview {repo}</code> ליצירה.',
@@ -194,8 +188,6 @@ export const he: StringsMap = {
         deleteRepoTitle: 'מחק ריפו?',
         deleteRepoMsg: 'האם אתה בטוח שברצונך למחוק:\n<code>{repo}</code>\n\nפעולה זו תסיר גם את ה-webhook מ-GitHub.',
 
-        tags: 'תגיות',
-        img: 'תמונה',
         push: 'Push',
 
         editOverviewTitle: '✏️ <b>ערוך סקירה</b>',
@@ -226,17 +218,7 @@ export const he: StringsMap = {
 
         repostSettings: '<b>הגדרות ריפוסט:</b>',
         threshold: '🎯 סף:',
-        tone: '🎭 טון:',
         autoApprove: 'אישור אוטומטי:',
-        batchPage: '📋 גודל אצווה:',
-        alwaysImage: 'תמונה תמיד:',
-
-        toneProfessional: '💼 מקצועי',
-        toneCasual: '😎 חופשי',
-        toneAnalytical: '🔬 אנליטי',
-        toneEnthusiastic: '🔥 נלהב',
-        toneWitty: '🧠 שנון',
-        toneSarcastic: '😏 סרקסטי',
 
         personaLabel: '<b>פרסונה:</b>',
         noPersona: 'אין פרסונה עדיין — לחץ על Bootstrap ליצירה.',
@@ -253,10 +235,8 @@ export const he: StringsMap = {
         deleteAccountTitle: 'מחק חשבון?',
         deleteAccountMsg: 'האם אתה בטוח שברצונך להפסיק לעקוב:\n<b>@{username}</b>\n\nפעולה זו תמחק גם את כל הציוצים ונתוני הפרסונה השמורים.',
 
-        tags: 'תגיות',
-        img: 'תמונה',
         auto: 'אוטומטי',
-        mediaAi: 'AI מדיה',
+        analyzeMedia: 'ניתוח מדיה',
     },
 
     drafts: {
@@ -375,24 +355,15 @@ export const he: StringsMap = {
         promptTitle: '🔄 <b>ריפוסט ידני</b>',
         promptDesc: 'שלח לי כתובת ציוץ ליצירת ריפוסט.',
         supportedFormats: '<b>פורמטים נתמכים:</b>',
-        promptHint: 'אביא את הציוץ, אציג תצוגה מקדימה, ואתן לך לבחור טון לפני היצירה.',
+        promptHint: 'אביא את הציוץ, אציג תצוגה מקדימה, ואצור ציוץ ציטוט.',
 
         previewTitle: '🔄 <b>תצוגה מקדימה של ריפוסט</b>',
-        toneLabel: '<b>טון:</b>',
-        toneSelectHint: 'לחץ על טון למטה, ואז צור:',
         hasImage: '🖼 יש תמונה — תנותח על ידי AI',
         duplicateWarning: '⚠️ <b>כפילות זוהתה</b>\n\nכבר יש לך טיוטת ריפוסט לציוץ זה.',
         viewExisting: '👁 צפה בקיים',
         generateAnyway: '⚡ צור בכל זאת',
         generateRepost: '⚡ צור ריפוסט',
         openTweet: '🔗 פתח ציוץ',
-
-        tonePro: '💼 מקצועי',
-        toneCasual: '😎 חופשי',
-        toneAnalytical: '🔬 אנליטי',
-        toneEnthusiastic: '🔥 נלהב',
-        toneWitty: '🧠 שנון',
-        toneSarcastic: '😏 סרקסטי',
 
         generatingTitle: '⏳ <b>מייצר ריפוסט ל-@{username}...</b>',
         generatingDesc: 'מביא הקשר ויוצר את ציוץ הציטוט שלך.',

@@ -1,7 +1,7 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateDraftStatus } from '../services/db';
+import { updateDraftStatus } from '../data/db';
 import { renderDraftDetail } from '../views';
 
 export async function approveAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {

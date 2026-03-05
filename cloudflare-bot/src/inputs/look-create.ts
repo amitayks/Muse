@@ -6,9 +6,9 @@ import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { cancelRow } from '../ui/components';
-import { updateChatState, getVideoSettings, updateVideoSettings } from '../services/db';
-import { sendMessage, getFileUrl } from '../services/telegram';
-import { logInfo, logError } from '../services/security';
+import { updateChatState, getVideoSettings, updateVideoSettings } from '../data/db';
+import { sendMessage, getFileUrl } from '../integrations/telegram';
+import { logInfo, logError } from '../infra/security';
 
 interface LookCreateInputContext extends HandlerContext {
     text: string;
@@ -44,7 +44,7 @@ export async function lookCreateInput(ctx: LookCreateInputContext): Promise<void
 
             const imageData = await response.arrayBuffer();
 
-            const { uploadAsset } = await import('../services/heygen');
+            const { uploadAsset } = await import('../integrations/heygen');
 
             await sendMessage(env, chatId, '⏳ Uploading photo to HeyGen...');
 
@@ -87,7 +87,7 @@ export async function lookCreateInput(ctx: LookCreateInputContext): Promise<void
 
         try {
             // Add to avatar group with the user's name
-            const { addLooksToGroup } = await import('../services/heygen');
+            const { addLooksToGroup } = await import('../integrations/heygen');
             await addLooksToGroup(env, lc.characterGroupId, [lc.imageKey!], lookName);
             logInfo('Look added to group:', lc.characterGroupId, 'name:', lookName);
 

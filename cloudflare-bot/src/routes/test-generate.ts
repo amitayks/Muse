@@ -1,5 +1,5 @@
 import type { Env } from '../types';
-import { verifyAdminSecret, secureJsonResponse, logInfo } from '../services/security';
+import { verifyAdminSecret, secureJsonResponse, logInfo } from '../infra/security';
 
 export async function handleTestGenerate(request: Request, url: URL, env: Env): Promise<Response> {
     if (!verifyAdminSecret(request, env)) {
@@ -10,8 +10,8 @@ export async function handleTestGenerate(request: Request, url: URL, env: Env): 
         return secureJsonResponse({ error: 'Missing ?sha= parameter' }, 400);
     }
 
-    const { getContentSource } = await import('../services/github');
-    const { generateContent, generateImage } = await import('../services/gemini');
+    const { getContentSource } = await import('../integrations/github');
+    const { generateContent, generateImage } = await import('../ai/gemini');
 
     const steps: Record<string, unknown> = {};
 

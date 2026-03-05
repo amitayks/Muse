@@ -8,9 +8,9 @@
 import type { Env, TelegramMessage } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getChatState, parseContext, updateChatState, getUserLanguage } from '../services/db';
-import { sanitizeError } from '../services/security';
-import { sendMessage } from '../services/telegram';
+import { getChatState, parseContext, updateChatState, getUserLanguage } from '../data/db';
+import { sanitizeError } from '../infra/security';
+import { sendMessage } from '../integrations/telegram';
 import { respond } from '../core/respond';
 import { commandHandlers, inputHandlers } from '../core/router';
 import { renderHome, renderError } from '../views';

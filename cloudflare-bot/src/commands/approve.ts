@@ -2,10 +2,10 @@ import type { HandlerContext } from '../core/router';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { getAllDrafts } from '../services/db';
+import { getAllDrafts } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderError, renderSuccess, renderPublishing } from '../views';
-import { sendMessage } from '../services/telegram';
+import { sendMessage } from '../integrations/telegram';
 
 export async function approveCommand(ctx: HandlerContext) {
 	const { env, chatId } = ctx;

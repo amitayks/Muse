@@ -4,8 +4,8 @@
 
 import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
-import { updateChatState } from '../services/db';
-import { sendMessage } from '../services/telegram';
+import { updateChatState } from '../data/db';
+import { sendMessage } from '../integrations/telegram';
 
 interface VideoComposeInputContext extends HandlerContext {
     text: string;

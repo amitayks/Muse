@@ -5,15 +5,11 @@
  */
 
 import type { HandlerContext } from '../core/router';
-import type { ViewResult, TwitterAccountConfig } from '../types';
+import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { getTwitterAccount, updateTwitterAccount, parseTwitterAccountConfig } from '../services/db';
+import { getTwitterAccount, updateTwitterAccount, parseTwitterAccountConfig } from '../data/db';
 import { renderAccountDetail } from '../views/accounts';
 import { renderError } from '../views';
-
-const TONES: TwitterAccountConfig['tone'][] = ['professional', 'casual', 'analytical', 'enthusiastic', 'witty', 'sarcastic'];
-const IMAGE_PROBABILITIES = [0, 0.1, 0.3, 0.5, 0.7, 1.0];
-const BATCH_PAGE_SIZES = [3, 5, 8, 10];
 
 export async function accountConfigToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
     const lang = (ctx.lang || 'en') as Lang;
@@ -29,32 +25,8 @@ export async function accountConfigToggleAction(ctx: HandlerContext & { value: s
     let updated = false;
 
     switch (setting) {
-        case 'hashtags':
-            config.includeHashtags = !config.includeHashtags;
-            updated = true;
-            break;
-
-        case 'img':
-            config.alwaysGenerateImage = !config.alwaysGenerateImage;
-            updated = true;
-            break;
-
-        case 'img_pct': {
-            const currentIdx = IMAGE_PROBABILITIES.indexOf(config.singleImageProbability);
-            config.singleImageProbability = IMAGE_PROBABILITIES[(currentIdx + 1) % IMAGE_PROBABILITIES.length];
-            updated = true;
-            break;
-        }
-
         case 'threshold': {
             config.relevanceThreshold = config.relevanceThreshold >= 10 ? 1 : config.relevanceThreshold + 1;
-            updated = true;
-            break;
-        }
-
-        case 'tone': {
-            const currentToneIdx = TONES.indexOf(config.tone);
-            config.tone = TONES[(currentToneIdx + 1) % TONES.length];
             updated = true;
             break;
         }
@@ -63,13 +35,6 @@ export async function accountConfigToggleAction(ctx: HandlerContext & { value: s
             config.autoApprove = !config.autoApprove;
             updated = true;
             break;
-
-        case 'batch_size': {
-            const currentBatchIdx = BATCH_PAGE_SIZES.indexOf(config.batchPageSize || 5);
-            config.batchPageSize = BATCH_PAGE_SIZES[(currentBatchIdx + 1) % BATCH_PAGE_SIZES.length];
-            updated = true;
-            break;
-        }
 
         case 'analyze_media':
             config.analyzeMedia = !(config.analyzeMedia !== false);

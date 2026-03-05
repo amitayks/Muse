@@ -9,13 +9,13 @@
 import type { Env, GitHubPullRequestEvent, GitHubPushEvent, DraftContent, ContentSource } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getAllReposByOwnerRepo, createDraft, getDraftByCommitSha, parseRepoConfig, applyOverviewPatches, getUserLanguage } from '../services/db';
-import { verifyWebhookSignature } from '../services/webhook';
-import { generateContent } from '../services/gemini';
-import { getPR } from '../services/github';
-import { sendMessage } from '../services/telegram';
-import { hydrateEnv } from '../services/user-keys';
-import { logInfo, logError } from '../services/security';
+import { getAllReposByOwnerRepo, createDraft, getDraftByCommitSha, parseRepoConfig, applyOverviewPatches, getUserLanguage } from '../data/db';
+import { verifyWebhookSignature } from '../integrations/webhook';
+import { generateContent } from '../ai/gemini';
+import { getPR } from '../integrations/github';
+import { sendMessage } from '../integrations/telegram';
+import { hydrateEnv } from '../data/user-keys';
+import { logInfo, logError } from '../infra/security';
 
 interface WebhookResult {
     processed: boolean;

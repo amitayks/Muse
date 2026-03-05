@@ -1,7 +1,7 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState, getPageSize } from '../services/db';
+import { updateChatState, getPageSize } from '../data/db';
 import { renderDraftsList, renderReposList } from '../views';
 import type { DraftListType } from '../views/drafts';
 

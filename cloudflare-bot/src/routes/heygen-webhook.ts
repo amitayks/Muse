@@ -3,11 +3,11 @@
  */
 
 import type { Env, HeyGenWebhookPayload } from '../types';
-import { getVideoDraftByHeygenId, updateVideoDraft } from '../services/db';
-import { downloadVideo } from '../services/heygen';
-import { storeVideo } from '../services/storage';
-import { sendMessage, sendVideo } from '../services/telegram';
-import { logInfo, logError, secureJsonResponse, secureErrorResponse } from '../services/security';
+import { getVideoDraftByHeygenId, updateVideoDraft } from '../data/db';
+import { downloadVideo } from '../integrations/heygen';
+import { storeVideo } from '../data/storage';
+import { sendMessage, sendVideo } from '../integrations/telegram';
+import { logInfo, logError, secureJsonResponse, secureErrorResponse } from '../infra/security';
 
 export async function handleHeyGenWebhook(request: Request, env: Env): Promise<Response> {
     try {

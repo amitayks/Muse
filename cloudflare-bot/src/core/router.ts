@@ -80,7 +80,7 @@ import { videoConfigAction, videoCreateAction, videoGenerateAction, videoApprove
 import { videoSettingsAction } from '../actions/video-settings';
 import { batchPageAction } from '../actions/batch-page';
 import { tweetViewDraftAction } from '../actions/tweet-view-draft';
-import { rpToneAction, rpGenAction, rpCancelAction } from '../actions/repost-preview';
+import { rpGenAction, rpCancelAction } from '../actions/repost-preview';
 import { rpFollowAction, rpNoFollowAction } from '../actions/repost-follow';
 import { settingsKeysAction } from '../actions/settings-keys';
 
@@ -146,7 +146,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     page: paginationAction,
     repo: async (ctx) => {
         // View repo detail — reuse the same pattern as draft detail
-        const { updateChatState } = await import('../services/db');
+        const { updateChatState } = await import('../data/db');
         const { renderRepoDetail } = await import('../views');
         await updateChatState(ctx.env, ctx.chatId, {
             current_view: 'repo',
@@ -166,7 +166,6 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     // Settings key management
     settings: settingsKeysAction,
     // Repost actions
-    rp_tone: rpToneAction,
     rp_gen: rpGenAction,
     rp_gen_anyway: rpGenAction,
     rp_cancel: rpCancelAction,

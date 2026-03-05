@@ -6,8 +6,8 @@
  */
 
 import type { Env, TwitterAccount, TwitterTweet } from '../types';
-import { parseTwitterAccountConfig, updateTwitterTweet } from './db';
-import { sendMessage } from './telegram';
+import { parseTwitterAccountConfig, updateTwitterTweet, getPageSize } from '../data/db';
+import { sendMessage } from '../integrations/telegram';
 
 /**
  * Send batch notifications for all scored tweets from this polling cycle
@@ -18,8 +18,6 @@ export async function sendBatchNotifications(
 ): Promise<void> {
     // Group scored tweets by chat_id
     const chatTweets: Record<string, Array<{ tweet: TwitterTweet; account: TwitterAccount }>> = {};
-    // Track page size per chat (use the first account's config)
-    const chatPageSize: Record<string, number> = {};
 
     for (const account of accounts) {
         const config = parseTwitterAccountConfig(account);
@@ -42,7 +40,6 @@ export async function sendBatchNotifications(
 
             if (!chatTweets[account.chat_id]) {
                 chatTweets[account.chat_id] = [];
-                chatPageSize[account.chat_id] = config.batchPageSize || 5;
             }
             chatTweets[account.chat_id].push({ tweet, account });
         }
@@ -52,7 +49,7 @@ export async function sendBatchNotifications(
     for (const [chatId, items] of Object.entries(chatTweets)) {
         if (items.length === 0) continue;
 
-        const pageSize = chatPageSize[chatId] || 5;
+        const pageSize = await getPageSize(env, chatId);
         const totalPages = Math.ceil(items.length / pageSize);
 
         try {

@@ -2,12 +2,12 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../services/db';
+import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../data/db';
 import { renderRepoDetail, renderError, renderSettings } from '../views';
 import { cancelRow } from '../ui/components';
-import { isValidTimezone } from '../services/timezone';
-import { countStalePrompts } from '../services/prompts';
-import { isAdmin } from '../services/security';
+import { isValidTimezone } from '../infra/timezone';
+import { countStalePrompts } from '../ai/prompts';
+import { isAdmin } from '../infra/security';
 
 export async function configToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult | void> {
     const lang = (ctx.lang || 'en') as Lang;
@@ -155,26 +155,12 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
     const config = parseRepoConfig(repo);
 
     switch (setting) {
-        case 'hashtags':
-            config.includeHashtags = !config.includeHashtags;
-            break;
         case 'watchPRs':
             config.watchPRs = !config.watchPRs;
             break;
         case 'watchPushes':
             config.watchPushes = !config.watchPushes;
             break;
-        case 'threadImage':
-            config.alwaysGenerateThreadImage = !config.alwaysGenerateThreadImage;
-            break;
-        case 'singleImage': {
-            const probs = [0, 0.3, 0.5, 0.7, 1.0];
-            const currentProb = config.singleTweetImageProbability;
-            const currentIndex = probs.findIndex(p => Math.abs(p - currentProb) < 0.05);
-            const nextIndex = (currentIndex + 1) % probs.length;
-            config.singleTweetImageProbability = probs[nextIndex];
-            break;
-        }
         default:
             return renderRepoDetail(env, chatId, repoId!, lang);
     }

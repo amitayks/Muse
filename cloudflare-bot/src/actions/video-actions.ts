@@ -8,12 +8,12 @@ import { DEFAULT_VIDEO_CONFIG } from '../types';
 import {
     createVideoDraft, getVideoDraft, updateVideoDraft, deleteVideoDraft,
     getRepoOverview, updateChatState, parseContext, getChatState,
-} from '../services/db';
-import { generateVideoScript } from '../services/gemini';
-import { createVideo as heygenCreateVideo } from '../services/heygen';
+} from '../data/db';
+import { generateVideoScript } from '../ai/gemini';
+import { createVideo as heygenCreateVideo } from '../integrations/heygen';
 import { renderVideoConfig, renderScriptPreview, renderVideoDetail, renderVideoRepoHome } from '../views';
-import { sendMessage, editMessage } from '../services/telegram';
-import { logInfo, logError } from '../services/security';
+import { sendMessage, editMessage } from '../integrations/telegram';
+import { logInfo, logError } from '../infra/security';
 import { homeButton, cancelRow } from '../ui/components';
 import type { Lang } from '../ui/strings';
 
@@ -86,7 +86,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
 
         // Character selector — pick character then look
         case 'character': {
-            const { getVideoSettings } = await import('../services/db');
+            const { getVideoSettings } = await import('../data/db');
             const videoSettings = await getVideoSettings(env, chatId);
             const chars = videoSettings.characters;
 
@@ -122,7 +122,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
         case 'pc': {
             const charIndex = parseInt(extra || '0', 10);
             const selectedRepoId = context.selected_repo_id || 'standalone';
-            const { getVideoSettings } = await import('../services/db');
+            const { getVideoSettings } = await import('../data/db');
             const videoSettings = await getVideoSettings(env, chatId);
             const chars = videoSettings.characters;
             const char = chars[charIndex];
@@ -175,7 +175,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
             const lookIndex = parseInt(parts[1] || '0', 10);
             const selectedRepoId = context.selected_repo_id || 'standalone';
 
-            const { getVideoSettings } = await import('../services/db');
+            const { getVideoSettings } = await import('../data/db');
             const videoSettings = await getVideoSettings(env, chatId);
             const chars = videoSettings.characters;
             const char = chars[charIndex];
@@ -257,7 +257,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
             };
         }
         case 'load_preset': {
-            const { getVideoPresets } = await import('../services/db');
+            const { getVideoPresets } = await import('../data/db');
             const presets = await getVideoPresets(env, chatId);
             if (presets.length === 0) {
                 return {
@@ -278,7 +278,7 @@ export async function videoConfigAction(ctx: HandlerContext & { value: string; e
             const colonIdx = (extra || '').indexOf(':');
             if (colonIdx > -1) {
                 const idx = parseInt((extra || '').substring(colonIdx + 1), 10);
-                const { getVideoPresets } = await import('../services/db');
+                const { getVideoPresets } = await import('../data/db');
                 const presets = await getVideoPresets(env, chatId);
                 const preset = presets[idx];
                 if (preset) {
@@ -558,7 +558,7 @@ export async function videoPubTwitterAction(ctx: HandlerContext & { value: strin
 
         if (!twitterUrl) throw new Error('Twitter publish returned no URL');
 
-        const { createVideoPublished } = await import('../services/db');
+        const { createVideoPublished } = await import('../data/db');
         await createVideoPublished(env, chatId, {
             video_draft_id: draftId,
             repo_id: draft.repo_id || undefined,
@@ -593,7 +593,7 @@ export async function videoPubInstagramAction(ctx: HandlerContext & { value: str
 
         if (!igUrl) throw new Error('Instagram publish returned no URL');
 
-        const { createVideoPublished } = await import('../services/db');
+        const { createVideoPublished } = await import('../data/db');
         await createVideoPublished(env, chatId, {
             video_draft_id: draftId,
             repo_id: draft.repo_id || undefined,
@@ -624,7 +624,7 @@ export async function videoPubBothAction(ctx: HandlerContext & { value: string; 
 
     try {
         const { publishVideoToTwitter, publishVideoToInstagram } = await import('../services/video-publish');
-        const { createVideoPublished } = await import('../services/db');
+        const { createVideoPublished } = await import('../data/db');
 
         const twitterUrl = await publishVideoToTwitter(env, draft);
         const igUrl = await publishVideoToInstagram(env, draft);

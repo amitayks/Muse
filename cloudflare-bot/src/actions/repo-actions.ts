@@ -2,8 +2,8 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getRepo, updateRepo, deleteRepo } from '../services/db';
-import { deleteWebhook } from '../services/webhook';
+import { updateChatState, getRepo, updateRepo, deleteRepo } from '../data/db';
+import { deleteWebhook } from '../integrations/webhook';
 import { renderRepoDetail, renderAddRepo, renderDeleteRepoConfirm, renderError } from '../views';
 
 export async function addRepoAction(ctx: HandlerContext): Promise<ViewResult> {

@@ -40,7 +40,7 @@ export interface Env {
 export type UserStatus = 'onboarding' | 'active' | 'suspended';
 
 // Onboarding step
-export type OnboardingStep = 'welcome' | 'gemini_key' | 'x_keys' | 'github_token' | 'complete' | null;
+export type OnboardingStep = 'welcome' | 'gemini_key' | 'x_keys' | 'github_token' | 'identity' | 'complete' | null;
 
 // User record from D1 (merged with former chat_state)
 export interface User {
@@ -186,7 +186,6 @@ export interface Published {
 
 // Repo configuration for content generation
 export interface RepoConfig {
-    includeHashtags: boolean;
     watchPRs: boolean;
     watchPushes: boolean;
     branches: string[];
@@ -195,10 +194,6 @@ export interface RepoConfig {
     // Thread settings
     minCommitsForThread: number;
     maxTweets: number;
-
-    // Image settings
-    alwaysGenerateThreadImage: boolean;
-    singleTweetImageProbability: number;
 }
 
 // Watched repo record from D1
@@ -217,15 +212,12 @@ export interface WatchedRepo {
 
 // Default config for new repos
 export const DEFAULT_REPO_CONFIG: RepoConfig = {
-    includeHashtags: true,
     watchPRs: true,
     watchPushes: false,
     branches: ['main'],
     platform: 'x',
     minCommitsForThread: 3,
     maxTweets: 10,
-    alwaysGenerateThreadImage: true,
-    singleTweetImageProbability: 0.7,
 };
 
 // ==================== REPO OVERVIEW ====================
@@ -413,24 +405,14 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
 
 // Twitter account configuration
 export interface TwitterAccountConfig {
-    includeHashtags: boolean;
-    alwaysGenerateImage: boolean;
-    singleImageProbability: number;
     relevanceThreshold: number; // 1-10
-    tone: 'professional' | 'casual' | 'analytical' | 'enthusiastic' | 'witty' | 'sarcastic';
     autoApprove: boolean;
-    batchPageSize: number; // tweets per batch notification page
     analyzeMedia: boolean;
 }
 
 export const DEFAULT_TWITTER_ACCOUNT_CONFIG: TwitterAccountConfig = {
-    includeHashtags: true,
-    alwaysGenerateImage: false,
-    singleImageProbability: 0.3,
     relevanceThreshold: 6,
-    tone: 'professional',
     autoApprove: false,
-    batchPageSize: 5,
     analyzeMedia: true,
 };
 
@@ -658,7 +640,6 @@ export interface ChatContext {
         author_name: string | null;
         author_bio: string | null;
         is_followed: boolean;
-        selected_tone: TwitterAccountConfig['tone'];
         user_id: string | null;
         media_url?: string | null;
     };

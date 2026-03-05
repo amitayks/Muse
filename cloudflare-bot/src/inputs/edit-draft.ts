@@ -3,12 +3,12 @@ import type { ChatContext, InlineButton } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
-import { updateChatState, getDraft, updateDraftContent } from '../services/db';
-import { editContent } from '../services/gemini';
-import { sendMessage, editMessage } from '../services/telegram';
+import { updateChatState, getDraft, updateDraftContent } from '../data/db';
+import { editContent } from '../ai/gemini';
+import { sendMessage, editMessage } from '../integrations/telegram';
 import { renderError } from '../views';
 import { cancelRow } from '../ui/components';
-import { sanitizeError } from '../services/security';
+import { sanitizeError } from '../infra/security';
 import type { DraftContent } from '../types';
 
 export async function editDraftInput(ctx: HandlerContext & { text: string; context: ChatContext }) {

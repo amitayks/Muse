@@ -7,7 +7,7 @@ import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import type { DraftListType } from '../views/drafts';
 import { shortToListType } from '../views/drafts';
-import { getDraft, deleteDraft, updateDraftStatus, getPageSize, countDrafts, countDraftsBySource } from '../services/db';
+import { getDraft, deleteDraft, updateDraftStatus, getPageSize, countDrafts, countDraftsBySource } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderDraftsList, renderError } from '../views';
 import { t } from '../ui/strings';

@@ -1,19 +1,18 @@
 /**
  * Repost URL Input Handler
  *
- * Parses tweet URL → fetches tweet + author → checks duplicates →
- * determines default tone → shows preview with tone selector.
+ * Parses tweet URL → fetches tweet + author → checks duplicates → shows preview.
  */
 
 import type { HandlerContext, InputHandler } from '../core/router';
-import type { ChatContext, TwitterAccountConfig } from '../types';
+import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getExistingRepostDraft, getTwitterAccounts } from '../services/db';
-import { getTweetById } from '../services/x';
+import { updateChatState, getExistingRepostDraft, getTwitterAccounts } from '../data/db';
+import { getTweetById } from '../integrations/x';
 import { cancelRow } from '../ui/components';
 import { renderRepostPreview } from '../views/repost';
-import { sendMessage } from '../services/telegram';
+import { sendMessage } from '../integrations/telegram';
 
 /** Parse a tweet URL and extract username + tweet ID */
 function parseTweetUrl(text: string): { username: string; tweetId: string } | null {
@@ -74,15 +73,6 @@ export const repostUrlInput: InputHandler = async (
         a => a.username.toLowerCase() === (author?.username || username).toLowerCase()
     );
 
-    // Determine default tone
-    let defaultTone: TwitterAccountConfig['tone'] = 'professional';
-    if (followedAccount) {
-        try {
-            const config = JSON.parse(followedAccount.config) as TwitterAccountConfig;
-            defaultTone = config.tone;
-        } catch { /* use default */ }
-    }
-
     // Extract metrics
     const metrics = tweet.public_metrics ? {
         likes: tweet.public_metrics.like_count,
@@ -102,7 +92,6 @@ export const repostUrlInput: InputHandler = async (
                 author_name: author?.name || null,
                 author_bio: author?.description || null,
                 is_followed: !!followedAccount,
-                selected_tone: defaultTone,
                 user_id: author?.id || null,
                 media_url: mediaUrl,
             },
@@ -116,7 +105,6 @@ export const repostUrlInput: InputHandler = async (
         tweetText: tweet.text,
         isThread,
         metrics,
-        selectedTone: defaultTone,
         existingDraftId: existingDraft?.id,
         hasImage: !!mediaUrl,
     }, lang);

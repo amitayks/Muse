@@ -3,8 +3,8 @@
  */
 
 import type { Env, VideoDraft } from '../types';
-import { generateOAuthHeader } from './x';
-import { logInfo, logError } from './security';
+import { generateOAuthHeader } from '../integrations/x';
+import { logInfo, logError } from '../infra/security';
 
 // ==================== TWITTER VIDEO PUBLISH ====================
 

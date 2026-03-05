@@ -7,8 +7,8 @@
 
 import type { ActionHandler } from '../core/router';
 import type { TwitterTweet, TwitterAccount } from '../types';
-import { getScoredTweetsByBatchMessage, getTwitterAccount, parseTwitterAccountConfig } from '../services/db';
-import { editMessage } from '../services/telegram';
+import { getScoredTweetsByBatchMessage, getTwitterAccount, getPageSize } from '../data/db';
+import { editMessage } from '../integrations/telegram';
 
 export const batchPageAction: ActionHandler = async (ctx) => {
     const page = parseInt(ctx.value, 10);
@@ -24,16 +24,15 @@ export const batchPageAction: ActionHandler = async (ctx) => {
     // Fetch accounts
     const accountIds = [...new Set(tweets.map(t => t.account_id))];
     const accounts = new Map<string, TwitterAccount>();
-    let pageSize = 5;
 
     for (const accountId of accountIds) {
         const account = await getTwitterAccount(ctx.env, accountId, ctx.chatId);
         if (account) {
             accounts.set(accountId, account);
-            const config = parseTwitterAccountConfig(account);
-            pageSize = config.batchPageSize || 5;
         }
     }
+
+    const pageSize = await getPageSize(ctx.env, ctx.chatId);
 
     const totalPages = Math.ceil(tweets.length / pageSize);
     const safePage = Math.min(page, totalPages - 1);

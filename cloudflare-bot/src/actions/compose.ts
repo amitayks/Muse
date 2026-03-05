@@ -5,13 +5,13 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent, HandwriteState } from '../types';
 import type { Lang } from '../ui/strings';
-import { getChatState, parseContext, updateChatState, createDraft, getTimezone } from '../services/db';
-import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../services/telegram';
-import { ensureImage } from '../services/storage';
+import { getChatState, parseContext, updateChatState, createDraft, getTimezone } from '../data/db';
+import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
+import { ensureImage } from '../data/storage';
 import { renderCompose, renderDraftDetail } from '../views';
 import { truncateHtml } from '../ui/utils';
 import { renderHome } from '../views/home';
-import { sanitizeError } from '../services/security';
+import { sanitizeError } from '../infra/security';
 
 export async function composeAction(
     ctx: HandlerContext & { value: string; extra?: string }
@@ -77,7 +77,7 @@ async function handlePenDown(
     // If AI refine or image gen is enabled, call Gemini
     if (handwrite.aiRefine || handwrite.imageGen) {
         try {
-            const { refineHandwrittenContent } = await import('../services/gemini');
+            const { refineHandwrittenContent } = await import('../ai/gemini');
             content = await refineHandwrittenContent(env, content, {
                 refineText: handwrite.aiRefine,
                 generateImagePrompt: handwrite.imageGen,

@@ -1,7 +1,7 @@
 /**
- * Repost Preview Actions — Tone selection, generation trigger, cancel
+ * Repost Preview Actions — Generation trigger, cancel
  *
- * Handles: rp_tone:TONE:TWEET_ID, rp_gen:TWEET_ID, rp_gen_anyway:TWEET_ID, rp_cancel
+ * Handles: rp_gen:TWEET_ID, rp_gen_anyway:TWEET_ID, rp_cancel
  */
 
 import type { ActionHandler } from '../core/router';
@@ -10,55 +10,17 @@ import {
     getChatState, parseContext, updateChatState, createDraft,
     getTwitterAccounts, getTwitterAccountOverview, parseTwitterAccountConfig,
     getTimezone,
-} from '../services/db';
-import { renderRepostPreview, renderRepostGenerating } from '../views/repost';
+} from '../data/db';
+import { renderRepostGenerating } from '../views/repost';
 import { renderError } from '../views';
-import { editMessage, sendMessage, deleteMessage, sendPhoto } from '../services/telegram';
-import { generateRepostContent } from '../services/repost-generate';
-import { getOrCreatePersona } from '../services/persona-cache';
-import { ensureImage } from '../services/storage';
+import { editMessage, sendMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
+import { generateRepostContent } from '../ai/repost-generate';
+import { ensureImage } from '../data/storage';
 import { renderDraftDetail } from '../views/drafts';
 import { truncateHtml } from '../ui/utils';
 import { homeButton } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-
-/** Tone selection — edit preview message with new tone */
-export const rpToneAction: ActionHandler = async (ctx) => {
-    const lang = (ctx.lang || 'en') as Lang;
-    const tone = ctx.value as TwitterAccountConfig['tone'];
-    const tweetId = ctx.extra!;
-
-    const state = await getChatState(ctx.env, ctx.chatId);
-    const context = parseContext(state);
-    const preview = context.repost_preview;
-
-    if (!preview || preview.tweet_id !== tweetId) {
-        return renderError('Preview context lost. Please try /repost again.', lang);
-    }
-
-    // Update tone in context
-    preview.selected_tone = tone;
-    await updateChatState(ctx.env, ctx.chatId, {
-        context: { ...context, repost_preview: preview },
-    });
-
-    const view = renderRepostPreview({
-        tweetId: preview.tweet_id,
-        username: preview.username,
-        displayName: preview.author_name,
-        tweetText: preview.tweet_text,
-        isThread: !!preview.thread_text,
-        selectedTone: tone,
-        hasImage: !!preview.media_url,
-    }, lang);
-
-    // Edit the message in place
-    if (ctx.messageId) {
-        await editMessage(ctx.env, ctx.chatId, ctx.messageId, view.text, view.keyboard);
-    }
-    return;
-};
 
 /** Generate repost (and rp_gen_anyway for duplicates) */
 export const rpGenAction: ActionHandler = async (ctx) => {
@@ -95,33 +57,14 @@ export const rpGenAction: ActionHandler = async (ctx) => {
         persona = overview?.persona || null;
     }
 
-    // If no persona from followed account, use cache
-    if (!persona) {
-        try {
-            const cached = await getOrCreatePersona(
-                ctx.env, preview.username, preview.user_id || undefined,
-                preview.author_bio || undefined, preview.author_name || undefined
-            );
-            if (cached) persona = cached.persona;
-        } catch (error) {
-            console.error('[rp_gen] Persona cache failed:', error);
-        }
-    }
+    // No on-demand persona generation — persona only exists for followed accounts
 
-    // Use followed account config or defaults with tone override
+    // Use followed account config or defaults
     const effectiveConfig = config || {
-        includeHashtags: true,
-        alwaysGenerateImage: false,
-        singleImageProbability: 0.3,
         relevanceThreshold: 6,
-        tone: preview.selected_tone,
         autoApprove: false,
-        batchPageSize: 5,
         analyzeMedia: true,
     };
-
-    // Override tone with selected tone
-    effectiveConfig.tone = preview.selected_tone;
 
     // Build a minimal tweet object for generateRepostContent
     const tweetObj = {
@@ -147,7 +90,7 @@ export const rpGenAction: ActionHandler = async (ctx) => {
 
     // Generate content (with image if available)
     const content = await generateRepostContent(
-        ctx.env, tweetObj, followedAccount?.id || '', effectiveConfig, persona, preview.media_url
+        ctx.env, tweetObj, followedAccount?.id || '', effectiveConfig, persona, preview.media_url, lang
     );
 
     if (!content) {

@@ -1,6 +1,6 @@
 import type { Env } from '../types';
-import { verifyAdminSecret, secureJsonResponse, secureErrorResponse } from '../services/security';
-import { setMyCommands } from '../services/telegram';
+import { verifyAdminSecret, secureJsonResponse, secureErrorResponse } from '../infra/security';
+import { setMyCommands } from '../integrations/telegram';
 
 export async function handleSetup(request: Request, url: URL, env: Env): Promise<Response> {
     if (!await verifyAdminSecret(request, env)) {

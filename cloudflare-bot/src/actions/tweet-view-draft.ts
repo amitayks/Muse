@@ -11,9 +11,9 @@ import type { DraftContent } from '../types';
 import { homeButton } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getDraft, getTimezone } from '../services/db';
-import { editMessage, sendPhoto, deleteMessage } from '../services/telegram';
-import { ensureImage } from '../services/storage';
+import { getDraft, getTimezone } from '../data/db';
+import { editMessage, sendPhoto, deleteMessage } from '../integrations/telegram';
+import { ensureImage } from '../data/storage';
 import { renderDraftDetail, renderError } from '../views';
 import { truncateHtml } from '../ui/utils';
 
