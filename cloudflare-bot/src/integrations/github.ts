@@ -345,13 +345,14 @@ export async function fetchRecentMergedPRs(
 }
 
 /**
- * Validate that a repository exists and is accessible
+ * Validate that a repository exists and is accessible.
+ * Returns the canonical owner/name from GitHub, or null on failure.
  */
 export async function validateRepo(
     env: Env,
     owner: string,
     repo: string
-): Promise<boolean> {
+): Promise<{ owner: string; name: string } | null> {
     try {
         const response = await fetch(`${GITHUB_API}/repos/${owner}/${repo}`, {
             headers: {
@@ -362,20 +363,21 @@ export async function validateRepo(
         });
 
         if (response.ok) {
-            console.log(`Repository ${owner}/${repo} is valid and accessible`);
-            return true;
+            const data = await response.json() as { owner: { login: string }; name: string };
+            console.log(`Repository ${data.owner.login}/${data.name} is valid and accessible`);
+            return { owner: data.owner.login, name: data.name };
         }
 
         if (response.status === 404) {
             console.log(`Repository ${owner}/${repo} not found`);
-            return false;
+            return null;
         }
 
         console.log(`Failed to validate ${owner}/${repo}: ${response.status}`);
-        return false;
+        return null;
     } catch (error) {
         console.error(`Error validating repo ${owner}/${repo}:`, error);
-        return false;
+        return null;
     }
 }
 

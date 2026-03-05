@@ -71,7 +71,7 @@ export async function getRepoByOwnerRepo(
     owner: string,
     repo: string
 ): Promise<WatchedRepo | null> {
-    return env.DB.prepare('SELECT * FROM repos WHERE chat_id = ? AND owner = ? AND repo = ?')
+    return env.DB.prepare('SELECT * FROM repos WHERE chat_id = ? AND owner = ? COLLATE NOCASE AND repo = ? COLLATE NOCASE')
         .bind(chatId, owner, repo)
         .first<WatchedRepo>();
 }
@@ -85,7 +85,7 @@ export async function getAllReposByOwnerRepo(
     owner: string,
     repo: string
 ): Promise<WatchedRepo[]> {
-    const result = await env.DB.prepare('SELECT * FROM repos WHERE owner = ? AND repo = ? AND is_watching = 1')
+    const result = await env.DB.prepare('SELECT * FROM repos WHERE owner = ? COLLATE NOCASE AND repo = ? COLLATE NOCASE AND is_watching = 1')
         .bind(owner, repo)
         .all<WatchedRepo>();
     return result.results || [];

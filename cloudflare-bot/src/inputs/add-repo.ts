@@ -47,8 +47,8 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
             return;
         }
 
-        const isValid = await validateRepo(env, owner, repo);
-        if (!isValid) {
+        const canonical = await validateRepo(env, owner, repo);
+        if (!canonical) {
             const view = {
                 text: `${t(lang, 'addRepo.repoNotFoundTitle')}\n\n${t(lang, 'addRepo.repoNotFoundMsg').replace('{repo}', `${owner}/${repo}`)}`,
                 keyboard: [[{ text: t(lang, 'addRepo.btnTryAgain'), callback_data: 'action:add_repo' }]],
@@ -58,15 +58,19 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
             return;
         }
 
+        // Use canonical GitHub names to avoid case-mismatch with webhook payloads
+        const canonicalOwner = canonical.owner;
+        const canonicalRepo = canonical.name;
+
         const webhookSecret = crypto.randomUUID();
-        const repoId = await createRepo(env, chatId, { owner, repo, webhook_secret: webhookSecret });
+        const repoId = await createRepo(env, chatId, { owner: canonicalOwner, repo: canonicalRepo, webhook_secret: webhookSecret });
 
         const workerUrl = env.WORKER_URL;
         let webhookStatus = '';
         if (!workerUrl) {
             webhookStatus = `\n\n${t(lang, 'addRepo.workerUrlNotConfigured')}`;
         } else {
-            const webhookId = await createWebhook(env, owner, repo, workerUrl, webhookSecret);
+            const webhookId = await createWebhook(env, canonicalOwner, canonicalRepo, workerUrl, webhookSecret);
 
             if (webhookId) {
                 await updateRepo(env, repoId, chatId, { webhook_id: webhookId });
@@ -80,7 +84,7 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
         const messageId = await sendMessage(
             env,
             chatId,
-            `${t(lang, 'addRepo.repoAdded')}\n\n${t(lang, 'addRepo.repoAddedMsg').replace('{repo}', `${owner}/${repo}`)}${webhookStatus}\n\n${view.text}`,
+            `${t(lang, 'addRepo.repoAdded')}\n\n${t(lang, 'addRepo.repoAddedMsg').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`)}${webhookStatus}\n\n${view.text}`,
             view.keyboard
         );
         await updateChatState(env, chatId, {
@@ -92,23 +96,23 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
         // Auto-generate overview in the background (non-blocking)
         try {
             await sendMessage(env, chatId,
-                t(lang, 'addRepo.bootstrapping').replace('{repo}', `${owner}/${repo}`)
+                t(lang, 'addRepo.bootstrapping').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`)
             );
             const [readmeText, prSummaries] = await Promise.all([
-                fetchRepoReadme(env, owner, repo),
-                fetchRecentMergedPRs(env, owner, repo, 10),
+                fetchRepoReadme(env, canonicalOwner, canonicalRepo),
+                fetchRecentMergedPRs(env, canonicalOwner, canonicalRepo, 10),
             ]);
             const overview = await extractRepoOverview(env, readmeText, prSummaries, chatId, lang);
             await upsertRepoOverview(env, repoId, overview);
-            logInfo('Auto-generated overview for repo:', owner + '/' + repo);
+            logInfo('Auto-generated overview for repo:', canonicalOwner + '/' + canonicalRepo);
             await sendMessage(env, chatId,
-                t(lang, 'addRepo.overviewBootstrapped').replace('{repo}', `${owner}/${repo}`),
+                t(lang, 'addRepo.overviewBootstrapped').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`),
                 [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
             );
         } catch (overviewError) {
             logError('Auto-overview generation failed:', overviewError instanceof Error ? overviewError.message : String(overviewError));
             await sendMessage(env, chatId,
-                t(lang, 'addRepo.overviewFailed').replace(/\{repo\}/g, `${owner}/${repo}`),
+                t(lang, 'addRepo.overviewFailed').replace(/\{repo\}/g, `${canonicalOwner}/${canonicalRepo}`),
                 [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
             );
         }
