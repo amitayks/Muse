@@ -5,7 +5,7 @@
  * SECURITY: All data operations require and filter by chat_id for ownership verification.
  */
 
-import type { Env, Draft, ChatContext, Published, DraftStatus } from '../types';
+import type { Env, Draft, ChatContext, Published, DraftStatus, PublishTargets, PublishResults } from '../types';
 import { logInfo, logError } from '../infra/security';
 
 /**
@@ -187,16 +187,20 @@ export async function createDraft(
         status?: string;
         original_tweet_id?: string;
         original_tweet_url?: string;
+        publish_targets?: string;
+        has_video?: number;
     }
 ): Promise<string> {
     const id = generateId();
     const source = data.source || 'auto';
     const status = data.status || 'draft';
+    const publishTargets = data.publish_targets || '{"x":true}';
+    const hasVideo = data.has_video || 0;
     await env.DB.prepare(
-        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url, publish_targets, has_video)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, data.content, source, status, data.original_tweet_id || null, data.original_tweet_url || null)
+        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, data.content, source, status, data.original_tweet_id || null, data.original_tweet_url || null, publishTargets, hasVideo)
         .run();
     return id;
 }
@@ -270,6 +274,40 @@ export async function updateDraft(
 }
 
 /**
+ * Update draft publish targets - verifies ownership
+ */
+export async function updateDraftPublishTargets(
+    env: Env,
+    id: string,
+    chatId: string,
+    targets: PublishTargets
+): Promise<boolean> {
+    const result = await env.DB.prepare(
+        "UPDATE drafts SET publish_targets = ?, updated_at = datetime('now') WHERE id = ? AND chat_id = ?"
+    )
+        .bind(JSON.stringify(targets), id, chatId)
+        .run();
+    return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * Update draft publish results - verifies ownership
+ */
+export async function updateDraftPublishResults(
+    env: Env,
+    id: string,
+    chatId: string,
+    results: PublishResults
+): Promise<boolean> {
+    const result = await env.DB.prepare(
+        "UPDATE drafts SET publish_results = ?, updated_at = datetime('now') WHERE id = ? AND chat_id = ?"
+    )
+        .bind(JSON.stringify(results), id, chatId)
+        .run();
+    return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
  * Schedule a draft - verifies ownership
  */
 export async function scheduleDraft(
@@ -335,24 +373,21 @@ export async function createPublished(
     data: {
         draft_id: string;
         pr_number: number;
-        tweet_ids: string[];
-        tweet_url: string;
-        image_url?: string;
+        tweet_ids?: string | null;
+        tweet_url?: string | null;
+        instagram_post_id?: string | null;
+        instagram_url?: string | null;
     }
 ): Promise<string> {
     const id = generateId();
     await env.DB.prepare(
-        `INSERT INTO published (id, chat_id, draft_id, pr_number, tweet_ids, tweet_url, image_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO published (id, chat_id, draft_id, pr_number, tweet_ids, tweet_url, instagram_post_id, instagram_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
         .bind(
-            id,
-            chatId,
-            data.draft_id,
-            data.pr_number,
-            JSON.stringify(data.tweet_ids),
-            data.tweet_url,
-            data.image_url || null
+            id, chatId, data.draft_id, data.pr_number,
+            data.tweet_ids ?? null, data.tweet_url ?? null,
+            data.instagram_post_id ?? null, data.instagram_url ?? null
         )
         .run();
     return id;

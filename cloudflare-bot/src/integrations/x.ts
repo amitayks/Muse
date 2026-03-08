@@ -22,6 +22,9 @@ export interface XUser {
     };
 }
 
+// User data from API includes.users expansion
+export type XUserExpansion = XUser;
+
 export interface XTweet {
     id: string;
     text: string;
@@ -515,11 +518,12 @@ export async function getUserTweets(
     userId: string,
     sinceId?: string,
     maxResults = 10
-): Promise<{ tweets: XTweet[]; newestId: string | null; media?: XMedia[] }> {
+): Promise<{ tweets: XTweet[]; newestId: string | null; media?: XMedia[]; users?: XUserExpansion[] }> {
     const baseUrl = `${X_API_V2}/users/${userId}/tweets`;
     const queryParams: Record<string, string> = {
         'tweet.fields': 'id,text,author_id,conversation_id,in_reply_to_user_id,created_at,referenced_tweets,public_metrics,attachments',
-        'expansions': 'attachments.media_keys',
+        'expansions': 'author_id,attachments.media_keys',
+        'user.fields': 'id,name,username,profile_image_url',
         'media.fields': 'media_key,type,url,preview_image_url',
         'max_results': String(Math.min(Math.max(maxResults, 5), 100)),
         'exclude': 'retweets',
@@ -549,15 +553,16 @@ export async function getUserTweets(
 
     const data = await response.json() as {
         data?: XTweet[];
-        includes?: { media?: XMedia[] };
+        includes?: { media?: XMedia[]; users?: XUserExpansion[] };
         meta?: { newest_id?: string; result_count?: number };
     };
 
     const tweets = data.data || [];
     const newestId = data.meta?.newest_id || (tweets.length > 0 ? tweets[0].id : null);
     const media = data.includes?.media;
+    const users = data.includes?.users;
 
-    return { tweets, newestId, media };
+    return { tweets, newestId, media, users };
 }
 
 /**
@@ -612,21 +617,38 @@ export interface ClassifiedTweet {
  * Get the authenticated user's Twitter user ID via /2/users/me
  */
 async function getMyUserId(env: Env): Promise<string | null> {
-    const baseUrl = `${X_API_V2}/users/me`;
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl);
+    const profile = await getMyProfile(env);
+    return profile?.id ?? null;
+}
 
-    const response = await fetch(baseUrl, {
+/**
+ * Get the authenticated user's full profile from /2/users/me
+ */
+export async function getMyProfile(env: Env): Promise<XUser | null> {
+    const baseUrl = `${X_API_V2}/users/me`;
+    const queryParams: Record<string, string> = {
+        'user.fields': 'id,name,username,description,profile_image_url,public_metrics',
+    };
+
+    const queryString = Object.entries(queryParams)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
+    const fullUrl = `${baseUrl}?${queryString}`;
+
+    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
+
+    const response = await fetch(fullUrl, {
         method: 'GET',
         headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
-        console.error('[x] getMyUserId failed:', response.status);
+        console.error('[x] getMyProfile failed:', response.status);
         return null;
     }
 
-    const data = await response.json() as { data?: { id: string } };
-    return data.data?.id ?? null;
+    const data = await response.json() as { data?: XUser };
+    return data.data ?? null;
 }
 
 /**

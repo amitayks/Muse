@@ -4,6 +4,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
 import { updateChatState, createDraft, scheduleDraft, getDraft, getTimezone, getPageSize } from '../data/db';
+import { getUser } from '../data/user-db';
 import { getContentSource } from '../integrations/github';
 import { generateContent } from '../ai/gemini';
 import { renderError, renderSuccess } from '../views';
@@ -108,11 +109,13 @@ export async function scheduleInput(ctx: HandlerContext & { text: string; contex
         const result = await generateContent(env, source, undefined, lang, chatId);
         const content = result.content;
 
+        const user = await getUser(env, chatId);
         await createDraft(env, chatId, {
             pr_number: prNumber,
             pr_title: prTitle,
             commit_sha: sha,
             content: JSON.stringify(content),
+            publish_targets: user?.default_publish_targets || undefined,
         });
 
         await updateChatState(env, chatId, { context: null });

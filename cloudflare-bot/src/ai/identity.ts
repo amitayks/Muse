@@ -4,7 +4,8 @@
 
 import type { Env } from '../types';
 import type { ClassifiedTweet } from '../integrations/x';
-import { fetchUserTweets } from '../integrations/x';
+import { fetchUserTweets, getMyProfile } from '../integrations/x';
+import { updateOwnProfileData } from '../data/user-db';
 import { getDefaultPromptText, saveUserPrompt } from './prompts';
 import { callGeminiText } from './gemini';
 
@@ -17,7 +18,7 @@ import { callGeminiText } from './gemini';
  * The env must be hydrated with the user's X API credentials.
  * Returns the generated Identity Document text, or null on failure.
  */
-export async function analyzeIdentity(env: Env, chatId: string, lang: string): Promise<string | null> {
+export async function analyzeIdentity(env: Env, chatId: string, lang: string): Promise<{ document: string; tweetCount: number } | null> {
     // 1. Fetch tweets
     let tweets: ClassifiedTweet[];
     try {
@@ -30,6 +31,21 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
     if (tweets.length === 0) {
         console.log('[identity] No tweets found for user');
         return null;
+    }
+
+    // 1b. Fetch and store the user's own X profile data (for tweet card rendering)
+    try {
+        const profile = await getMyProfile(env);
+        if (profile && profile.profile_image_url) {
+            await updateOwnProfileData(env, chatId, {
+                profileImageUrl: profile.profile_image_url,
+                username: profile.username,
+                displayName: profile.name,
+            });
+        }
+    } catch (error) {
+        console.error('[identity] Failed to store own profile data:', error);
+        // Non-fatal — continue with identity analysis
     }
 
     // 2. Build the user prompt with classified tweets
@@ -48,7 +64,7 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
     await saveUserPrompt(env, chatId, 'who-am-i', lang, identityDocument);
     console.log(`[identity] Stored identity document for user ${chatId} (${identityDocument.length} chars)`);
 
-    return identityDocument;
+    return { document: identityDocument, tweetCount: tweets.length };
 }
 
 /**

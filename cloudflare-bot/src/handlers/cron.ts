@@ -21,6 +21,7 @@ import {
 } from '../data/db';
 import { sendMessage, sendVideo } from '../integrations/telegram';
 import { publishDraft } from '../core/publish';
+import { platformEmoji, formatPlatformSummary } from '../views/platform-toggle';
 import { sanitizeError, logInfo, logError } from '../infra/security';
 import { formatLocalTime } from '../infra/timezone';
 import { hydrateEnv } from '../data/user-keys';
@@ -132,24 +133,23 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
     logInfo(`[cron] Publishing ${drafts.length} scheduled drafts for chat ${chatId}`);
 
     for (const draft of drafts) {
-        let publishResult: { url: string } | null = null;
+        const publishResult = await publishDraft(env, chatId, draft);
 
-        try {
-            publishResult = await publishDraft(env, chatId, draft);
-            logInfo(`[cron] Published scheduled draft: ${draft.id}`);
-        } catch (error) {
-            logError(`[cron] Failed to publish scheduled draft ${draft.id}:`, sanitizeError(error));
+        if (!publishResult.success) {
+            logError(`[cron] All platforms failed for scheduled draft ${draft.id}`);
 
-            await updateDraftStatus(env, draft.id, chatId, 'draft');
+            const errorMessages = Object.entries(publishResult.results.errors || {})
+                .map(([p, msg]) => `${platformEmoji(p)} ${msg}`)
+                .join('\n');
 
             try {
                 await sendMessage(
                     env,
                     chatId,
                     `${t(lang, 'notifications.scheduledPostFailed')}\n\n` +
-                    `PR #${draft.pr_number}: ${draft.pr_title}\n\n` +
-                    `${sanitizeError(error)}\n\n` +
-                    t(lang, 'notifications.draftReturnedToPending'),
+                    `${draft.pr_title}\n\n` +
+                    `${errorMessages}\n\n` +
+                    t(lang, 'notifications.draftReturnedToApproved'),
                     [[{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]]
                 );
             } catch (notifyError) {
@@ -158,18 +158,41 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
             continue;
         }
 
+        logInfo(`[cron] Published scheduled draft: ${draft.id}`);
+
         try {
             const tz = await getTimezone(env, chatId);
             const publishTime = formatLocalTime(new Date().toISOString(), tz);
-            await sendMessage(
-                env,
-                chatId,
-                `${t(lang, 'notifications.scheduledPostPublished')}\n\n` +
-                `PR #${draft.pr_number}: ${draft.pr_title}\n` +
+            const summary = formatPlatformSummary(publishResult.results, lang);
+            const hasErrors = publishResult.results.errors && Object.keys(publishResult.results.errors).length > 0;
+            const title = hasErrors
+                ? t(lang, 'notifications.scheduledPostPartial')
+                : t(lang, 'notifications.scheduledPostPublished');
+
+            let message = `${title}\n\n` +
+                `${draft.pr_title}\n` +
                 `${t(lang, 'notifications.publishedAt').replace('{time}', publishTime)}\n\n` +
-                `${publishResult.url}`,
-                [[{ text: t(lang, 'notifications.btnDashboard'), callback_data: 'view:home' }]]
-            );
+                `${t(lang, 'notifications.publishedTo').replace('{summary}', summary)}`;
+
+            if (hasErrors) {
+                const errorSummary = Object.entries(publishResult.results.errors!)
+                    .map(([p, msg]) => `${platformEmoji(p)} ${msg}`)
+                    .join(', ');
+                message += `\n${t(lang, 'notifications.publishErrors').replace('{errors}', errorSummary)}`;
+            }
+
+            const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+
+            if (publishResult.url) {
+                buttons.push([{ text: '🔗 Open', url: publishResult.url }]);
+            }
+
+            buttons.push([
+                { text: t(lang, 'notifications.btnView'), callback_data: `draft:${draft.id}` },
+                { text: t(lang, 'notifications.btnDashboard'), callback_data: 'view:home' },
+            ]);
+
+            await sendMessage(env, chatId, message, buttons);
         } catch (notifyError) {
             logError('Failed to send publish notification (draft is published):', notifyError);
         }
@@ -291,3 +314,5 @@ export async function publishUserScheduledVideos(env: Env, chatId: string, lang:
         logError('publishUserScheduledVideos error:', error instanceof Error ? error.message : String(error));
     }
 }
+
+// Platform format helpers are imported from views/platform-toggle

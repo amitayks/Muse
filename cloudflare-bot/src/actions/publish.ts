@@ -5,6 +5,7 @@ import { t } from '../ui/strings';
 import { getDraft, getTimezone } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderDraftDetail, renderError, renderSuccess } from '../views';
+import { platformEmoji, platformLabel, formatPlatformSummary } from '../views/platform-toggle';
 
 export async function publishAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
     const lang = (ctx.lang || 'en') as Lang;
@@ -14,20 +15,28 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
         return renderError('Draft not found.', lang);
     }
 
-    // Publish — if this fails, the tweet was NOT posted
-    let result: { url: string };
-    try {
-        result = await publishDraft(ctx.env, ctx.chatId, draft);
-    } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error('Publish error:', msg);
-        return renderError(`Publishing failed:\n\n<code>${msg}</code>`, lang);
+    const result = await publishDraft(ctx.env, ctx.chatId, draft);
+
+    if (!result.success) {
+        const errorMessages = Object.entries(result.results.errors || {})
+            .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${msg}`)
+            .join('\n');
+        return renderError(`Publishing failed:\n\n<code>${errorMessages}</code>`, lang);
     }
 
     // View rendering is separate — publish already succeeded at this point
     try {
         const tz = await getTimezone(ctx.env, ctx.chatId);
-        return await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz, lang);
+        const view = await renderDraftDetail(ctx.env, ctx.chatId, draftId, tz, lang);
+
+        // Prepend partial success warning if some platforms failed
+        const hasErrors = result.results.errors && Object.keys(result.results.errors).length > 0;
+        if (hasErrors) {
+            const summary = formatPlatformSummary(result.results, lang);
+            view.text = `⚠️ <b>${t(lang, 'notifications.scheduledPostPartial')}</b>\n${summary}\n\n${view.text}`;
+        }
+
+        return view;
     } catch {
         return renderSuccess(t(lang, 'actions.publishedToX').replace('{url}', result.url), lang);
     }

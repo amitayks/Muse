@@ -54,8 +54,7 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
             const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
             const mediaKey = await storeUserMedia(env, chatId, messageId, largestPhoto.file_id);
             if (mediaKey) {
-                tweet.mediaKey = mediaKey;
-                tweet.mediaType = 'photo';
+                tweet.media = [{ key: mediaKey, type: 'photo' }];
             }
             // Use caption as text if available
             if (ctx.message.caption) {
@@ -70,7 +69,7 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
     const charWarnings: number[] = [];
     const composeTweets = handwrite.tweets.map((t, i) => {
         if (t.text.length > 280) charWarnings.push(i + 1);
-        return { text: t.text, hasMedia: !!t.mediaKey };
+        return { text: t.text, hasMedia: !!(t.media && t.media.length > 0) };
     });
 
     // Update state

@@ -24,10 +24,10 @@ export async function approveCommand(ctx: HandlerContext) {
 		const results: string[] = [];
 
 		for (const draft of drafts) {
-			try {
-				const result = await publishDraft(env, chatId, draft);
+			const result = await publishDraft(env, chatId, draft);
+			if (result.success) {
 				results.push(t(lang, 'actions.publishedDraft').replace('{number}', String(draft.pr_number)).replace('{url}', result.url));
-			} catch (error) {
+			} else {
 				results.push(t(lang, 'actions.publishFailed').replace('{number}', String(draft.pr_number)));
 			}
 		}

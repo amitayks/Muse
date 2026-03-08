@@ -10,6 +10,7 @@ import type { Env, GitHubPullRequestEvent, GitHubPushEvent, DraftContent, Conten
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getAllReposByOwnerRepo, createDraft, getDraftByCommitSha, parseRepoConfig, applyOverviewPatches, getUserLanguage } from '../data/db';
+import { getUser } from '../data/user-db';
 import { verifyWebhookSignature } from '../integrations/webhook';
 import { generateContent } from '../ai/gemini';
 import { getPR } from '../integrations/github';
@@ -150,11 +151,13 @@ async function handlePullRequestEvent(
         }
 
         const repoShort = repoFullName.split('/')[1] || repoFullName;
+        const ghUser = await getUser(env, chatId);
         const draftId = await createDraft(env, chatId, {
             pr_number: pr.number,
             pr_title: `${repoShort} | ${pr.title}`,
             commit_sha: pr.head.sha,
             content: JSON.stringify(draftContent),
+            publish_targets: ghUser?.default_publish_targets || undefined,
         });
 
         try {
@@ -244,11 +247,13 @@ async function handlePushEvent(
         }
 
         const repoShort = repoFullName.split('/')[1] || repoFullName;
+        const pushUser = await getUser(env, chatId);
         const draftId = await createDraft(env, chatId, {
             pr_number: 0,
             pr_title: `${repoShort} | ${commit.message.split('\n')[0]}`,
             commit_sha: commit.id,
             content: JSON.stringify(draftContent),
+            publish_targets: pushUser?.default_publish_targets || undefined,
         });
 
         try {

@@ -100,9 +100,9 @@ ${t(lang, 'repos.noOverviewYet').replace('{repo}', `${repo.owner}/${repo.repo}`)
 ${watchStatus}
 
 ${t(lang, 'repos.watchSettings')}
-${prIcon} ${t(lang, 'repos.prs')}: <b>${config.watchPRs ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
-${pushIcon} ${t(lang, 'repos.pushes')}: <b>${config.watchPushes ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
-${t(lang, 'repos.branches')} <b>${config.branches.join(', ')}</b>
+${prIcon} ${t(lang, 'repos.prs')} ${t(lang, 'common.arrow')} <code>${config.watchPRs ? t(lang, 'common.yes') : t(lang, 'common.no')}</code>
+${pushIcon} ${t(lang, 'repos.pushes')} ${t(lang, 'common.arrow')} <code>${config.watchPushes ? t(lang, 'common.yes') : t(lang, 'common.no')}</code>
+${t(lang, 'repos.branches')} ${t(lang, 'common.arrow')} <code>${config.branches.join(', ')}</code>
 ${overviewSection}
 
 ${t(lang, 'common.tapToChange')}`,

@@ -12,6 +12,7 @@ import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getTwitterTweet, getTwitterAccount, updateTwitterTweet, getScoredTweetsByBatchMessage, createDraft, parseTwitterAccountConfig, getPageSize } from '../data/db';
+import { getUser } from '../data/user-db';
 import { generateRepostContent } from '../ai/repost-generate';
 import { editMessage, sendMessage } from '../integrations/telegram';
 import { renderError } from '../views';
@@ -46,6 +47,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
 
     // Create draft
     const tweetPreview = tweet.text.substring(0, 30).replace(/\n/g, ' ');
+    const tgUser = await getUser(ctx.env, ctx.chatId);
     const draftId = await createDraft(ctx.env, ctx.chatId, {
         pr_number: 0,
         pr_title: `@${account.username} | ${tweetPreview}...`,
@@ -54,6 +56,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
         content: JSON.stringify(content),
         original_tweet_id: tweet.id,
         original_tweet_url: tweet.tweet_url || undefined,
+        publish_targets: tgUser?.default_publish_targets || undefined,
     });
 
     // Update tweet status

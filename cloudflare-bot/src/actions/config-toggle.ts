@@ -3,6 +3,7 @@ import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../data/db';
+import { getUser } from '../data/user-db';
 import { renderRepoDetail, renderError, renderSettings } from '../views';
 import { cancelRow } from '../ui/components';
 import { isValidTimezone } from '../infra/timezone';
@@ -24,7 +25,8 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         const ps = await getPageSize(env, chatId);
         const staleCount = await countStalePrompts(env, chatId);
         const isAdminUser = isAdmin(chatId, env);
-        return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
+        const user = await getUser(env, chatId);
+        return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
     }
 
     // Handle language toggle: config:language
@@ -36,7 +38,8 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         const ps = await getPageSize(env, chatId);
         const staleCount = await countStalePrompts(env, chatId);
         const isAdminUser = isAdmin(chatId, env);
-        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser);
+        const user = await getUser(env, chatId);
+        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
     }
 
     // Handle timezone configuration: config:timezone:OFFSET
@@ -65,7 +68,8 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
             const ps = await getPageSize(env, chatId);
             const staleCount = await countStalePrompts(env, chatId);
             const isAdminUser = isAdmin(chatId, env);
-            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
+            const user = await getUser(env, chatId);
+            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
         }
 
         return renderError(t(lang, 'error.invalidTimezone'), lang);

@@ -94,6 +94,7 @@ export const repostUrlInput: InputHandler = async (
                 is_followed: !!followedAccount,
                 user_id: author?.id || null,
                 media_url: mediaUrl,
+                author_profile_image_url: author?.profile_image_url || null,
             },
         },
     });

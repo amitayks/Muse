@@ -2,6 +2,7 @@ import type { HandlerContext } from '../core/router';
 import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { updateChatState, createDraft, getTimezone, getRepoByOwnerRepo, applyOverviewPatches } from '../data/db';
+import { getUser } from '../data/user-db';
 import { getContentSource } from '../integrations/github';
 import { generateContent } from '../ai/gemini';
 import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
@@ -47,11 +48,13 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
             }
         }
 
+        const user = await getUser(env, chatId);
         const draftId = await createDraft(env, chatId, {
             pr_number: prNumber,
             pr_title: prTitle,
             commit_sha: sha,
             content: JSON.stringify(content),
+            publish_targets: user?.default_publish_targets || undefined,
         });
 
         await updateChatState(env, chatId, { context: null });

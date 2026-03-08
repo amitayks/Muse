@@ -20,9 +20,11 @@ export const en = {
         example: '<b>Example:</b>',
         loading: 'Loading...',
         tapToChange: 'Tap a setting to change it:',
+        arrow: '→',
         total: 'total',
         page: 'Page',
         of: 'of',
+        done: 'Done',
     },
 
     home: {
@@ -126,12 +128,13 @@ export const en = {
         items: 'items',
         utcDefault: 'UTC (default)',
 
-        btnTimezone: '🕐 Change Timezone',
+        btnTimezone: '🕐 Timezone',
         btnPageSize: '📏 Page Size',
         btnApiKeys: '🔑 API Keys',
         btnSystemPrompts: 'System Prompts',
         btnSystemPromptsAdmin: 'System Prompts (Admin)',
         btnLanguage: '🌐',
+        btnAnalyzeIdentity: '🪞 Analyze identity',
 
         languageEn: '🇺🇸 English',
         languageHe: '🇮🇱 עברית',
@@ -157,6 +160,8 @@ export const en = {
         instagram: 'Instagram',
         update: 'Update',
         connect: 'Connect',
+        connected: 'Connected',
+        notConnected: 'Not connected',
     },
 
     repos: {
@@ -316,62 +321,108 @@ export const en = {
     },
 
     onboarding: {
-        // Welcome
+        // Welcome (merged value prop — no separate Learn More screen)
         welcomeTitle: '🎭 <b>Welcome to Muse!</b>',
-        welcomeSubtitle: 'Your AI content partner for X/Twitter.',
-        welcomeDesc: "I'll help you turn your code and ideas into polished posts.",
-        welcomeSetup: "First, let's connect your accounts so I can work with your APIs.",
-        welcomeDisclaimer: '<i>By continuing, you agree to provide your own API keys. Keys are encrypted and stored securely.</i>',
-        btnGetStarted: 'Get Started',
-        btnLearnMore: '❓ Learn More',
+        welcomeSubtitle: 'Your AI content partner for X/Twitter and Instagram.',
+        welcomeDesc: "I'll help you turn your code and ideas into polished posts — in YOUR voice.",
+        welcomeFeatures: '<b>What you can do:</b>',
+        welcomeFeatureRepost: '🔄 <b>Repost</b> — Turn any tweet into your styled take',
+        welcomeFeatureGenerate: '⚡ <b>Generate</b> — Create content from your GitHub commits',
+        welcomeFeatureHandwrite: '✍️ <b>Handwrite</b> — Compose tweets with AI refinement',
+        welcomeFeatureFollow: '👤 <b>Follow</b> — Track X accounts and auto-generate reposts',
+        welcomeSetup: "Let's connect your accounts to get started.",
+        welcomeDisclaimer: '<i>You bring your own API keys. All keys are encrypted and never shared.</i>',
+        langEn: '🇺🇸 English',
+        langHe: '🇮🇱 עברית',
+        btnLetsGo: '🚀 Let\'s Go',
 
-        // Learn more
-        learnTitle: '📖 <b>What Muse Does</b>',
-        learnRepost: '• <b>Repost</b> — Turn any tweet into your own styled post',
-        learnGenerate: '• <b>Generate</b> — Create content from your GitHub commits',
-        learnHandwrite: '• <b>Handwrite</b> — Compose tweets with AI refinement',
-        learnFollow: '• <b>Follow</b> — Track X accounts and auto-generate reposts',
-        learnKeys: 'You bring your own API keys (Gemini for AI, X for posting).',
-        learnSecurity: 'All keys are encrypted at rest and never shared.',
-
-        // Gemini
-        geminiTitle: '🔑 <b>Step 1/3: Google Gemini API Key</b>',
-        geminiDesc: 'This powers the AI content generation.',
-        geminiGetYours: 'Get yours free at:',
-        geminiLink: 'aistudio.google.com/apikey',
-        geminiPaste: '📋 Paste your key below as a message:',
-        geminiDeleteNote: '<i>(I\u2019ll delete your message immediately after saving the key)</i>',
-        btnHowToGet: '📖 How to get it',
-        btnSkipForNow: '⏭ Skip for now',
-        geminiSuccess: '✅ <b>Gemini connected!</b>\n\nMoving to the next step...',
-
-        // X/Twitter
-        xTitle: '🔑 <b>Step 2/3: X/Twitter API</b>',
-        xDesc: 'I need 4 values from developer.x.com',
-        xFormat: '<b>Send them in this exact format</b> (one per line):',
+        // X/Twitter (Step 1 — Unlock Your Thoughts)
+        xTitle: '🔓 <b>Unlock Your Thoughts</b>',
+        xDesc: 'X is where your thoughts live. Connect it to unlock:',
+        xFeatureRepost: '🔄 Paste any tweet URL → get a styled quote-tweet draft',
+        xFeatureHandwrite: '✍️ Write tweets & threads with AI polish that sounds like you',
+        xFeatureFollow: '👤 Monitor X accounts and auto-draft reposts when they tweet',
+        xFeatureIdentity: '🪞 Analyze your tweets to learn your unique writing style',
+        xFormat: '<b>Send 4 values</b> (one per line):',
         xKey: '<code>API_KEY</code>',
         xSecret: '<code>API_SECRET</code>',
         xAccessToken: '<code>ACCESS_TOKEN</code>',
         xAccessSecret: '<code>ACCESS_SECRET</code>',
         xDeleteNote: '<i>(I\u2019ll delete the message immediately after saving)</i>',
-        btnHowToGetThem: '📖 How to get them',
-        xSuccess: '✅ <b>X/Twitter connected!</b>\n\nMoving to the next step...',
+        btnHowToGetThem: '📖 Guide Me',
+        btnSkipForNow: '⏭ Skip for now',
+        xSuccess: '✅ <b>X/Twitter connected!</b>',
 
-        // GitHub
-        githubTitle: '🔑 <b>Step 3/3: GitHub Token (optional)</b>',
-        githubDesc: 'Only needed for auto-generating content from your code commits.',
+        // Instagram (Unlock Your Reach)
+        instagramTitle: '🔓 <b>Unlock Your Reach</b>',
+        instagramDesc: 'Expand beyond X — publish Reels and posts to Instagram.',
+        instagramUnlockLabel: 'Connect Instagram to unlock:',
+        instagramFeatureReels: '📱 Turn your posts into Instagram Reels automatically',
+        instagramFeatureCross: '🔀 Publish to both X and Instagram from one place',
+        instagramFormat: '<b>Send 2 values</b> (one per line):',
+        instagramAccessToken: '<code>ACCESS_TOKEN</code>',
+        instagramAccountId: '<code>BUSINESS_ACCOUNT_ID</code>',
+        instagramDeleteNote: '<i>(I\u2019ll delete the message immediately after saving)</i>',
+        btnInstagramGuide: '📖 Meta Developers',
+        instagramSuccess: '✅ <b>Instagram connected!</b>',
+
+        // Identity (Unlock Your Identity)
+        identityTitle: '🔓 <b>Unlock Your Identity</b>',
+        identityDesc: 'This is the magic moment. I\'ll analyze your recent tweets to understand:',
+        identityAspectStyle: '• Your writing rhythm and style',
+        identityAspectVocab: '• Your vocabulary and tone',
+        identityAspectEmotion: '• Your emotional patterns',
+        identityAspectInterests: '• Your interests and perspective',
+        identityFoundation: 'This creates your Identity Document — the foundation for everything I write.',
+        identityCost: '📊 ~{count} tweets analyzed · 1 AI call',
+        btnUnderstandMe: '🔍 Understand Me',
+        btnUseDefault: '📝 Use default',
+        identityAnalyzing: '🔍 Analyzing your tweets... This may take a moment.',
+        identitySuccessTitle: '✅ <b>Identity analysis complete!</b>',
+        identitySnippetLabel: '<b>Here\'s what I see:</b>',
+        identitySnippetFooter: '(full document available in Settings)',
+        identityFailed: '⚠️ Analysis didn\'t work this time. Using a neutral default — you can re-analyze anytime from Settings.',
+        btnNext: 'Next →',
+
+        // Gemini (Step 3 — Power Up the AI)
+        geminiTitle: '🔓 <b>Power Up the AI</b>',
+        geminiDesc: 'Now that I know your voice, I need an engine to write in it.',
+        geminiUnlockLabel: 'Connect Gemini to unlock:',
+        geminiFeatureGeneration: '⚡ AI creates original posts from your code and ideas',
+        geminiFeatureRewriting: '✨ Polish any draft to match your personal writing style',
+        geminiFeatureIdentity: '🧠 Every draft shaped by your unique voice profile',
+        geminiGetYours: 'Free key · takes 30 seconds:',
+        geminiLink: 'aistudio.google.com/apikey',
+        geminiPaste: '📋 Paste your key below:',
+        geminiDeleteNote: '<i>(I\u2019ll delete your message immediately after saving the key)</i>',
+        btnHowToGet: '📖 Get Free Key',
+        geminiSuccess: '✅ <b>Gemini connected!</b>',
+
+        // GitHub (Bonus — Code → Content)
+        githubTitle: '🎁 <b>Bonus: Code → Content</b>',
+        githubDesc: 'Ship code? Let me turn your commits into posts.',
+        githubUnlockLabel: 'Connect GitHub to unlock:',
+        githubFeatureGenerate: '📝 New commits and PRs become ready-to-publish drafts',
+        githubFeatureRepos: '👁 Monitor repos and auto-generate content for updates',
         githubCreate: 'Create a personal access token at:',
         githubLink: 'github.com/settings/tokens',
-        githubPaste: '📋 Paste your token below, or skip this step.',
-        btnCreateToken: '📖 Create token',
-        btnSkip: '⏭ Skip',
+        githubPaste: '📋 Paste your token below:',
+        btnCreateToken: '📖 Connect GitHub',
+        btnNotNow: 'Not now',
         githubSuccess: '✅ <b>GitHub connected!</b>',
 
         // Complete
         completeTitle: '🎉 <b>You\u2019re all set!</b>',
-        connected: '<b>Connected:</b>',
-        skipped: '(skipped)',
-        completeHint: 'Try /repost with any tweet URL, or follow an X account to get started!',
+        completeUnlockedLabel: '<b>Unlocked:</b>',
+        completeLockedLabel: '<b>Connect later to unlock:</b>',
+        featureRepost: '🔄 Repost',
+        featureHandwrite: '✍️ Handwrite',
+        featureFollow: '👤 Follow',
+        featureIdentity: '🪞 Identity',
+        featureInstagram: '📸 Instagram Publishing',
+        featureAiGeneration: '🤖 AI Generation',
+        featureCodeToContent: '⚡ Code → Content',
+        completeHint: 'Try /repost with any tweet URL to get started!',
         btnAddMoreKeys: '⚙️ Add More Keys',
 
         // Key error
@@ -593,7 +644,11 @@ export const en = {
         draftReturnedToPending: 'The draft has been returned to pending status.',
         btnViewDrafts: '📝 View Drafts',
         scheduledPostPublished: '📤 <b>Scheduled Post Published!</b>',
+        scheduledPostPartial: '⚠️ <b>Scheduled Post Partially Published</b>',
         publishedAt: '🕐 Published {time}',
+        publishedTo: '<b>Published to:</b> {summary}',
+        publishErrors: '<b>Failed:</b> {errors}',
+        draftReturnedToApproved: 'The draft has been returned to approved status. You can retry publishing.',
         btnDashboard: '🏠 Dashboard',
 
         // Cron — video notifications
@@ -830,6 +885,34 @@ export const en = {
         invalidTweetUrlMsg: "Couldn't parse a tweet URL from that.",
         tweetNotFound: '❌ <b>Tweet not found</b>',
         tweetNotFoundMsg: "Couldn't fetch tweet <code>{tweetId}</code> from @{username}.\n\nThe tweet may be deleted, from a private account, or the URL may be incorrect.\n\nTry another URL:",
+    },
+
+    platforms: {
+        // Platform names
+        x: 'X',
+        post: 'Instagram Post',
+        story: 'Instagram Story',
+        reel: 'Instagram Reel',
+
+        // Toggle UI
+        selectTargets: 'Select Publish Targets',
+        currentTargets: 'Current targets',
+        targets: 'Targets',
+        btnPlatforms: 'Platforms',
+        btnPublish: 'Publish',
+        btnRepost: 'Repost',
+
+        // Default platforms (settings)
+        defaultPlatforms: 'Default Platforms',
+        defaultPlatformsDesc: 'New drafts will use these platforms by default.',
+
+        // Repost picker
+        repostTitle: 'Repost to Additional Platforms',
+        selectRepostTargets: 'Select platforms to publish to:',
+        selected: 'Selected',
+
+        // Errors
+        noTargetSelected: 'Please select at least one platform.',
     },
 };
 

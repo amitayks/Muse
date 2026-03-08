@@ -37,16 +37,16 @@ export async function renderHome(env: Env, chatId: string, lang: Lang = 'en'): P
 
 ${t(lang, 'home.nextUp')}
 "${preview}"
-⏰ ${timeStr}
-📊 ${format} | PR #${nextDraft.pr_number}
+⏰ ${t(lang, 'common.arrow')} <code>${timeStr}</code>
+📊 ${t(lang, 'common.arrow')} <code>${format}</code> | PR #${nextDraft.pr_number}
 
-${t(lang, 'home.queueLabel')} ${scheduledCount} ${t(lang, 'home.scheduled')} | ${draftCount} ${t(lang, 'home.drafts')} | ${approvedCount} ${t(lang, 'home.approved')}`;
+${t(lang, 'home.queueLabel')} <code>${scheduledCount}</code> ${t(lang, 'home.scheduled')} | <code>${draftCount}</code> ${t(lang, 'home.drafts')} | <code>${approvedCount}</code> ${t(lang, 'home.approved')}`;
     } else {
         text = `${t(lang, 'home.title')}
 
 ${t(lang, 'home.allClear')}
 
-📊 ${draftCount} ${t(lang, 'home.drafts')} | ${approvedCount} ${t(lang, 'home.approved')}`;
+📊 <code>${draftCount}</code> ${t(lang, 'home.drafts')} | <code>${approvedCount}</code> ${t(lang, 'home.approved')}`;
     }
 
     const keyboard: InlineButton[][] = [];

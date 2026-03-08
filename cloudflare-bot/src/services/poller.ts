@@ -12,7 +12,7 @@
  */
 
 import type { Env, TwitterAccount, TwitterAccountConfig, TwitterTweet, ThreadBufferEntry } from '../types';
-import { getUserTweets, searchConversation, getMediaUrl, lookupUserByUsername, type XTweet } from '../integrations/x';
+import { getUserTweets, searchConversation, getMediaUrl, lookupUserByUsername, type XTweet, type XUserExpansion } from '../integrations/x';
 import {
     getWatchingTwitterAccountsByUser,
     updateTwitterAccount,
@@ -22,6 +22,29 @@ import {
 } from '../data/db';
 
 const ACCOUNTS_PER_CYCLE = 10;
+const BACKOFF_MIN_MINUTES = 30;
+const BACKOFF_MAX_MINUTES = 240; // 4 hours
+
+/**
+ * Calculate the next poll timestamp based on consecutive empty polls.
+ * Uses exponential backoff: min(30 * 2^(n-1), 240) minutes from now.
+ */
+function calculateNextPollAt(consecutiveEmptyPolls: number): string {
+    const minutes = Math.min(
+        BACKOFF_MIN_MINUTES * Math.pow(2, Math.max(0, consecutiveEmptyPolls - 1)),
+        BACKOFF_MAX_MINUTES
+    );
+    return new Date(Date.now() + minutes * 60 * 1000).toISOString();
+}
+
+/**
+ * Check if an account is due for polling based on its next_poll_at timestamp.
+ * NULL next_poll_at means immediately eligible.
+ */
+function isDueForPolling(account: TwitterAccount): boolean {
+    if (!account.next_poll_at) return true;
+    return new Date(account.next_poll_at) <= new Date();
+}
 
 /**
  * Main polling entry point — called per-user by cron fan-out
@@ -33,14 +56,23 @@ export async function pollUserAccounts(env: Env, chatId: string): Promise<void> 
         return;
     }
 
-    // Select chunk for this cycle
+    // Select chunk for this cycle, then filter by backoff schedule
     const chunk = selectChunk(allAccounts);
-    console.log(`[poller] Polling ${chunk.length}/${allAccounts.length} accounts for chat ${chatId}`);
+    const dueAccounts = chunk.filter(isDueForPolling);
+    const skippedCount = chunk.length - dueAccounts.length;
+    if (skippedCount > 0) {
+        console.log(`[poller] Skipped ${skippedCount}/${chunk.length} accounts (backoff not due) for chat ${chatId}`);
+    }
+    if (dueAccounts.length === 0) {
+        console.log(`[poller] No accounts due for polling for chat ${chatId}`);
+        return;
+    }
+    console.log(`[poller] Polling ${dueAccounts.length}/${allAccounts.length} accounts for chat ${chatId}`);
 
     // Collect all pending tweets across accounts for batch scoring
     const allPendingTweets: Array<{ tweet: TwitterTweet; account: TwitterAccount; config: TwitterAccountConfig }> = [];
 
-    for (const account of chunk) {
+    for (const account of dueAccounts) {
         try {
             const config = parseTwitterAccountConfig(account);
 
@@ -141,14 +173,21 @@ async function pollSingleAccount(
         return [];
     }
 
-    const { tweets, newestId, media } = await getUserTweets(
+    const { tweets, newestId, media, users } = await getUserTweets(
         env,
         account.user_id!,
         account.last_tweet_id
     );
 
     if (tweets.length === 0) {
-        // No new tweets — increment stale_polls for buffered threads
+        // No new tweets — update backoff state
+        const newEmptyPolls = (account.consecutive_empty_polls || 0) + 1;
+        await updateTwitterAccount(env, account.id, account.chat_id, {
+            consecutive_empty_polls: newEmptyPolls,
+            next_poll_at: calculateNextPollAt(newEmptyPolls),
+        });
+        console.log(`[poller] @${account.username}: no new tweets, backoff to ${newEmptyPolls} empty polls`);
+        // Increment stale_polls for buffered threads
         await incrementStalePolls(env, account);
         // Complete stale threads
         await completeStaleThreads(env, account);
@@ -156,6 +195,17 @@ async function pollSingleAccount(
     }
 
     console.log(`[poller] @${account.username}: ${tweets.length} new tweets`);
+
+    // Update account's profile_image_url from user expansion if available
+    const accountUser = findAuthorUser(users, account.user_id!);
+    if (accountUser?.profile_image_url && accountUser.profile_image_url !== account.profile_image_url) {
+        await updateTwitterAccount(env, account.id, account.chat_id, {
+            profile_image_url: accountUser.profile_image_url,
+            display_name: accountUser.name,
+        });
+        account.profile_image_url = accountUser.profile_image_url;
+        account.display_name = accountUser.name;
+    }
 
     // Store tweets and classify as standalone or thread
     const pendingTweets: TwitterTweet[] = [];
@@ -169,6 +219,9 @@ async function pollSingleAccount(
 
         const isThreadContinuation = isThreadTweet(xTweet, account.user_id!);
         const tweetUrl = `https://x.com/${account.username}/status/${xTweet.id}`;
+
+        // Look up author profile data from user expansions
+        const authorUser = findAuthorUser(users, xTweet.author_id || account.user_id!);
 
         await createTwitterTweet(env, {
             id: xTweet.id,
@@ -184,6 +237,8 @@ async function pollSingleAccount(
             tweeted_at: xTweet.created_at || null,
             status: isThreadContinuation ? 'buffered' : 'pending',
             media_url: getMediaUrl(media, xTweet),
+            author_profile_image_url: authorUser?.profile_image_url || null,
+            author_display_name: authorUser?.name || null,
         });
 
         if (isThreadContinuation && xTweet.conversation_id) {
@@ -198,9 +253,13 @@ async function pollSingleAccount(
         }
     }
 
-    // Update last_tweet_id
+    // Update last_tweet_id and reset backoff (tweets found)
     if (newestId) {
-        await updateTwitterAccount(env, account.id, account.chat_id, { last_tweet_id: newestId });
+        await updateTwitterAccount(env, account.id, account.chat_id, {
+            last_tweet_id: newestId,
+            consecutive_empty_polls: 0,
+            next_poll_at: calculateNextPollAt(1),
+        });
     }
 
     // Increment stale polls and check for completed threads
@@ -318,6 +377,7 @@ async function completeStaleThreads(
                 const mainTweetId = entry.tweet_ids[0] || firstTweet.id;
 
                 // Store/update with full thread content
+                // Use account's stored profile image for thread author
                 await createTwitterTweet(env, {
                     id: mainTweetId,
                     account_id: account.id,
@@ -330,6 +390,8 @@ async function completeStaleThreads(
                     tweet_url: tweetUrl,
                     tweeted_at: firstTweet.created_at || null,
                     status: 'pending',
+                    author_profile_image_url: account.profile_image_url || null,
+                    author_display_name: account.display_name || null,
                 });
 
                 // Update existing buffered tweet to pending with full text
@@ -378,4 +440,12 @@ function parseThreadBuffer(raw: string | null): Record<string, ThreadBufferEntry
     } catch {
         return {};
     }
+}
+
+/**
+ * Find author user data from the includes.users expansion array
+ */
+function findAuthorUser(users: XUserExpansion[] | undefined, authorId: string): XUserExpansion | undefined {
+    if (!users) return undefined;
+    return users.find(u => u.id === authorId);
 }

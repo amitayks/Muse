@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS drafts (
   content TEXT NOT NULL,
   image_url TEXT,
   scheduled_at TEXT,
+  original_tweet_id TEXT,
+  original_tweet_url TEXT,
+  publish_targets TEXT DEFAULT '{"x":true}',
+  publish_results TEXT DEFAULT '{}',
+  has_video INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -35,19 +40,29 @@ CREATE TABLE IF NOT EXISTS users (
   x_access_secret_enc TEXT,
   github_token_enc TEXT,
   heygen_api_key_enc TEXT,
+  instagram_token_enc TEXT,
+  instagram_account_id_enc TEXT,
   -- Feature flags
   has_gemini INTEGER DEFAULT 0,
   has_x INTEGER DEFAULT 0,
   has_github INTEGER DEFAULT 0,
   has_heygen INTEGER DEFAULT 0,
+  has_instagram INTEGER DEFAULT 0,
   -- UI state (merged from former chat_state)
   message_id INTEGER,
+  onboarding_message_id INTEGER,
   current_view TEXT DEFAULT 'home',
   context TEXT,
   -- Settings
   timezone TEXT DEFAULT 'UTC',
   page_size INTEGER DEFAULT 5,
   video_settings TEXT,
+  -- Multi-platform publish defaults
+  default_publish_targets TEXT DEFAULT '{"x":true}',
+  -- Own X profile data (for tweet card rendering)
+  own_profile_image_url TEXT,
+  own_username_x TEXT,
+  own_display_name_x TEXT,
   -- Rate limiting
   daily_generates INTEGER DEFAULT 0,
   daily_reposts INTEGER DEFAULT 0,
@@ -65,9 +80,11 @@ CREATE TABLE IF NOT EXISTS published (
   chat_id TEXT NOT NULL,
   draft_id TEXT NOT NULL,
   pr_number INTEGER NOT NULL,
-  tweet_ids TEXT NOT NULL,
+  tweet_ids TEXT,
   tweet_url TEXT,
   image_url TEXT,
+  instagram_post_id TEXT,
+  instagram_url TEXT,
   published_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -155,6 +172,9 @@ CREATE TABLE IF NOT EXISTS twitter_accounts (
   last_tweet_id TEXT,
   config TEXT NOT NULL,
   thread_buffer TEXT,
+  profile_image_url TEXT,
+  next_poll_at TEXT,
+  consecutive_empty_polls INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(chat_id, username)
@@ -192,12 +212,29 @@ CREATE TABLE IF NOT EXISTS twitter_tweets (
   status TEXT DEFAULT 'pending',
   draft_id TEXT,
   batch_message_id INTEGER,
+  media_url TEXT DEFAULT NULL,
+  author_profile_image_url TEXT,
+  author_display_name TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Migration for existing databases:
 -- ALTER TABLE drafts ADD COLUMN original_tweet_id TEXT;
 -- ALTER TABLE drafts ADD COLUMN original_tweet_url TEXT;
+
+-- Persona cache for non-followed accounts
+CREATE TABLE IF NOT EXISTS persona_cache (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  user_id TEXT,
+  display_name TEXT,
+  bio TEXT,
+  persona TEXT,
+  topics TEXT,
+  profile_image_url TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 
 -- ==================== PROMPT STORAGE ====================
 

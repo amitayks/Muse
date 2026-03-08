@@ -39,8 +39,8 @@ export interface Env {
 // User status
 export type UserStatus = 'onboarding' | 'active' | 'suspended';
 
-// Onboarding step
-export type OnboardingStep = 'welcome' | 'gemini_key' | 'x_keys' | 'github_token' | 'identity' | 'complete' | null;
+// Onboarding step — flow order: welcome → x_keys → instagram → identity → gemini_key → github_token → complete
+export type OnboardingStep = 'welcome' | 'x_keys' | 'instagram' | 'identity' | 'gemini_key' | 'github_token' | 'complete' | null;
 
 // User record from D1 (merged with former chat_state)
 export interface User {
@@ -70,6 +70,7 @@ export interface User {
 
     // UI state (from former chat_state)
     message_id: number | null;
+    onboarding_message_id: number | null;
     current_view: string;
     context: string | null;
 
@@ -78,6 +79,12 @@ export interface User {
     timezone: string;
     page_size: number;
     video_settings: string | null;
+    default_publish_targets: string; // JSON string of PublishTargets
+
+    // Own X profile data (for tweet card rendering)
+    own_profile_image_url: string | null;
+    own_username_x: string | null;
+    own_display_name_x: string | null;
 
     // Rate limiting
     daily_generates: number;
@@ -97,12 +104,19 @@ export type DraftStatus = 'draft' | 'approved' | 'published' | 'scheduled';
 // Draft format
 export type DraftFormat = 'single' | 'thread';
 
+// Media item attached to a tweet
+export interface TweetMedia {
+    key: string;       // R2 key
+    type: 'photo' | 'video';
+    width?: number;
+    height?: number;
+}
+
 // Tweet in a draft
 export interface Tweet {
     text: string;
     index: number;
-    mediaKey?: string;
-    mediaType?: 'photo';
+    media?: TweetMedia[];
 }
 
 // Structured image prompt for AI image generation
@@ -142,6 +156,44 @@ export interface ContentResponse {
     overviewUpdates: OverviewPatch | null;
 }
 
+// ==================== MULTI-PLATFORM PUBLISHING ====================
+
+// Per-draft platform selection
+export interface PublishTargets {
+    x: boolean;
+    instagram_post: boolean;
+    instagram_story: boolean;
+    instagram_reel: boolean;
+}
+
+export const DEFAULT_PUBLISH_TARGETS: PublishTargets = {
+    x: true,
+    instagram_post: false,
+    instagram_story: false,
+    instagram_reel: false,
+};
+
+// Per-platform publish results (stored on draft after publishing)
+export interface PublishResults {
+    x?: {
+        tweet_ids: string[];
+        url: string;
+    };
+    instagram_post?: {
+        post_id: string;
+        url: string;
+    };
+    instagram_story?: {
+        post_id: string;
+        url: null;
+    };
+    instagram_reel?: {
+        post_id: string;
+        url: string;
+    };
+    errors?: Record<string, string>;
+}
+
 // Draft record from D1
 export interface Draft {
     id: string;
@@ -156,6 +208,9 @@ export interface Draft {
     scheduled_at: string | null;
     original_tweet_id: string | null; // For repost drafts: the quoted tweet ID
     original_tweet_url: string | null; // For repost drafts: URL to original tweet
+    publish_targets: string; // JSON string of PublishTargets
+    publish_results: string; // JSON string of PublishResults
+    has_video: number; // 0 or 1
     created_at: string;
     updated_at: string;
 }
@@ -170,15 +225,17 @@ export interface ChatState {
     updated_at: string;
 }
 
-// Published post record
+// Published post record (simplified — per-platform results are in draft.publish_results)
 export interface Published {
     id: string;
     chat_id: string; // Owner's Telegram chat ID
     draft_id: string;
     pr_number: number;
-    tweet_ids: string; // JSON array
+    tweet_ids: string | null;
     tweet_url: string | null;
     image_url: string | null;
+    instagram_post_id: string | null;
+    instagram_url: string | null;
     published_at: string;
 }
 
@@ -427,6 +484,9 @@ export interface TwitterAccount {
     last_tweet_id: string | null;
     config: string; // JSON string of TwitterAccountConfig
     thread_buffer: string | null; // JSON for incomplete thread tracking
+    profile_image_url: string | null;
+    next_poll_at: string | null; // ISO 8601 timestamp for backoff scheduling
+    consecutive_empty_polls: number; // count of consecutive polls with no new tweets
     created_at: string;
     updated_at: string;
 }
@@ -454,6 +514,7 @@ export interface PersonaCache {
     bio: string | null;
     persona: string | null;
     topics: string | null; // JSON array
+    profile_image_url: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -479,6 +540,8 @@ export interface TwitterTweet {
     draft_id: string | null;
     batch_message_id: number | null;
     media_url: string | null;
+    author_profile_image_url: string | null;
+    author_display_name: string | null;
     created_at: string;
 }
 
@@ -642,6 +705,7 @@ export interface ChatContext {
         is_followed: boolean;
         user_id: string | null;
         media_url?: string | null;
+        author_profile_image_url?: string | null;
     };
     page?: number;
     selected_draft_id?: string;
@@ -680,8 +744,7 @@ export interface LookCreateState {
 export interface HandwriteTweet {
     messageId: number;
     text: string;
-    mediaKey?: string;
-    mediaType?: 'photo';
+    media?: TweetMedia[];
 }
 
 export interface HandwriteState {

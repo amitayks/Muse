@@ -35,12 +35,14 @@ export const addTwitterAccountInput: InputHandler = async (
         const { lookupUserByUsername } = await import('../integrations/x');
         let userId: string | undefined;
         let displayName: string | undefined;
+        let profileImageUrl: string | undefined;
 
         try {
             const user = await lookupUserByUsername(env, username);
             if (user) {
                 userId = user.id;
                 displayName = user.name;
+                profileImageUrl = user.profile_image_url;
             }
         } catch (error) {
             console.error('[add-account] X API lookup failed:', error);
@@ -51,6 +53,7 @@ export const addTwitterAccountInput: InputHandler = async (
             username: username.toLowerCase(),
             user_id: userId,
             display_name: displayName,
+            profile_image_url: profileImageUrl,
         });
 
         // Clear awaiting_input and show accounts list

@@ -188,6 +188,39 @@ export async function sendPhoto(
 }
 
 /**
+ * Send a group of photos as an album (2–10 photos)
+ */
+export async function sendMediaGroup(
+    env: Env,
+    chatId: string | number,
+    photoUrls: string[]
+): Promise<number[]> {
+    const media = photoUrls.map(url => ({
+        type: 'photo' as const,
+        media: url,
+    }));
+
+    const response = await fetch(`${TELEGRAM_API}${env.TELEGRAM_BOT_TOKEN}/sendMediaGroup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: chatId,
+            media,
+        }),
+    });
+
+    const data = await response.json() as { ok: boolean; result?: Array<{ message_id: number }>; description?: string };
+
+    if (!data.ok || !data.result) {
+        console.error('sendMediaGroup failed:', data.description);
+        throw new Error(`Failed to send media group: ${data.description}`);
+    }
+
+    console.log('Sent media group:', data.result.length, 'photos');
+    return data.result.map(m => m.message_id);
+}
+
+/**
  * Send a video with optional caption
  * Accepts a URL (Telegram downloads it) or binary data via multipart upload
  */

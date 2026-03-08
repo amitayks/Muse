@@ -104,7 +104,7 @@ export async function settingsKeyInput(
 
         // Validate by calling Facebook Graph API
         try {
-            const response = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${accessToken}`);
+            const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
             if (!response.ok) {
                 return {
                     text: t(lang, 'settingsKeys.instagramValidationFailed').replace('{status}', String(response.status)),

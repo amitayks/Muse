@@ -9,6 +9,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { createTwitterAccount } from '../data/db';
 import { editMessage } from '../integrations/telegram';
+import { lookupUserByUsername } from '../integrations/x';
 
 /** Follow the account — create twitter account entry */
 export const rpFollowAction: ActionHandler = async (ctx) => {
@@ -16,7 +17,27 @@ export const rpFollowAction: ActionHandler = async (ctx) => {
     const username = ctx.value;
 
     try {
-        await createTwitterAccount(ctx.env, ctx.chatId, { username });
+        // Look up profile data to store with the account
+        let userId: string | undefined;
+        let displayName: string | undefined;
+        let profileImageUrl: string | undefined;
+        try {
+            const user = await lookupUserByUsername(ctx.env, username);
+            if (user) {
+                userId = user.id;
+                displayName = user.name;
+                profileImageUrl = user.profile_image_url;
+            }
+        } catch {
+            // Continue without profile data — poller will resolve later
+        }
+
+        await createTwitterAccount(ctx.env, ctx.chatId, {
+            username,
+            user_id: userId,
+            display_name: displayName,
+            profile_image_url: profileImageUrl,
+        });
 
         if (ctx.messageId) {
             await editMessage(ctx.env, ctx.chatId, ctx.messageId,

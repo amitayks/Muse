@@ -83,9 +83,9 @@ export function renderCharacterDetail(character: HeyGenCharacter, lookPage = 0, 
     const shownLooks = looks.slice(lookStart, lookStart + LOOKS_PAGE_SIZE);
 
     let text = `${statusIcon} <b>${escapeHtml(character.name)}</b>\n\n`;
-    text += `${t(lang, 'videoSettings.statusLabel')} ${statusLabel}\n`;
-    text += `${t(lang, 'videoSettings.voiceLabel')} ${character.voiceId || t(lang, 'video.notSet')}\n`;
-    text += `${t(lang, 'videoSettings.emotionLabel')} ${character.defaultEmotion || 'Friendly'}\n`;
+    text += `${t(lang, 'videoSettings.statusLabel')} ${t(lang, 'common.arrow')} <code>${statusLabel}</code>\n`;
+    text += `${t(lang, 'videoSettings.voiceLabel')} ${t(lang, 'common.arrow')} <code>${character.voiceId || t(lang, 'video.notSet')}</code>\n`;
+    text += `${t(lang, 'videoSettings.emotionLabel')} ${t(lang, 'common.arrow')} <code>${character.defaultEmotion || 'Friendly'}</code>\n`;
     if (character.personality) text += `${t(lang, 'videoSettings.personalityLabel')} <i>${escapeHtml(character.personality.substring(0, 100))}</i>\n`;
 
     if (looks.length > 0) {
@@ -194,7 +194,7 @@ export function renderVoiceSelect(
         : t(lang, 'video.notSet');
 
     let text = `${t(lang, 'videoSettings.voiceSelectTitle').replace('{name}', escapeHtml(character.name))}\n\n`;
-    text += `${t(lang, 'videoSettings.currentVoice')} ${escapeHtml(currentName)}\n`;
+    text += `${t(lang, 'videoSettings.currentVoice')} ${t(lang, 'common.arrow')} <code>${escapeHtml(currentName)}</code>\n`;
     text += `${t(lang, 'videoSettings.showing')} ${start + 1}–${start + shown.length} of ${voices.length}`;
 
     const keyboard: InlineButton[][] = [];
@@ -248,11 +248,11 @@ export function renderDefaultSettings(settings: VideoSettings, lang: Lang = 'en'
     return {
         text: `${t(lang, 'videoSettings.defaultsTitle')}\n\n` +
             `${t(lang, 'videoSettings.defaultsDesc')}\n\n` +
-            `${t(lang, 'videoSettings.aspectRatio')} ${d.aspectRatio || '16:9'}\n` +
-            `${t(lang, 'videoSettings.maxLength')} ${d.maxLength || t(lang, 'videoSettings.noLimit')}\n` +
-            `${t(lang, 'videoSettings.characterDefault')} ${d.defaultCharacterId ? settings.characters.find(c => c.heygenGroupId === d.defaultCharacterId)?.name || d.defaultCharacterId : t(lang, 'videoSettings.none')}\n` +
-            `${t(lang, 'videoSettings.background')} ${d.defaultBackground || '#ffffff'}\n` +
-            `${t(lang, 'videoSettings.captionsLabel')} ${d.defaultCaptions !== undefined ? (d.defaultCaptions ? 'ON' : 'OFF') : 'OFF'}`,
+            `${t(lang, 'videoSettings.aspectRatio')} ${t(lang, 'common.arrow')} <code>${d.aspectRatio || '16:9'}</code>\n` +
+            `${t(lang, 'videoSettings.maxLength')} ${t(lang, 'common.arrow')} <code>${d.maxLength || t(lang, 'videoSettings.noLimit')}</code>\n` +
+            `${t(lang, 'videoSettings.characterDefault')} ${t(lang, 'common.arrow')} <code>${d.defaultCharacterId ? settings.characters.find(c => c.heygenGroupId === d.defaultCharacterId)?.name || d.defaultCharacterId : t(lang, 'videoSettings.none')}</code>\n` +
+            `${t(lang, 'videoSettings.background')} ${t(lang, 'common.arrow')} <code>${d.defaultBackground || '#ffffff'}</code>\n` +
+            `${t(lang, 'videoSettings.captionsLabel')} ${t(lang, 'common.arrow')} <code>${d.defaultCaptions !== undefined ? (d.defaultCaptions ? 'ON' : 'OFF') : 'OFF'}</code>`,
         keyboard: [
             [
                 { text: t(lang, 'videoSettings.btnAspectRatio'), callback_data: 'vsettings:def_aspect' },
@@ -274,7 +274,7 @@ export function renderDefaultSettings(settings: VideoSettings, lang: Lang = 'en'
 export function renderHeyGenSettings(hasApiKey: boolean, lang: Lang = 'en'): ViewResult {
     return {
         text: `${t(lang, 'videoSettings.heygenTitle')}\n\n` +
-            `${t(lang, 'videoSettings.apiKey')} ${hasApiKey ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n\n` +
+            `${t(lang, 'videoSettings.apiKey')} ${t(lang, 'common.arrow')} <code>${hasApiKey ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}</code>\n\n` +
             `${t(lang, 'videoSettings.creditCosts')}\n` +
             `${t(lang, 'videoSettings.avatarIII')}\n` +
             `${t(lang, 'videoSettings.avatarIV')}\n` +
@@ -291,8 +291,8 @@ export function renderHeyGenSettings(hasApiKey: boolean, lang: Lang = 'en'): Vie
 export function renderInstagramSettings(hasCredentials: boolean, lang: Lang = 'en'): ViewResult {
     return {
         text: `${t(lang, 'videoSettings.instagramTitle')}\n\n` +
-            `${t(lang, 'videoSettings.businessAccountId')} ${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n` +
-            `${t(lang, 'videoSettings.accessToken')} ${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}\n\n` +
+            `${t(lang, 'videoSettings.businessAccountId')} ${t(lang, 'common.arrow')} <code>${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}</code>\n` +
+            `${t(lang, 'videoSettings.accessToken')} ${t(lang, 'common.arrow')} <code>${hasCredentials ? t(lang, 'videoSettings.configuredStatus') : t(lang, 'videoSettings.notConfigured')}</code>\n\n` +
             (hasCredentials
                 ? t(lang, 'videoSettings.instagramEnabled')
                 : t(lang, 'videoSettings.instagramDisabled')),

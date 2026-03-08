@@ -11,6 +11,7 @@ import {
     getTwitterAccounts, getTwitterAccountOverview, parseTwitterAccountConfig,
     getTimezone,
 } from '../data/db';
+import { getUser } from '../data/user-db';
 import { renderRepostGenerating } from '../views/repost';
 import { renderError } from '../views';
 import { editMessage, sendMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
@@ -76,6 +77,8 @@ export const rpGenAction: ActionHandler = async (ctx) => {
         is_thread: preview.thread_text ? 1 : 0,
         text: preview.thread_text || preview.tweet_text,
         author_username: preview.username,
+        author_profile_image_url: preview.author_profile_image_url || null,
+        author_display_name: preview.author_name || null,
         metrics: null,
         tweet_url: `https://x.com/${preview.username}/status/${preview.tweet_id}`,
         tweeted_at: null,
@@ -105,6 +108,7 @@ export const rpGenAction: ActionHandler = async (ctx) => {
 
     // Create draft
     const tweetPreview = preview.tweet_text.substring(0, 30).replace(/\n/g, ' ');
+    const rpUser = await getUser(ctx.env, ctx.chatId);
     const draftId = await createDraft(ctx.env, ctx.chatId, {
         pr_number: 0,
         pr_title: `@${preview.username} | ${tweetPreview}...`,
@@ -113,6 +117,7 @@ export const rpGenAction: ActionHandler = async (ctx) => {
         content: JSON.stringify(content),
         original_tweet_id: preview.tweet_id,
         original_tweet_url: `https://x.com/${preview.username}/status/${preview.tweet_id}`,
+        publish_targets: rpUser?.default_publish_targets || undefined,
     });
 
     // Clear preview context

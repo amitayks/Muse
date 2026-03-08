@@ -3,6 +3,7 @@ import type { ChatContext } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { setTimezone, getTimezone, getPageSize, updateChatState } from '../data/db';
+import { getUser } from '../data/user-db';
 import { respond } from '../core/respond';
 import { renderSettings } from '../views/settings';
 import { isValidTimezone } from '../infra/timezone';
@@ -32,6 +33,7 @@ export async function timezoneInput(ctx: HandlerContext & { text: string; contex
     const ps = await getPageSize(env, chatId);
     const staleCount = await countStalePrompts(env, chatId);
     const isAdminUser = isAdmin(chatId, env);
-    const view = renderSettings(savedTz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
+    const user = await getUser(env, chatId);
+    const view = renderSettings(savedTz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
     await respond(env, chatId, view, { viewName: 'settings', context: null });
 }

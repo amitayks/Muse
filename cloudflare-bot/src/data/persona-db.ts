@@ -30,7 +30,7 @@ export async function getPersonaCache(env: Env, username: string): Promise<Perso
 export async function upsertPersonaCache(
     env: Env,
     username: string,
-    data: { user_id?: string; display_name?: string; bio?: string; persona?: string; topics?: string }
+    data: { user_id?: string; display_name?: string; bio?: string; persona?: string; topics?: string; profile_image_url?: string | null }
 ): Promise<void> {
     const existing = await getPersonaCache(env, username);
     if (existing) {
@@ -41,6 +41,7 @@ export async function upsertPersonaCache(
         if (data.bio !== undefined) { sets.push('bio = ?'); values.push(data.bio); }
         if (data.persona !== undefined) { sets.push('persona = ?'); values.push(data.persona); }
         if (data.topics !== undefined) { sets.push('topics = ?'); values.push(data.topics); }
+        if (data.profile_image_url !== undefined) { sets.push('profile_image_url = ?'); values.push(data.profile_image_url); }
         values.push(existing.id);
         await env.DB.prepare(`UPDATE persona_cache SET ${sets.join(', ')} WHERE id = ?`)
             .bind(...values)
@@ -48,10 +49,10 @@ export async function upsertPersonaCache(
     } else {
         const id = generateId();
         await env.DB.prepare(
-            `INSERT INTO persona_cache (id, username, user_id, display_name, bio, persona, topics)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO persona_cache (id, username, user_id, display_name, bio, persona, topics, profile_image_url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
-            .bind(id, username.toLowerCase(), data.user_id || null, data.display_name || null, data.bio || null, data.persona || null, data.topics || null)
+            .bind(id, username.toLowerCase(), data.user_id || null, data.display_name || null, data.bio || null, data.persona || null, data.topics || null, data.profile_image_url || null)
             .run();
     }
 }

@@ -79,7 +79,9 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             const { countStalePrompts } = await import('../ai/prompts');
             const staleCount = await countStalePrompts(env, chatId);
             const isAdminUser = isAdmin(chatId, env);
-            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser);
+            const { getUser } = await import('../data/user-db');
+            const settingsUser = await getUser(env, chatId);
+            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, settingsUser?.default_publish_targets, settingsUser?.has_instagram === 1);
         }
         case 'page_size_select': {
             await updateChatState(env, chatId, { current_view: 'page_size_select', context: null });

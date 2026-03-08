@@ -167,15 +167,15 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
     } catch { /* ignore */ }
 
     const lines: string[] = [`🎬 <b>${draft.title || t(lang, 'video.untitled')}</b>`];
-    lines.push(`${t(lang, 'video.status')} <b>${draft.status}</b>`);
+    lines.push(`${t(lang, 'video.status')} ${t(lang, 'common.arrow')} <code>${draft.status}</code>`);
 
     if (config) {
-        lines.push(`\n${config.length} | ${config.aspectRatio}`);
-        lines.push(`${t(lang, 'video.emotion')} ${config.emotion} | ${config.captions ? t(lang, 'video.captionsOn') : t(lang, 'video.captionsOff')}`);
+        lines.push(`\n<code>${config.length}</code> | <code>${config.aspectRatio}</code>`);
+        lines.push(`${t(lang, 'video.emotion')} ${t(lang, 'common.arrow')} <code>${config.emotion}</code> | <code>${config.captions ? t(lang, 'video.captionsOn') : t(lang, 'video.captionsOff')}</code>`);
     }
 
     if (script) {
-        lines.push(`\n${t(lang, 'video.scenes')} ${script.scenes.length} | ${t(lang, 'video.words')} ~${script.totalWordCount}`);
+        lines.push(`\n${t(lang, 'video.scenes')} ${t(lang, 'common.arrow')} <code>${script.scenes.length}</code> | ${t(lang, 'video.words')} ${t(lang, 'common.arrow')} <code>~${script.totalWordCount}</code>`);
         // Show first scene preview
         const preview = script.scenes[0]?.scriptText || '';
         if (preview) {
@@ -185,7 +185,7 @@ export async function renderVideoDetail(env: Env, chatId: string, videoDraftId: 
     }
 
     if (draft.created_at) {
-        lines.push(`\n${t(lang, 'video.created')} ${draft.created_at.substring(0, 16)}`);
+        lines.push(`\n${t(lang, 'video.created')} ${t(lang, 'common.arrow')} <code>${draft.created_at.substring(0, 16)}</code>`);
     }
 
     const keyboard: InlineButton[][] = [];
@@ -251,12 +251,12 @@ export function renderVideoConfig(
     const lines: string[] = [
         t(lang, 'video.configTitle'),
         '',
-        `${t(lang, 'video.toneLabel')}  <b>${config.tone}</b>`,
-        `${t(lang, 'video.lengthLabel')}  <b>${config.length}</b>`,
-        `${t(lang, 'video.aspectLabel')}  <b>${config.aspectRatio}</b>`,
-        `${t(lang, 'video.emotionLabel')}  <b>${config.emotion}</b>`,
-        `${t(lang, 'video.commitsLabel')}  <b>${depthLabel}</b>`,
-        `${t(lang, 'video.characterLabel')}  <b>${charDisplay}</b>`,
+        `${t(lang, 'video.toneLabel')} ${t(lang, 'common.arrow')} <code>${config.tone}</code>`,
+        `${t(lang, 'video.lengthLabel')} ${t(lang, 'common.arrow')} <code>${config.length}</code>`,
+        `${t(lang, 'video.aspectLabel')} ${t(lang, 'common.arrow')} <code>${config.aspectRatio}</code>`,
+        `${t(lang, 'video.emotionLabel')} ${t(lang, 'common.arrow')} <code>${config.emotion}</code>`,
+        `${t(lang, 'video.commitsLabel')} ${t(lang, 'common.arrow')} <code>${depthLabel}</code>`,
+        `${t(lang, 'video.characterLabel')} ${t(lang, 'common.arrow')} <code>${charDisplay}</code>`,
         '',
         `${config.captions ? '✅' : '❌'} ${t(lang, 'video.captions')}  ·  ${config.textOverlay ? '✅' : '❌'} ${t(lang, 'video.textOverlay')}`,
     ];
@@ -323,11 +323,11 @@ export function renderScriptPreview(
     }
 
     // Stats
-    lines.push(`${t(lang, 'video.stats')} ${script.scenes.length} scenes, ~${script.totalWordCount} words`);
+    lines.push(`${t(lang, 'video.stats')} ${t(lang, 'common.arrow')} <code>${script.scenes.length} scenes</code>, <code>~${script.totalWordCount} words</code>`);
 
     // Credit estimate (Avatar IV: ~1 premium credit per 3 seconds)
     const creditCost = estimateCreditCost(script.totalWordCount);
-    lines.push(`${t(lang, 'video.estimatedCost')} ~${creditCost} ${t(lang, 'video.premiumCredits')}`);
+    lines.push(`${t(lang, 'video.estimatedCost')} ${t(lang, 'common.arrow')} <code>~${creditCost} ${t(lang, 'video.premiumCredits')}</code>`);
 
     // Caption preview
     if (script.twitterCaption) {

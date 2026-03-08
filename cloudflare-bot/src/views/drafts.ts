@@ -2,13 +2,15 @@
  * Draft-related views
  */
 
-import type { Env, ViewResult, Draft, DraftContent, InlineButton } from '../types';
+import type { Env, ViewResult, Draft, DraftContent, InlineButton, PublishResults } from '../types';
 import { getAllDrafts, countDrafts, getDraft, getPublishedByDraft, getHandwriteDraftCount, getDraftsBySource, countDraftsBySource } from '../data/db';
+import { getUser } from '../data/user-db';
 import { formatLocalTime } from '../infra/timezone';
 import { escapeHtml, truncateHtml } from '../ui/utils';
 import { homeButton, backButton, backHomeRow, paginationRows, cancelRow } from '../ui/components';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
+import { renderPlatformBadges, parsePublishTargets, renderPublishResults, platformEmoji } from './platform-toggle';
 
 export type DraftListType = 'auto' | 'approved' | 'scheduled' | 'handwrite' | 'published' | 'repost';
 
@@ -166,8 +168,16 @@ ${t(lang, 'drafts.noDraftsInType').replace('{type}', typeLabel.toLowerCase())}`,
     for (const d of drafts) {
         const emoji = statusEmoji[d.status] || '📄';
         const title = getDraftDisplayTitle(d);
+        // Append platform badges if draft targets Instagram platforms
+        const dTargets = parsePublishTargets(d.publish_targets);
+        const igBadges = [
+            dTargets.instagram_post ? platformEmoji('instagram_post') : '',
+            dTargets.instagram_story ? platformEmoji('instagram_story') : '',
+            dTargets.instagram_reel ? platformEmoji('instagram_reel') : '',
+        ].filter(Boolean).join('');
+        const badgeSuffix = igBadges ? ` ${igBadges}` : '';
         // Row 1: title button (navigates to draft detail)
-        draftButtons.push([{ text: `${emoji} ${title}`, callback_data: `draft:${d.id}` }]);
+        draftButtons.push([{ text: `${emoji} ${title}${badgeSuffix}`, callback_data: `draft:${d.id}` }]);
         // Row 2: quick action buttons based on status
         // Use abbreviated names to stay under Telegram's 64-byte callback_data limit
         const lt = listTypeToShort[listType] || listType;
@@ -208,7 +218,7 @@ ${t(lang, 'common.page')} ${page + 1} ${t(lang, 'common.of')} ${totalPages}`,
     };
 }
 
-export async function renderDraftDetail(env: Env, chatId: string, draftId: string, timezone = 'UTC', lang: Lang = 'en'): Promise<ViewResult> {
+export async function renderDraftDetail(env: Env, chatId: string, draftId: string, timezone = 'UTC', lang: Lang = 'en', showPlatformToggles = false): Promise<ViewResult> {
     const draft = await getDraft(env, draftId, chatId);
 
     if (!draft) {
@@ -224,19 +234,67 @@ ${t(lang, 'drafts.notFoundMsg')}`,
 
     const tweetPreview = content.tweets
         .map((tw, i) => {
-            const mediaIndicator = tw.mediaKey ? ' 📷' : '';
+            const mediaIndicator = tw.media?.length ? ' 📷' : '';
             return `<b>${t(lang, 'drafts.tweetN').replace('{n}', String(i + 1))}</b>${mediaIndicator} ${escapeHtml(tw.text)} (${tw.text.length}/280)`;
         })
         .join('\n\n');
 
-    let statusLine = `${statusEmoji[draft.status]} <b>${draft.status.toUpperCase()}</b>`;
+    // Parse publish targets for badges
+    const targets = parsePublishTargets(draft.publish_targets);
+    const platformBadges = renderPlatformBadges(targets);
+
+    let statusLine = `${statusEmoji[draft.status]} <code>${draft.status.toUpperCase()}</code>`;
     if (draft.status === 'scheduled' && draft.scheduled_at) {
-        statusLine += ` for ${formatLocalTime(draft.scheduled_at, timezone)}`;
+        statusLine += ` for <code>${formatLocalTime(draft.scheduled_at, timezone)}</code>`;
+    }
+
+    // Add platform badges to status line
+    if (platformBadges) {
+        statusLine += `\n${t(lang, 'platforms.targets')}: ${platformBadges}`;
+    }
+
+    const user = await getUser(env, chatId);
+    const hasInstagram = user?.has_instagram === 1;
+
+    // Build platform toggle rows (inline) or single platform button
+    const hasVideo = draft.has_video === 1;
+    const check = (enabled: boolean) => enabled ? '✅' : '⬜';
+
+    function platformToggleRows(): InlineButton[][] {
+        const rows: InlineButton[][] = [];
+        rows.push([{
+            text: `${check(targets.x)} 🐦 ${t(lang, 'platforms.x')}`,
+            callback_data: `plat:toggle:x:${draftId}`,
+        }]);
+        if (hasInstagram) {
+            rows.push([{
+                text: `${check(targets.instagram_post)} 📸 ${t(lang, 'platforms.post')}`,
+                callback_data: `plat:toggle:instagram_post:${draftId}`,
+            }]);
+            rows.push([{
+                text: `${check(targets.instagram_story)} 📖 ${t(lang, 'platforms.story')}`,
+                callback_data: `plat:toggle:instagram_story:${draftId}`,
+            }]);
+            if (hasVideo) {
+                rows.push([{
+                    text: `${check(targets.instagram_reel)} 🎬 ${t(lang, 'platforms.reel')}`,
+                    callback_data: `plat:toggle:instagram_reel:${draftId}`,
+                }]);
+            }
+        }
+        return rows;
+    }
+
+    function platformButtonRow(): InlineButton[][] {
+        return [[{ text: `🎯 ${t(lang, 'platforms.btnPlatforms')}`, callback_data: `plat:show:${draftId}` }]];
     }
 
     let actionButtons: InlineButton[][] = [];
 
-    switch (draft.status) {
+    // When platform toggles are open, they replace the action buttons entirely
+    if (showPlatformToggles && draft.status !== 'published') {
+        actionButtons = platformToggleRows();
+    } else switch (draft.status) {
         case 'draft':
             actionButtons = [
                 [
@@ -247,6 +305,7 @@ ${t(lang, 'drafts.notFoundMsg')}`,
                     { text: draft.source === 'handwrite' ? t(lang, 'drafts.aiRefine') : t(lang, 'drafts.edit'), callback_data: `action:edit:${draft.id}`, style: 'primary' as const },
                     { text: t(lang, 'drafts.schedule'), callback_data: `action:schedule:${draft.id}`, style: 'primary' as const },
                 ],
+                ...platformButtonRow(),
             ];
             break;
         case 'approved':
@@ -255,6 +314,7 @@ ${t(lang, 'drafts.notFoundMsg')}`,
                     { text: t(lang, 'drafts.publishNow'), callback_data: `action:publish:${draft.id}`, style: 'success' as const },
                     { text: t(lang, 'drafts.schedule'), callback_data: `action:schedule:${draft.id}`, style: 'primary' as const },
                 ],
+                ...platformButtonRow(),
             ];
             break;
         case 'scheduled':
@@ -263,15 +323,52 @@ ${t(lang, 'drafts.notFoundMsg')}`,
                     { text: t(lang, 'drafts.publishNow'), callback_data: `action:publish:${draft.id}`, style: 'success' as const },
                     { text: t(lang, 'common.cancel'), callback_data: `action:unschedule:${draft.id}`, style: 'danger' },
                 ],
+                ...platformButtonRow(),
             ];
             break;
         case 'published': {
-            // Show tweet URL if available
-            const published = await getPublishedByDraft(env, chatId, draft.id);
-            if (published?.tweet_url) {
-                actionButtons = [
-                    [{ text: t(lang, 'drafts.viewOnX'), url: published.tweet_url }],
-                ];
+            // Show per-platform results
+            let publishResults: PublishResults = {};
+            try {
+                publishResults = draft.publish_results ? JSON.parse(draft.publish_results) : {};
+            } catch { /* ignore */ }
+
+            const resultLine = renderPublishResults(publishResults, publishResults.errors, lang);
+
+            // Build URL buttons for successful platforms
+            const urlButtons: InlineButton[] = [];
+            if (publishResults.x?.url) {
+                urlButtons.push({ text: '🐦 X', url: publishResults.x.url });
+            }
+            if (publishResults.instagram_post?.url) {
+                urlButtons.push({ text: '📸 Post', url: publishResults.instagram_post.url });
+            }
+            if (publishResults.instagram_reel?.url) {
+                urlButtons.push({ text: '🎬 Reel', url: publishResults.instagram_reel.url });
+            }
+
+            if (urlButtons.length > 0) {
+                actionButtons.push(urlButtons);
+            }
+
+            // Repost button — publish to additional platforms
+            if (hasInstagram) {
+                actionButtons.push([
+                    { text: `🔄 ${t(lang, 'platforms.btnRepost')}`, callback_data: `plat:repost:show:${draft.id}` },
+                ]);
+            }
+
+            // Add result line to status
+            if (resultLine) {
+                statusLine += `\n${resultLine}`;
+            }
+
+            // Fallback: show published record URL if no per-platform results
+            if (!publishResults.x && !publishResults.instagram_post) {
+                const published = await getPublishedByDraft(env, chatId, draft.id);
+                if (published) {
+                    // No URL to show from simplified published record
+                }
             }
             break;
         }
@@ -296,12 +393,12 @@ ${t(lang, 'drafts.notFoundMsg')}`,
 <b>${escapeHtml(draft.pr_title)}</b>${originalLink}
 
 ${statusLine}
-${t(lang, 'drafts.format')} ${content.format === 'single' ? t(lang, 'drafts.singleTweet') : `Thread (${content.tweets.length} tweets)`}
+${t(lang, 'drafts.format')} ${t(lang, 'common.arrow')} <code>${content.format === 'single' ? t(lang, 'drafts.singleTweet') : `Thread (${content.tweets.length} tweets)`}</code>
 
 ${tweetPreview}`,
         keyboard: [
             ...actionButtons,
-            [backButton('view:drafts', lang)],
+            [backButton(showPlatformToggles ? `plat:done:${draftId}` : 'view:drafts', lang)],
         ],
     };
 }

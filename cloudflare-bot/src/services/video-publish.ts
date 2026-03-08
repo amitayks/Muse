@@ -202,7 +202,7 @@ export async function publishVideoToInstagram(
         const videoPublicUrl = `${env.WORKER_URL}/media/${videoDraft.video_url}`;
 
         // Step 1: Create media container
-        const containerUrl = `https://graph.facebook.com/v19.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
+        const containerUrl = `https://graph.instagram.com/v25.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
         const containerResponse = await fetch(containerUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -229,7 +229,7 @@ export async function publishVideoToInstagram(
         while (Date.now() - startTime < maxWait) {
             await new Promise(r => setTimeout(r, 10000)); // Check every 10s
 
-            const statusUrl = `https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${env.INSTAGRAM_ACCESS_TOKEN}`;
+            const statusUrl = `https://graph.instagram.com/v25.0/${containerId}?fields=status_code&access_token=${env.INSTAGRAM_ACCESS_TOKEN}`;
             const statusResponse = await fetch(statusUrl);
             const statusResult = await statusResponse.json() as { status_code: string };
 
@@ -241,7 +241,7 @@ export async function publishVideoToInstagram(
         }
 
         // Step 3: Publish
-        const publishUrl = `https://graph.facebook.com/v19.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish`;
+        const publishUrl = `https://graph.instagram.com/v25.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish`;
         const publishResponse = await fetch(publishUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

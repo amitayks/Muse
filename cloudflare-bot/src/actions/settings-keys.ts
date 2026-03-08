@@ -3,20 +3,29 @@
  */
 
 import type { HandlerContext } from '../core/router';
-import type { ViewResult } from '../types';
+import type { ViewResult, PublishTargets } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getUser } from '../data/user-db';
-import { updateChatState } from '../data/db';
-import { renderApiKeys } from '../views/settings';
+import { getUser, updateDefaultPublishTargets } from '../data/user-db';
+import { updateChatState, getTimezone, getPageSize } from '../data/db';
+import { renderApiKeys, renderSettings } from '../views/settings';
 import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
+import { renderPlatformBadges, parsePublishTargets } from '../views/platform-toggle';
+import { editMessage, answerCallback } from '../integrations/telegram';
+import { countStalePrompts } from '../ai/prompts';
+import { isAdmin } from '../infra/security';
 
 export async function settingsKeysAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult | void> {
     const { env, chatId, value, extra } = ctx;
     const lang = (ctx.lang || 'en') as Lang;
+
+    // ==================== PLATFORM TOGGLE FOR DEFAULT TARGETS ====================
+    if (value === 'plat') {
+        return handleSettingsPlat(ctx, lang, extra);
+    }
 
     if (value === 'reanalyze_identity') {
         const user = await getUser(env, chatId);
@@ -130,4 +139,123 @@ export async function settingsKeysAction(
             };
         }
     }
+}
+
+// ==================== Settings Platform Toggle Sub-handler ====================
+
+async function handleSettingsPlat(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    extra?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    // settings:plat:show → extra = 'show'
+    if (extra === 'show') {
+        const user = await getUser(env, chatId);
+        const targets = parsePublishTargets(user?.default_publish_targets);
+        const hasInstagram = user?.has_instagram === 1;
+
+        return renderSettingsDefaultTargets(targets, hasInstagram, lang);
+    }
+
+    // settings:plat:done → extra = 'done'
+    if (extra === 'done') {
+        return returnToSettings(ctx, lang);
+    }
+
+    // settings:plat:toggle:PLATFORM → extra = 'toggle:PLATFORM'
+    if (extra?.startsWith('toggle:')) {
+        const platform = extra.substring(7) as keyof PublishTargets;
+        const user = await getUser(env, chatId);
+        const targets = parsePublishTargets(user?.default_publish_targets);
+        const hasInstagram = user?.has_instagram === 1;
+
+        // Toggle the platform
+        const newValue = !targets[platform];
+
+        // Mutual exclusivity: post ↔ reel
+        if (platform === 'instagram_post' && newValue) targets.instagram_reel = false;
+        if (platform === 'instagram_reel' && newValue) targets.instagram_post = false;
+
+        targets[platform] = newValue;
+
+        // Enforce at-least-one target
+        const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel;
+        if (!anyEnabled) {
+            targets[platform] = true; // Revert
+            if (ctx.callbackId) {
+                await answerCallback(ctx.env, ctx.callbackId, t(lang, 'platforms.noTargetSelected'));
+            }
+        }
+
+        // Save
+        await updateDefaultPublishTargets(env, chatId, targets);
+
+        // Re-render toggle view in-place
+        const view = renderSettingsDefaultTargets(targets, hasInstagram, lang);
+        if (ctx.messageId) {
+            await editMessage(env, chatId, ctx.messageId, view.text, view.keyboard);
+        }
+        return;
+    }
+}
+
+/**
+ * Render the settings default platform targets toggle view.
+ */
+function renderSettingsDefaultTargets(
+    targets: PublishTargets,
+    hasInstagram: boolean,
+    lang: Lang
+): ViewResult {
+    const check = (enabled: boolean) => enabled ? '✅' : '⬜';
+
+    const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+
+    rows.push([{
+        text: `${check(targets.x)} 🐦 X`,
+        callback_data: 'settings:plat:toggle:x',
+    }]);
+
+    if (hasInstagram) {
+        rows.push([{
+            text: `${check(targets.instagram_post)} 📸 ${t(lang, 'platforms.post')}`,
+            callback_data: 'settings:plat:toggle:instagram_post',
+        }]);
+        rows.push([{
+            text: `${check(targets.instagram_story)} 📖 ${t(lang, 'platforms.story')}`,
+            callback_data: 'settings:plat:toggle:instagram_story',
+        }]);
+        rows.push([{
+            text: `${check(targets.instagram_reel)} 🎬 ${t(lang, 'platforms.reel')}`,
+            callback_data: 'settings:plat:toggle:instagram_reel',
+        }]);
+    }
+
+    rows.push([{
+        text: `✅ ${t(lang, 'common.done')}`,
+        callback_data: 'settings:plat:done',
+    }]);
+
+    const badges = renderPlatformBadges(targets);
+    const text = `<b>🎯 ${t(lang, 'platforms.defaultPlatforms')}</b>\n\n${t(lang, 'platforms.defaultPlatformsDesc')}\n\n${t(lang, 'platforms.currentTargets')}: ${badges}`;
+
+    return { text, keyboard: rows };
+}
+
+/**
+ * Return to the main settings view.
+ */
+async function returnToSettings(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang
+): Promise<ViewResult> {
+    const { env, chatId } = ctx;
+    const tz = await getTimezone(env, chatId);
+    const ps = await getPageSize(env, chatId);
+    const staleCount = await countStalePrompts(env, chatId);
+    const isAdminUser = isAdmin(chatId, env);
+    const user = await getUser(env, chatId);
+    return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
 }

@@ -7,6 +7,7 @@
 
 import type { Env, TwitterAccount, TwitterTweet } from '../types';
 import { parseTwitterAccountConfig, updateTwitterTweet, createDraft } from '../data/db';
+import { getUser } from '../data/user-db';
 
 /**
  * Process auto-approve for accounts that have it enabled
@@ -65,6 +66,7 @@ async function generateAndApproveDraft(
     }
 
     const tweetPreview = tweet.text.substring(0, 30).replace(/\n/g, ' ');
+    const aaUser = await getUser(env, account.chat_id);
     const draftId = await createDraft(env, account.chat_id, {
         pr_number: 0,
         pr_title: `@${account.username} | ${tweetPreview}...`,
@@ -74,6 +76,7 @@ async function generateAndApproveDraft(
         content: JSON.stringify(content),
         original_tweet_id: tweet.id,
         original_tweet_url: tweet.tweet_url || undefined,
+        publish_targets: aaUser?.default_publish_targets || undefined,
     });
 
     await updateTwitterTweet(env, tweet.id, {

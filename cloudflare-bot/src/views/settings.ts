@@ -2,40 +2,54 @@
  * Settings views
  */
 
-import type { ViewResult, InlineButton } from '../types';
+import type { ViewResult, InlineButton, PublishTargets } from '../types';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
 import { homeButton, backButton, backHomeRow, selectedItemLabel } from '../ui/components';
+import { renderPlatformBadges, parsePublishTargets } from './platform-toggle';
 
-export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en', workerUrl?: string, staleCount = 0, isAdminUser = false): ViewResult {
+export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en', workerUrl?: string, staleCount = 0, isAdminUser = false, defaultTargets?: string, hasInstagram = false): ViewResult {
     const displayTz = timezone === 'UTC' ? t(lang, 'settings.utcDefault') : timezone;
     const langLabel = lang === 'en' ? '🌐 🇮🇱 עברית' : '🌐 🇺🇸 English' ;
 
     const keyboard: InlineButton[][] = [
-        [{ text: langLabel, callback_data: 'config:language' }],
+        // Row 1: timezone | language | page size
+        [
+            { text: t(lang, 'settings.btnTimezone'), callback_data: 'view:timezone_select' },
+            { text: langLabel, callback_data: 'config:language' },
+            { text: t(lang, 'settings.btnPageSize'), callback_data: 'view:page_size_select' },
+        ],
     ];
 
-    // System Prompts button (WebApp) — only if worker URL is available
+    // Row 2: system prompt | re-analyze
     if (workerUrl) {
         const promptLabel = staleCount > 0
             ? '📝 ' + t(lang, 'settings.btnSystemPrompts') + ' 🔔'
             : '📝 ' + t(lang, 'settings.btnSystemPrompts');
-        keyboard.push([{ text: promptLabel, web_app: { url: `${workerUrl}/app/prompts?lang=${lang}` } }]);
+        keyboard.push([
+            { text: promptLabel, web_app: { url: `${workerUrl}/app/prompts?lang=${lang}` } },
+            { text: t(lang, 'settings.btnAnalyzeIdentity'), callback_data: 'settings:reanalyze_identity' },
+        ]);
 
-        // Admin-only: System Prompts (Admin) button for all 7 prompt types
+        // Row 3: system prompt admin (admin only)
         if (isAdminUser) {
             keyboard.push([{ text: '📝 ' + t(lang, 'settings.btnSystemPromptsAdmin'), web_app: { url: `${workerUrl}/app/admin-prompts` } }]);
         }
     } else {
         console.warn('WORKER_URL not configured — System Prompts WebApp button hidden');
+        keyboard.push([{ text: t(lang, 'settings.btnAnalyzeIdentity'), callback_data: 'settings:reanalyze_identity' }]);
     }
 
-    // Re-analyze identity button
-    keyboard.push([{ text: '🪞 Re-analyze my identity', callback_data: 'settings:reanalyze_identity' }]);
+    // Row 4: default publish targets
+    const targets = parsePublishTargets(defaultTargets);
+    const badges = renderPlatformBadges(targets);
+    keyboard.push([{
+        text: `🎯 ${t(lang, 'platforms.defaultPlatforms')} ${badges}`,
+        callback_data: 'settings:plat:show',
+    }]);
 
+    // Row 5: api keys
     keyboard.push(
-        [{ text: t(lang, 'settings.btnTimezone'), callback_data: 'view:timezone_select' }],
-        [{ text: t(lang, 'settings.btnPageSize'), callback_data: 'view:page_size_select' }],
         [{ text: t(lang, 'settings.btnApiKeys'), callback_data: 'settings:keys' }],
         [homeButton(lang)],
     );
@@ -43,9 +57,9 @@ export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en'
     return {
         text: `${t(lang, 'settings.title')}
 
-${t(lang, 'settings.timezone')} ${displayTz}
-${t(lang, 'settings.pageSize')} ${pageSize} ${t(lang, 'settings.items')}
-${t(lang, 'settings.language')} ${lang === 'en' ? 'English' : 'עברית'}`,
+${t(lang, 'settings.timezone')} ${t(lang, 'common.arrow')} <code>${displayTz}</code>
+${t(lang, 'settings.pageSize')} ${t(lang, 'common.arrow')} <code>${pageSize} ${t(lang, 'settings.items')}</code>
+${t(lang, 'settings.language')} ${t(lang, 'common.arrow')} <code>${lang === 'en' ? 'English' : 'עברית'}</code>`,
         keyboard,
     };
 }
@@ -65,7 +79,7 @@ export function renderPageSizeSelect(currentSize = 5, lang: Lang = 'en'): ViewRe
 
 ${t(lang, 'settings.pageSizeDesc')}
 
-${t(lang, 'settings.pageSizeCurrent')} <b>${currentSize}</b>`,
+${t(lang, 'settings.pageSizeCurrent')} ${t(lang, 'common.arrow')} <code>${currentSize}</code>`,
         keyboard: buttons,
     };
 }
@@ -84,10 +98,10 @@ export function renderApiKeys(services: {
     return {
         text: `${t(lang, 'settings.apiKeysTitle')}
 
-${g ? '✅' : '⬜'} ${t(lang, 'settings.geminiAi')}
-${x ? '✅' : '⬜'} ${t(lang, 'settings.xTwitter')}
-${gh ? '✅' : '⬜'} ${t(lang, 'settings.github')}
-${ig ? '✅' : '⬜'} ${t(lang, 'settings.instagram')}`,
+${g ? '✅' : '⬜'} ${t(lang, 'settings.geminiAi')} ${t(lang, 'common.arrow')} <code>${g ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
+${x ? '✅' : '⬜'} ${t(lang, 'settings.xTwitter')} ${t(lang, 'common.arrow')} <code>${x ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
+${gh ? '✅' : '⬜'} ${t(lang, 'settings.github')} ${t(lang, 'common.arrow')} <code>${gh ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
+${ig ? '✅' : '⬜'} ${t(lang, 'settings.instagram')} ${t(lang, 'common.arrow')} <code>${ig ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>`,
         keyboard: [
             [{ text: `${t(lang, 'settings.geminiAi')} \u2014 ${g ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:gemini', ...(g ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.xTwitter')} \u2014 ${x ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:x', ...(x ? { style: 'success' as const } : {}) }],

@@ -14,6 +14,7 @@ export interface HandlerContext {
     args?: string;
     executionCtx?: ExecutionContext;
     lang?: Lang;
+    callbackId?: string;
 }
 
 export type CommandHandler = (ctx: HandlerContext) => Promise<ViewResult | void>;
@@ -83,6 +84,7 @@ import { tweetViewDraftAction } from '../actions/tweet-view-draft';
 import { rpGenAction, rpCancelAction } from '../actions/repost-preview';
 import { rpFollowAction, rpNoFollowAction } from '../actions/repost-follow';
 import { settingsKeysAction } from '../actions/settings-keys';
+import { platformToggleAction, platformShowAction, platformDoneAction } from '../actions/platform-toggle';
 
 /** Action handlers keyed by the `action` part of `action:ACTION:ID` */
 const actionSubHandlers: Record<string, ActionHandler> = {
@@ -171,6 +173,48 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     rp_cancel: rpCancelAction,
     rp_follow: rpFollowAction,
     rp_no_follow: rpNoFollowAction,
+    // Platform toggle actions
+    plat: async (ctx) => {
+        // plat:show:DRAFTID → value=show, extra=DRAFTID
+        // plat:toggle:PLATFORM:DRAFTID → value=toggle, extra=PLATFORM:DRAFTID
+        // plat:done:DRAFTID → value=done, extra=DRAFTID
+        const { value, extra } = ctx;
+        if (value === 'show') {
+            return platformShowAction({ ...ctx, value: extra || '' });
+        }
+        if (value === 'done') {
+            return platformDoneAction({ ...ctx, value: extra || '' });
+        }
+        if (value === 'toggle' && extra) {
+            // extra = PLATFORM:DRAFTID
+            const colonIdx = extra.indexOf(':');
+            if (colonIdx === -1) return;
+            const platform = extra.substring(0, colonIdx);
+            const draftId = extra.substring(colonIdx + 1);
+            return platformToggleAction({ ...ctx, value: platform, extra: draftId });
+        }
+        if (value === 'repost') {
+            // Lazy-import repost handler to avoid circular deps
+            const { repostShowAction, repostToggleAction, repostPublishAction, repostCancelAction } = await import('../actions/repost-publish');
+            // plat:repost:show:DRAFTID → extra=show:DRAFTID
+            if (extra?.startsWith('show:')) {
+                return repostShowAction({ ...ctx, value: extra.substring(5) });
+            }
+            if (extra?.startsWith('toggle:')) {
+                // extra=toggle:PLATFORM:DRAFTID
+                const rest = extra.substring(7);
+                const colonIdx = rest.indexOf(':');
+                if (colonIdx === -1) return;
+                return repostToggleAction({ ...ctx, value: rest.substring(0, colonIdx), extra: rest.substring(colonIdx + 1) });
+            }
+            if (extra?.startsWith('publish:')) {
+                return repostPublishAction({ ...ctx, value: extra.substring(8) });
+            }
+            if (extra?.startsWith('cancel:')) {
+                return repostCancelAction({ ...ctx, value: extra.substring(7) });
+            }
+        }
+    },
 };
 
 // ==================== INPUT DISPATCH ====================

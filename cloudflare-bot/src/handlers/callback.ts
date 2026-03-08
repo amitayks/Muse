@@ -34,9 +34,6 @@ export async function handleCallback(
 
     console.log('Processing callback:', chatId, data);
 
-    // Answer callback immediately to remove "loading" state
-    answerCallback(env, callback.id).catch(() => {});
-
     let lang: Lang = 'en';
     try {
         // Get user language
@@ -53,11 +50,15 @@ export async function handleCallback(
         let view;
 
         if (handler) {
-            view = await handler({ env, chatId, messageId, value, extra, executionCtx, lang });
+            view = await handler({ env, chatId, messageId, value, extra, executionCtx, lang, callbackId: callback.id });
         }
 
         // If handler returned void, it handled its own response (e.g., photo send)
-        if (!view) return;
+        if (!view) {
+            // Answer callback to remove loading state (handler may have already answered with toast text)
+            answerCallback(env, callback.id).catch(() => {});
+            return;
+        }
 
         // Photo messages: preserve image for action callbacks, transition to text for navigation
         const isPhotoMessage = 'photo' in callback.message;
@@ -67,8 +68,8 @@ export async function handleCallback(
 
         const linkOpts = view.disableLinkPreview ? { disableLinkPreview: true } : undefined;
 
-        if (isPhotoMessage && prefix === 'action') {
-            // Action on a draft with image — update caption in place to keep the photo
+        if (isPhotoMessage && (prefix === 'action' || prefix === 'plat' || prefix === 'draft')) {
+            // Action/platform toggle on a draft with image — update caption in place to keep the photo
             const caption = truncateHtml(safeText, 1024);
             await editMessageCaption(env, chatId, messageId, caption, view.keyboard);
         } else if (isPhotoMessage) {
@@ -80,7 +81,11 @@ export async function handleCallback(
         } else {
             await editMessage(env, chatId, messageId, safeText, view.keyboard, linkOpts);
         }
+
+        // Answer callback to remove loading state (handler may have already answered with toast text)
+        answerCallback(env, callback.id).catch(() => {});
     } catch (error) {
+        answerCallback(env, callback.id).catch(() => {});
         const errDetail = error instanceof Error ? (error.stack || error.message) : String(error);
         console.error('Callback handler error:', errDetail);
         const safeDetail = (error instanceof Error ? error.message : String(error))

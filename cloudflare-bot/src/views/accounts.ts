@@ -91,9 +91,9 @@ export async function renderAccountDetail(env: Env, chatId: string, accountId: s
 ${watchStatus}
 
 ${t(lang, 'accounts.repostSettings')}
-${t(lang, 'accounts.threshold')} <b>${config.relevanceThreshold}/10</b>
-${autoApproveIcon} ${t(lang, 'accounts.autoApprove')} <b>${config.autoApprove ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
-${mediaAiIcon} Media AI: <b>${config.analyzeMedia !== false ? t(lang, 'common.yes') : t(lang, 'common.no')}</b>
+${t(lang, 'accounts.threshold')} ${t(lang, 'common.arrow')} <code>${config.relevanceThreshold}/10</code>
+${autoApproveIcon} ${t(lang, 'accounts.autoApprove')} ${t(lang, 'common.arrow')} <code>${config.autoApprove ? t(lang, 'common.yes') : t(lang, 'common.no')}</code>
+${mediaAiIcon} Media AI ${t(lang, 'common.arrow')} <code>${config.analyzeMedia !== false ? t(lang, 'common.yes') : t(lang, 'common.no')}</code>
 ${overviewSection}
 
 ${t(lang, 'common.tapToChange')}`,

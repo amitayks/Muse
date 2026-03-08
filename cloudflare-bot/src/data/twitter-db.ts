@@ -28,16 +28,17 @@ export async function createTwitterAccount(
         user_id?: string;
         display_name?: string;
         config?: TwitterAccountConfig;
+        profile_image_url?: string | null;
     }
 ): Promise<string> {
     const id = generateId();
     const config = data.config || DEFAULT_TWITTER_ACCOUNT_CONFIG;
 
     await env.DB.prepare(
-        `INSERT INTO twitter_accounts (id, chat_id, username, user_id, display_name, config)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO twitter_accounts (id, chat_id, username, user_id, display_name, config, profile_image_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-        .bind(id, chatId, data.username, data.user_id || null, data.display_name || null, JSON.stringify(config))
+        .bind(id, chatId, data.username, data.user_id || null, data.display_name || null, JSON.stringify(config), data.profile_image_url || null)
         .run();
 
     return id;
@@ -78,6 +79,9 @@ export async function updateTwitterAccount(
         thread_buffer?: string | null;
         user_id?: string;
         display_name?: string;
+        profile_image_url?: string | null;
+        next_poll_at?: string | null;
+        consecutive_empty_polls?: number;
     }
 ): Promise<boolean> {
     const sets: string[] = [];
@@ -106,6 +110,18 @@ export async function updateTwitterAccount(
     if (updates.display_name !== undefined) {
         sets.push('display_name = ?');
         values.push(updates.display_name);
+    }
+    if (updates.profile_image_url !== undefined) {
+        sets.push('profile_image_url = ?');
+        values.push(updates.profile_image_url);
+    }
+    if (updates.next_poll_at !== undefined) {
+        sets.push('next_poll_at = ?');
+        values.push(updates.next_poll_at);
+    }
+    if (updates.consecutive_empty_polls !== undefined) {
+        sets.push('consecutive_empty_polls = ?');
+        values.push(updates.consecutive_empty_polls);
     }
 
     if (sets.length === 0) return false;
@@ -265,11 +281,13 @@ export async function createTwitterTweet(
         tweeted_at?: string | null;
         status?: string;
         media_url?: string | null;
+        author_profile_image_url?: string | null;
+        author_display_name?: string | null;
     }
 ): Promise<void> {
     await env.DB.prepare(
-        `INSERT OR IGNORE INTO twitter_tweets (id, account_id, chat_id, conversation_id, thread_position, is_thread, text, author_username, metrics, tweet_url, tweeted_at, status, media_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR IGNORE INTO twitter_tweets (id, account_id, chat_id, conversation_id, thread_position, is_thread, text, author_username, metrics, tweet_url, tweeted_at, status, media_url, author_profile_image_url, author_display_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
         .bind(
             data.id, data.account_id, data.chat_id,
@@ -277,7 +295,9 @@ export async function createTwitterTweet(
             data.text, data.author_username,
             data.metrics || null, data.tweet_url || null, data.tweeted_at || null,
             data.status || 'pending',
-            data.media_url || null
+            data.media_url || null,
+            data.author_profile_image_url || null,
+            data.author_display_name || null
         )
         .run();
 }

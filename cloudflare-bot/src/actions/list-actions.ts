@@ -10,6 +10,7 @@ import { shortToListType } from '../views/drafts';
 import { getDraft, deleteDraft, updateDraftStatus, getPageSize, countDrafts, countDraftsBySource } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderDraftsList, renderError } from '../views';
+import { platformEmoji, platformLabel } from '../views/platform-toggle';
 import { t } from '../ui/strings';
 
 /**
@@ -73,11 +74,12 @@ export async function listPublishAction(
     const draft = await getDraft(ctx.env, draftId, ctx.chatId);
     if (!draft) return renderError('Draft not found.', lang);
 
-    try {
-        await publishDraft(ctx.env, ctx.chatId, draft);
-    } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        return renderError(`Publishing failed:\n\n<code>${msg}</code>`, lang);
+    const result = await publishDraft(ctx.env, ctx.chatId, draft);
+    if (!result.success) {
+        const errorMessages = Object.entries(result.results.errors || {})
+            .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${msg}`)
+            .join('\n');
+        return renderError(`Publishing failed:\n\n<code>${errorMessages}</code>`, lang);
     }
 
     return reRenderList(ctx.env, ctx.chatId, listType, page, lang);

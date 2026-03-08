@@ -51,7 +51,8 @@ export async function handleTelegramWebhook(request: Request, env: Env, ctx?: Ex
             const from = update.message?.from || update.callback_query?.from;
             const username = (from as any)?.username || null;
             const displayName = from?.first_name || null;
-            await createUser(env, chatId, username, displayName);
+            const detectedLang = (from as any)?.language_code === 'he' ? 'he' : 'en';
+            await createUser(env, chatId, username, displayName, detectedLang);
 
             const targetChatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
             if (targetChatId) {

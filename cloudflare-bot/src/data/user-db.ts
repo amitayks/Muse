@@ -2,7 +2,7 @@
  * User Database Service - CRUD operations for users table
  */
 
-import type { Env, User, UserStatus, OnboardingStep } from '../types';
+import type { Env, User, UserStatus, OnboardingStep, PublishTargets } from '../types';
 
 /**
  * Get a user by chat_id. Returns null if not found.
@@ -20,12 +20,13 @@ export async function createUser(
     env: Env,
     chatId: string,
     username: string | null,
-    displayName: string | null
+    displayName: string | null,
+    language: string = 'en'
 ): Promise<void> {
     await env.DB.prepare(`
-        INSERT INTO users (chat_id, username, display_name, status, onboarding_step)
-        VALUES (?, ?, ?, 'onboarding', 'welcome')
-    `).bind(chatId, username, displayName).run();
+        INSERT INTO users (chat_id, username, display_name, status, onboarding_step, language)
+        VALUES (?, ?, ?, 'onboarding', 'welcome', ?)
+    `).bind(chatId, username, displayName, language).run();
 }
 
 /**
@@ -35,12 +36,14 @@ export async function updateUser(
     env: Env,
     chatId: string,
     updates: Partial<Pick<User,
-        'username' | 'display_name' | 'status' | 'onboarding_step' |
+        'username' | 'display_name' | 'status' | 'onboarding_step' | 'onboarding_message_id' |
         'gemini_key_enc' | 'x_api_key_enc' | 'x_api_secret_enc' |
         'x_access_token_enc' | 'x_access_secret_enc' |
         'github_token_enc' | 'heygen_api_key_enc' |
         'instagram_token_enc' | 'instagram_account_id_enc' |
         'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' |
+        'language' | 'default_publish_targets' |
+        'own_profile_image_url' | 'own_username_x' | 'own_display_name_x' |
         'daily_generates' | 'daily_reposts' | 'last_reset_date' | 'consecutive_failures'
     >>
 ): Promise<void> {
@@ -114,4 +117,30 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
                instagram_token_enc, instagram_account_id_enc
         FROM users WHERE chat_id = ?
     `).bind(chatId).first();
+}
+
+/**
+ * Update user's default publish targets.
+ */
+export async function updateDefaultPublishTargets(
+    env: Env,
+    chatId: string,
+    targets: PublishTargets
+): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET default_publish_targets = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(JSON.stringify(targets), chatId).run();
+}
+
+/**
+ * Update user's own X profile data (for tweet card rendering).
+ */
+export async function updateOwnProfileData(
+    env: Env,
+    chatId: string,
+    data: { profileImageUrl: string; username: string; displayName: string }
+): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET own_profile_image_url = ?, own_username_x = ?, own_display_name_x = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(data.profileImageUrl, data.username, data.displayName, chatId).run();
 }

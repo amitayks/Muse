@@ -6,6 +6,7 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent, HandwriteState } from '../types';
 import type { Lang } from '../ui/strings';
 import { getChatState, parseContext, updateChatState, createDraft, getTimezone } from '../data/db';
+import { getUser } from '../data/user-db';
 import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
 import { ensureImage } from '../data/storage';
 import { renderCompose, renderDraftDetail } from '../views';
@@ -65,8 +66,7 @@ async function handlePenDown(
     const tweets = handwrite.tweets.map((t, i) => ({
         text: t.text,
         index: i,
-        mediaKey: t.mediaKey,
-        mediaType: t.mediaType,
+        media: t.media,
     }));
 
     let content: DraftContent = {
@@ -82,11 +82,10 @@ async function handlePenDown(
                 refineText: handwrite.aiRefine,
                 generateImagePrompt: handwrite.imageGen,
             }, lang, chatId);
-            // Preserve media keys from original tweets
+            // Preserve media from original tweets
             content.tweets = content.tweets.map((t, i) => ({
                 ...t,
-                mediaKey: handwrite.tweets[i]?.mediaKey,
-                mediaType: handwrite.tweets[i]?.mediaType,
+                media: handwrite.tweets[i]?.media,
             }));
         } catch (error) {
             console.error('AI refinement failed, using original:', error);
@@ -97,6 +96,10 @@ async function handlePenDown(
     const firstTweet = content.tweets[0]?.text || 'Handwritten draft';
     const prTitle = firstTweet.length > 100 ? firstTweet.substring(0, 97) + '...' : firstTweet;
 
+    // Get user's default publish targets
+    const user = await getUser(env, chatId);
+    const hasVideo = content.tweets.some(t => t.media?.some(m => m.type === 'video')) ? 1 : 0;
+
     let draftId: string;
     try {
         draftId = await createDraft(env, chatId, {
@@ -105,6 +108,8 @@ async function handlePenDown(
             commit_sha: '',
             content: JSON.stringify(content),
             source: 'handwrite',
+            publish_targets: user?.default_publish_targets || undefined,
+            has_video: hasVideo,
         });
     } catch (dbError) {
         console.error('createDraft failed:', dbError);
@@ -173,7 +178,7 @@ async function handleToggle(
     const charWarnings: number[] = [];
     const composeTweets = handwrite.tweets.map((t, i) => {
         if (t.text.length > 280) charWarnings.push(i + 1);
-        return { text: t.text, hasMedia: !!t.mediaKey };
+        return { text: t.text, hasMedia: !!(t.media && t.media.length > 0) };
     });
 
     return renderCompose(composeTweets, charWarnings, handwrite.imageGen, handwrite.aiRefine, lang);

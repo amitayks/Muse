@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS twitter_accounts (
   last_tweet_id TEXT,
   config TEXT NOT NULL,
   thread_buffer TEXT,
+  next_poll_at TEXT,
+  consecutive_empty_polls INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(chat_id, username)

@@ -7,6 +7,7 @@
     <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Telegram_Bot-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram" />
     <img src="https://img.shields.io/badge/X%2FTwitter-000000?style=flat&logo=x&logoColor=white" alt="X/Twitter" />
+    <img src="https://img.shields.io/badge/Instagram-E4405F?style=flat&logo=instagram&logoColor=white" alt="Instagram" />
   </p>
 </p>
 
@@ -14,13 +15,22 @@
 
 You ship code. You follow thought leaders. You have ideas.
 
-**Muse turns all of that into polished, ready-to-publish content for X/Twitter** — tweets, threads, images, quote-tweets, even AI avatar videos — and puts you in control through a slick Telegram dashboard.
+**Muse turns all of that into polished, ready-to-publish content for X/Twitter and Instagram** — tweets, threads, images, carousels, stories, reels, quote-tweets, even AI avatar videos — and puts you in control through a slick Telegram dashboard.
 
 No browser tabs. No copy-pasting. No context switching. Just push code, review in Telegram, publish with a tap.
 
 ---
 
 ## What Can Muse Do?
+
+### 🧬 Identity-Aware AI — Content That Sounds Like You
+
+Muse analyzes your X/Twitter history to build an "Identity Document" — a comprehensive profile of your writing style, tone spectrum, vocabulary patterns, and humor. Every piece of content Muse generates is shaped by this identity, so your posts sound like *you*, not a generic AI.
+
+- **One-tap identity analysis**: During onboarding or anytime from Settings, Muse fetches your last 100 tweets and builds your voice profile
+- **First-person skills architecture**: 9 specialized AI skills (work-progress, refine, quote, video, etc.) all write in your authentic voice
+- **Editable identity**: View and tweak your Identity Document anytime — it's yours to shape
+- **Three-layer prompt assembly**: Skill prompt + Identity Document + task protocol = content that nails your voice every time
 
 ### 🔄 Watch Your Repos — Auto-Generate Content from Code
 
@@ -33,9 +43,10 @@ Connect your GitHub repositories. Every time you merge a PR or push to main, Mus
 
 ### 📡 Follow X Accounts — AI-Powered Smart Reposting
 
-Follow any X/Twitter account. Muse polls for new tweets every 15 minutes, scores each one for relevance using AI, and notifies you only about the ones worth reposting.
+Follow any X/Twitter account. Muse polls for new tweets with smart backoff and scores each one for relevance using AI.
 
 - **Relevance scoring**: Gemini AI evaluates each tweet (1-10 scale) against the account's persona and your audience
+- **Smart polling backoff**: Active accounts poll every 15 minutes; quiet accounts automatically back off (30min → 1hr → 2hr → 4hr cap), resetting instantly when new tweets appear
 - **Batch notifications**: Paginated cards in Telegram — see score, preview, reason — tap to generate
 - **6 tone personalities**: Professional, Casual, Analytical, Enthusiastic, Witty, or Sarcastic — pick the voice that fits
 - **Media-aware**: Muse fetches and analyzes images and video thumbnails from tweets before generating, so the AI actually "sees" what the original post is about
@@ -43,12 +54,25 @@ Follow any X/Twitter account. Muse polls for new tweets every 15 minutes, scores
 - **Auto-approve mode**: Set a threshold and let Muse auto-generate reposts for the highest-scoring tweets
 - **Persona analysis**: AI builds a profile of each account you follow — their topics, communication style, recurring themes — for better repost context
 
+### 📸 Multi-Platform Publishing — X + Instagram
+
+Every draft supports configurable publish targets. Publish to X/Twitter, Instagram (feed posts, stories, reels), or any combination — each platform independently handled with partial failure support.
+
+- **Instagram Feed Posts**: Single images publish as photo posts; multi-tweet threads become carousels
+- **Instagram Stories**: Images rendered at 9:16 aspect ratio with blurred background treatment
+- **Instagram Reels**: Video media published as reels
+- **Tweet Card Rendering**: When no image exists, Muse renders your tweet content as styled card images (via Satori) — with thread connecting lines, quote-tweet layouts, and author profile images
+- **Default platform settings**: Configure which platforms new drafts target by default
+- **Per-draft overrides**: Toggle platforms on/off for any individual draft before publishing
+- **Repost from published**: Re-publish existing content to additional platforms
+- **Multi-image display**: Draft detail shows all attached images — albums displayed in Telegram
+
 ### ✍️ Handwrite — Compose with AI Assistance
 
 Have an idea? Write it yourself. Muse gives you a live compose mode with character counts, optional AI text refinement, and image generation.
 
 - **Multi-tweet threads**: Send multiple messages, Muse buffers them into a thread
-- **Per-tweet images**: Attach a photo to any tweet in the thread
+- **Per-tweet images**: Attach photos to any tweet in the thread — all displayed in draft detail
 - **AI refine toggle**: Let Gemini polish your writing while keeping your voice
 - **Image toggle**: Generate an AI image or skip it — your call
 
@@ -76,7 +100,10 @@ Turn your commits into narrated video updates with AI-generated avatars. Script 
 
 Muse supports multiple users on a single bot instance. Each user goes through a guided onboarding flow and provides their own API keys, which are encrypted at rest with AES-256-GCM.
 
-- **Guided onboarding**: Step-by-step setup for Gemini, X/Twitter, and GitHub keys
+- **Guided onboarding**: Step-by-step setup — X/Twitter first (unlocks repost, handwrite, identity), then identity analysis, then Gemini, then optional GitHub
+- **Language selection**: English or Hebrew, auto-detected from Telegram and selectable on the welcome screen
+- **Feature unlock framing**: Each onboarding step shows what it unlocks, not just dry instructions
+- **Identity analysis during onboarding**: After connecting X, Muse analyzes your tweets and shows a preview of your Identity Document
 - **Per-user encryption**: All API keys are encrypted individually per user in D1
 - **Settings UI**: Manage and update keys anytime via Settings > API Keys
 - **Optional integrations**: HeyGen and Instagram keys can be added later
@@ -88,25 +115,26 @@ Muse supports multiple users on a single bot instance. Each user goes through a 
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│                          YOUR WORKFLOW                             │
+│                          YOUR WORKFLOW                            │
 │                                                                   │
 │   GitHub Push/PR ──┐                                              │
-│                    ▼                                               │
-│              ┌───────────┐    ┌───────────┐    ┌──────────────┐  │
+│                    ▼                                              │
+│              ┌────────────┐    ┌───────────┐    ┌──────────────┐  │
 │              │ Cloudflare │───▶│  Gemini   │───▶│   Telegram   │  │
 │              │  Worker    │    │    AI     │    │  Dashboard   │  │
 │              │ (content-  │    │ (content  │    │  (review,    │  │
 │              │   bot)     │    │ + images) │    │  approve,    │  │
-│              └─────┬─────┘    └───────────┘    │  schedule)   │  │
-│                    │                           └──────┬───────┘  │
-│   X Account ───────┤  Cron: every 15 min              │          │
-│   Tweets           │  • Poll followed accounts        ▼          │
-│                    │  • Score with AI          ┌──────────────┐  │
-│                    │  • Send notifications     │   X/Twitter  │  │
-│                    │  • Publish scheduled       │   Published! │  │
-│                    │  • Check stale videos     └──────────────┘  │
+│              └─────┬──────┘    └───────────┘    │  schedule)   │  │
+│                    │                            └──────┬───────┘  │
+│   X Account ───────┤  Cron: every 15 min               │          │
+│   Tweets           │  • Poll followed accounts         ▼          │
+│                    │    (smart backoff)        ┌───────────────┐  │
+│   Your Identity ───┤  • Score with AI          │  X/Twitter    │  │
+│   Document         │  • Send notifications     │  Instagram    │  │
+│                    │  • Publish scheduled      │  Published!   │  │
+│                    │  • Check stale videos     └───────────────┘  │
 │                    │                                              │
-│   User Keys ───────┘  Per-user encrypted in D1                   │
+│   User Keys ───────┘  Per-user encrypted in D1                    │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -115,7 +143,7 @@ Muse runs as a **single Cloudflare Worker** (`content-bot`) with a `*/15 * * * *
 | Component | What it does |
 |-----------|-------------|
 | **HTTP routes** | Telegram webhook, GitHub webhook, HeyGen webhook, media serving, setup, migrations |
-| **Cron (every 15 min)** | Polls X accounts, scores tweets, publishes scheduled drafts, checks stale videos, publishes scheduled videos — all users processed in parallel via `Promise.allSettled` |
+| **Cron (every 15 min)** | Polls X accounts (with smart backoff), scores tweets, publishes scheduled drafts, checks stale videos, publishes scheduled videos — all users processed in parallel via `Promise.allSettled` |
 
 **Zero dependencies at runtime.** Pure Cloudflare Workers API — no npm packages needed in production. TypeScript compiled to ES modules.
 
@@ -125,9 +153,13 @@ Muse runs as a **single Cloudflare Worker** (`content-bot`) with a `*/15 * * * *
 
 | Feature | Description |
 |---------|-------------|
+| Identity-aware AI | Analyzes your tweets to write in your authentic voice |
 | Auto-generate from commits | GitHub webhook triggers AI content + image |
+| Multi-platform publish | X/Twitter + Instagram (feed, stories, reels) |
+| Tweet card renderer | Styled tweet images via Satori for Instagram |
 | Smart repost | Follow accounts, AI scores & generates quote-tweets |
-| Handwrite mode | Compose tweets manually with optional AI assist |
+| Smart polling backoff | Quiet accounts polled less frequently (30min → 4hr cap) |
+| Handwrite mode | Compose tweets manually with per-tweet images and optional AI assist |
 | Thread detection | Big PRs become multi-tweet threads automatically |
 | AI image generation | Structured art direction (style, mood, palette) |
 | Media analysis | Analyzes images/video thumbnails in source tweets |
@@ -138,8 +170,9 @@ Muse runs as a **single Cloudflare Worker** (`content-bot`) with a `*/15 * * * *
 | Auto-approve | Hands-free mode for high-scoring tweets |
 | Video Studio | AI avatar videos from commit history |
 | Multi-tenant | Multiple users, per-user encrypted API keys |
-| Multi-language | English and Hebrew support |
+| Multi-language | English and Hebrew support (auto-detected) |
 | Per-entity config | Different settings per repo and per account |
+| Default platform targets | Configure which platforms new drafts target |
 
 ---
 
@@ -153,11 +186,11 @@ Before you start, you'll need:
 
 Each user provides their own API keys during onboarding:
 
-- **Google Gemini API key** — [Get one here](https://aistudio.google.com/apikey)
 - **X/Twitter API credentials** — Apply at the [Developer Portal](https://developer.x.com/) (OAuth 1.0a with read+write)
-- **GitHub personal access token** — [Create one](https://github.com/settings/tokens) with `repo` scope
+- **Google Gemini API key** — [Get one here](https://aistudio.google.com/apikey)
+- *(Optional)* **GitHub personal access token** — [Create one](https://github.com/settings/tokens) with `repo` scope
 - *(Optional)* **HeyGen API key** — For Video Studio ([heygen.com](https://heygen.com))
-- *(Optional)* **Instagram Business Account** — For video publishing to Instagram
+- *(Optional)* **Instagram Business Account** — For publishing to Instagram feed, stories, and reels
 
 ---
 
@@ -287,12 +320,12 @@ Each user provides these through the onboarding flow or Settings > API Keys:
 
 | Key | Required | Description |
 |-----|----------|-------------|
-| Gemini API key | Yes | Google Gemini for AI content + image generation |
 | X API key + secret | Yes | X/Twitter OAuth 1.0a consumer credentials |
 | X access token + secret | Yes | X/Twitter OAuth 1.0a access credentials |
+| Gemini API key | Yes | Google Gemini for AI content + image generation |
 | GitHub token | No | PAT with `repo` scope (for auto-generate from commits) |
 | HeyGen API key | No | For Video Studio |
-| Instagram token + account ID | No | For video publishing to Instagram |
+| Instagram token + account ID | No | For publishing to Instagram feed, stories, and reels |
 
 ### Repository Settings
 
@@ -357,50 +390,59 @@ MusePostBot/
 │   │   ├── types.ts               # Shared type definitions
 │   │   ├── core/
 │   │   │   ├── router.ts          # Command/callback/input dispatcher
-│   │   │   ├── publish.ts         # Tweet/thread/quote-tweet publisher
+│   │   │   ├── publish.ts         # Multi-platform publish pipeline
 │   │   │   └── respond.ts         # Telegram response helper
+│   │   ├── ai/
+│   │   │   ├── gemini.ts          # Gemini AI content + image generation
+│   │   │   └── identity.ts        # Identity analysis & skill assembly
 │   │   ├── commands/              # /slash command handlers
 │   │   ├── handlers/
-│   │   │   ├── cron.ts            # Cron coordinator + per-user cron tasks
+│   │   │   ├── cron.ts            # Cron coordinator + per-user tasks
 │   │   │   ├── callback.ts        # Telegram callback query handler
 │   │   │   ├── message.ts         # Telegram message handler
 │   │   │   └── github-webhook.ts  # GitHub webhook processing
 │   │   ├── actions/               # Callback button handlers
+│   │   │   ├── platform-toggle.ts # Multi-platform target toggles
+│   │   │   └── ...
 │   │   ├── inputs/                # Text input state handlers
 │   │   ├── views/                 # Telegram UI templates
 │   │   │   ├── home.ts            # Dashboard home screen
 │   │   │   ├── onboarding.ts      # New user onboarding flow
 │   │   │   ├── settings.ts        # API keys & settings UI
+│   │   │   ├── platform-toggle.ts # Platform target UI
 │   │   │   └── ...                # Drafts, repos, accounts, video views
+│   │   ├── integrations/
+│   │   │   ├── telegram.ts        # Telegram Bot API
+│   │   │   ├── x.ts               # X/Twitter API (OAuth 1.0a)
+│   │   │   └── github.ts          # GitHub API
 │   │   ├── services/
-│   │   │   ├── gemini.ts          # AI content + image generation
-│   │   │   ├── x.ts              # X/Twitter API (OAuth 1.0a)
-│   │   │   ├── github.ts         # GitHub API
-│   │   │   ├── telegram.ts       # Telegram Bot API
-│   │   │   ├── heygen.ts         # HeyGen video API
-│   │   │   ├── db.ts             # D1 database operations
-│   │   │   ├── user-db.ts        # User/multi-tenant DB operations
-│   │   │   ├── user-keys.ts      # Per-user key decryption & env hydration
-│   │   │   ├── crypto.ts         # AES-256-GCM encryption/decryption
-│   │   │   ├── poller.ts         # Twitter polling pipeline
-│   │   │   ├── scoring.ts        # AI relevance scoring
-│   │   │   ├── batch-notification.ts # Telegram batch notification cards
-│   │   │   ├── auto-approve.ts   # Auto-generate + approve
-│   │   │   ├── storage.ts        # R2 image/video storage
-│   │   │   ├── video-publish.ts  # Multi-platform video publishing
-│   │   │   ├── repost-generate.ts # Repost content generation
-│   │   │   ├── persona-*.ts      # Persona analysis & caching
-│   │   │   └── security.ts       # Rate limiting, validation, headers
+│   │   │   ├── instagram-publish.ts # Instagram feed/story/reel publishing
+│   │   │   ├── tweet-card.ts      # Satori-based tweet card image renderer
+│   │   │   ├── poller.ts          # Twitter polling with smart backoff
+│   │   │   ├── auto-approve.ts    # Auto-generate + approve
+│   │   │   ├── video-publish.ts   # Multi-platform video publishing
+│   │   │   └── ...
+│   │   ├── data/
+│   │   │   ├── draft-db.ts        # Drafts & published records
+│   │   │   ├── user-db.ts         # Users, keys, settings
+│   │   │   ├── twitter-db.ts      # X accounts & tweets
+│   │   │   ├── persona-db.ts      # Persona cache
+│   │   │   └── ...
+│   │   ├── infra/
+│   │   │   ├── crypto.ts          # AES-256-GCM encryption
+│   │   │   ├── security.ts        # Rate limiting, validation
+│   │   │   └── ...
 │   │   └── routes/                # HTTP route handlers
 │   │       ├── webhook.ts         # Telegram webhook endpoint
-│   │       ├── github.ts          # GitHub webhook endpoint
-│   │       ├── heygen-webhook.ts  # HeyGen callback endpoint
-│   │       ├── setup.ts           # Bot initialization
-│   │       ├── migrate.ts         # Database migrations
-│   │       └── media.ts           # R2 media serving
+│   │       ├── media.ts           # R2 media serving
+│   │       └── ...
 │   ├── migrations/                # D1 SQL migrations
 │   ├── schema.sql                 # Full database schema
 │   └── wrangler.toml
+│
+├── openspec/                      # Specification-driven development
+│   ├── specs/                     # Capability specifications
+│   └── changes/                   # Change artifacts (proposals, designs, tasks)
 │
 └── README.md
 ```
@@ -413,8 +455,9 @@ MusePostBot/
 | Database | Cloudflare D1 (SQLite) |
 | Object Storage | Cloudflare R2 |
 | AI | Google Gemini (text + image generation) |
+| Image Rendering | Satori (JSX→SVG) + resvg-wasm (SVG→PNG) |
 | Bot Interface | Telegram Bot API |
-| Social Platform | X/Twitter API v2 + v1.1 (OAuth 1.0a) |
+| Social Platforms | X/Twitter API v2 + v1.1, Instagram Graph API |
 | Video | HeyGen API v2 (transitioning to Seedance 2.0) |
 | Encryption | AES-256-GCM (Web Crypto API) |
 | Language | TypeScript 5.7 |
@@ -422,12 +465,13 @@ MusePostBot/
 
 ### Database
 
-Indexed tables across 5 domains:
+Indexed tables across 6 domains:
 
 - **Users**: `users` (identity, encrypted keys, settings, UI state)
 - **Content**: `drafts`, `published`, `repos`, `repo_overviews`
 - **Twitter**: `twitter_accounts`, `twitter_tweets`, `twitter_account_overviews`
 - **Video**: `video_drafts`, `video_published`, `video_presets`
+- **Prompts**: `default_prompts`, `user_prompts`
 - **System**: `persona_cache`
 
 ---
@@ -439,9 +483,10 @@ Muse is designed to be **your bot, on your infrastructure**:
 - **Users own their API keys** — each user provides and manages their own credentials, encrypted at rest with AES-256-GCM
 - **You own your data** — everything lives in your D1 database and R2 bucket
 - **You control the costs** — Cloudflare's free tier is generous (100K Worker requests/day, 5GB D1, 10GB R2)
-- **You decide what publishes** — nothing goes live without approval (unless auto-approve is enabled)
+- **You decide what publishes** — nothing goes live without approval
 - **Zero vendor lock-in on content** — tweets, drafts, images, all accessible in your database
 - **Multi-tenant by design** — one bot instance serves multiple users, each with isolated data
+- **Smart resource usage** — polling backs off automatically for quiet accounts, reducing API calls by 70-90%
 
 ---
 
