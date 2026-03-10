@@ -9,7 +9,7 @@
 import type { Env, TelegramCallbackQuery } from '../types';
 import type { Lang } from '../ui/strings';
 import { editMessage, editMessageCaption, answerCallback, sendMessage, deleteMessage } from '../integrations/telegram';
-import { getUserLanguage } from '../data/db';
+import { getUserLanguage, getChatState, parseContext } from '../data/db';
 import { sanitizeError } from '../infra/security';
 import { callbackHandlers } from '../core/router';
 import { renderError } from '../views';
@@ -46,11 +46,32 @@ export async function handleCallback(
         const value = parts[1] || '';
         const extra = parts.slice(2).join(':') || undefined;
 
+        // Capture album message IDs BEFORE running handler (handler may clear context)
+        const isPhotoMessage = 'photo' in callback.message;
+        let preAlbumMessageIds: number[] | undefined;
+        if (isPhotoMessage) {
+            try {
+                const preState = await getChatState(env, chatId);
+                const preCtx = parseContext(preState);
+                preAlbumMessageIds = preCtx.album_message_ids;
+            } catch { /* ignore */ }
+        }
+
         const handler = callbackHandlers[prefix];
         let view;
 
         if (handler) {
             view = await handler({ env, chatId, messageId, value, extra, executionCtx, lang, callbackId: callback.id });
+        }
+
+        // Clean up album messages when navigating away from a photo-message draft.
+        // Done before the void check so it covers void handlers (e.g., delete-draft) too.
+        // Skip for action/plat prefixes that stay on the same draft.
+        const staysOnDraft = prefix === 'action' || prefix === 'plat';
+        if (isPhotoMessage && !staysOnDraft && preAlbumMessageIds?.length) {
+            try {
+                await Promise.all(preAlbumMessageIds.map(id => deleteMessage(env, chatId, id).catch(() => {})));
+            } catch { /* ignore — cleanup is best-effort */ }
         }
 
         // If handler returned void, it handled its own response (e.g., photo send)
@@ -59,9 +80,6 @@ export async function handleCallback(
             answerCallback(env, callback.id).catch(() => {});
             return;
         }
-
-        // Photo messages: preserve image for action callbacks, transition to text for navigation
-        const isPhotoMessage = 'photo' in callback.message;
 
         // Truncate text to Telegram's limits
         const safeText = truncateHtml(view.text, 4096);
@@ -73,7 +91,7 @@ export async function handleCallback(
             const caption = truncateHtml(safeText, 1024);
             await editMessageCaption(env, chatId, messageId, caption, view.keyboard);
         } else if (isPhotoMessage) {
-            // Navigating away from draft — transition to text message
+            // Navigating away from draft — transition from photo to text
             try {
                 await deleteMessage(env, chatId, messageId);
             } catch { /* ignore */ }
@@ -82,8 +100,8 @@ export async function handleCallback(
             await editMessage(env, chatId, messageId, safeText, view.keyboard, linkOpts);
         }
 
-        // Answer callback to remove loading state (handler may have already answered with toast text)
-        answerCallback(env, callback.id).catch(() => {});
+        // Answer callback — pass toast text if the handler provided one
+        answerCallback(env, callback.id, view.toast).catch(() => {});
     } catch (error) {
         answerCallback(env, callback.id).catch(() => {});
         const errDetail = error instanceof Error ? (error.stack || error.message) : String(error);

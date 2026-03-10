@@ -109,12 +109,27 @@ export const he: StringsMap = {
         whenDone: 'כשסיימת, לחץ על <b>הנח עט</b> כדי לשמור טיוטה.',
         imageHint: '🎨 <b>תמונה</b> — AI יוצר תמונה מושכת לפוסט שלך',
         aiHint: '✨ <b>שיפור AI</b> — מלטש את הכתיבה שלך תוך שמירה על הקול שלך',
+        instructHint: '📝 <b>הוראה</b> — תן ל-AI הוראות מותאמות לתוכן שלך',
+        analyzeHint: '📷 <b>ניתוח</b> — AI רואה את התמונות שצירפת לשיפור חכם יותר',
         composing: '✍️ <b>כותב</b>',
         btnPenDown: '✏️ הנח עט',
         btnImage: '🎨 תמונה',
         btnAi: '✨ AI',
         exceeds280: 'חורג מ-280 תווים — ייחתך בפרסום',
+        xImageLimit: '⚠️ 𝕏: {count}/4 — רק 4 הראשונות יפורסמו',
+        igImageLimit: '⚠️ IG: <s>{count}/10</s> — רק 10 הראשונות יפורסמו',
 
+        // Compose buttons
+        btnInstruct: '📝 הוראה',
+        btnAnalyze: '📷 ניתוח',
+
+        // Instruction UX
+        instructToast: 'הקלד את ההוראה שלך עכשיו',
+        awaitingInstruction: '📝 הקלד את ההוראה שלך עכשיו...',
+        instructionPrefix: '📝',
+
+        // Compose status messages
+        generatingFromInstruction: '✨ מייצר מהוראה...',
         refiningAndImage: '✨ משפר טקסט ומייצר תמונה...',
         refiningAi: '✨ משפר עם AI...',
         generatingImagePrompt: '🖼 מייצר הוראות תמונה...',

@@ -28,6 +28,7 @@ export async function handwriteCommand(ctx: HandlerContext): Promise<ViewResult 
                 tweets: [],
                 imageGen: false,
                 aiRefine: false,
+                analyzeImages: false,
                 statusMessageId: msgId,
             },
         },

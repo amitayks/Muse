@@ -653,6 +653,7 @@ export interface ViewResult {
     text: string;
     keyboard: InlineButton[][];
     disableLinkPreview?: boolean;
+    toast?: string;
 }
 
 // Telegram message
@@ -662,6 +663,7 @@ export interface TelegramMessage {
     text?: string;
     caption?: string;
     photo?: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>;
+    media_group_id?: string;
     from?: { id: number; first_name: string };
     web_app_data?: { data: string; button_text: string };
 }
@@ -715,6 +717,7 @@ export interface ChatContext {
     draft_list_page?: number;
     overview_field?: string;
     video_config?: VideoConfig;
+    album_message_ids?: number[];
 }
 
 // Video compose mode for manual instructions
@@ -745,12 +748,17 @@ export interface HandwriteTweet {
     messageId: number;
     text: string;
     media?: TweetMedia[];
+    mediaGroupId?: string;
 }
 
 export interface HandwriteState {
     tweets: HandwriteTweet[];
     imageGen: boolean;
     aiRefine: boolean;
+    analyzeImages: boolean;
     statusMessageId: number;
+    instruction?: string;
+    instructionMessageId?: number;
+    awaitingInstruction?: boolean;
 }
 

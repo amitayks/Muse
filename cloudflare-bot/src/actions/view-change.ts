@@ -57,6 +57,7 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
                         tweets: [],
                         imageGen: false,
                         aiRefine: false,
+                        analyzeImages: false,
                         statusMessageId: ctx.messageId || 0,
                     },
                 },

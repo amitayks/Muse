@@ -106,13 +106,27 @@ export const en = {
         whenDone: 'When you\'re done, tap <b>Pen Down</b> to save your draft.',
         imageHint: '🎨 <b>Image</b> — AI generates an eye-catching image for your post',
         aiHint: '✨ <b>AI Refine</b> — polishes your writing while keeping your voice',
+        instructHint: '📝 <b>Instruct</b> — give AI custom instructions for your content',
+        analyzeHint: '📷 <b>Analyze</b> — AI sees your attached images for smarter refinement',
         composing: '✍️ <b>Composing</b>',
         btnPenDown: '✏️ Pen Down',
         btnImage: '🎨 Image',
         btnAi: '✨ AI',
         exceeds280: 'exceed 280 chars — will be trimmed on publish',
+        xImageLimit: '⚠️ 𝕏: {count}/4 — only first 4 will post',
+        igImageLimit: '⚠️ IG: <s>{count}/10</s> — only first 10 will post',
+
+        // Compose buttons
+        btnInstruct: '📝 Instruct',
+        btnAnalyze: '📷 Analyze',
+
+        // Instruction UX
+        instructToast: 'Type your instruction next',
+        awaitingInstruction: '📝 Type your instruction next...',
+        instructionPrefix: '📝',
 
         // Compose status messages
+        generatingFromInstruction: '✨ Generating from instruction...',
         refiningAndImage: '✨ Refining text & generating image...',
         refiningAi: '✨ Refining with AI...',
         generatingImagePrompt: '🖼 Generating image prompt...',

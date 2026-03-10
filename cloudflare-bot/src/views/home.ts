@@ -145,15 +145,29 @@ ${t(lang, 'publishing.pleaseWait')}`,
 
 export interface ComposeTweet {
     text: string;
-    hasMedia?: boolean;
+    mediaCount: number;
 }
 
-export function renderCompose(tweets: ComposeTweet[], charWarnings: number[], imageGen: boolean, aiRefine: boolean, lang: Lang = 'en'): ViewResult {
+export interface ComposeOptions {
+    instruction?: string;
+    awaitingInstruction?: boolean;
+    analyzeImages?: boolean;
+}
+
+export function renderCompose(
+    tweets: ComposeTweet[],
+    charWarnings: number[],
+    imageGen: boolean,
+    aiRefine: boolean,
+    lang: Lang = 'en',
+    options?: ComposeOptions,
+): ViewResult {
     const count = tweets.length;
+    const hasImages = tweets.some(tw => tw.mediaCount > 0);
 
     let text: string;
 
-    if (count === 0) {
+    if (count === 0 && !options?.instruction && !options?.awaitingInstruction) {
         text = `${t(lang, 'compose.title')}
 
 ${t(lang, 'compose.instructions')}
@@ -165,20 +179,41 @@ ${t(lang, 'compose.editHint')}
 ${t(lang, 'compose.whenDone')}
 
 ${t(lang, 'compose.imageHint')}
-${t(lang, 'compose.aiHint')}`;
+${t(lang, 'compose.aiHint')}
+${t(lang, 'compose.instructHint')}
+${t(lang, 'compose.analyzeHint')}`;
     } else {
-        const format = count === 1 ? t(lang, 'home.singleTweet') : `Thread · ${count} tweets`;
-        text = `${t(lang, 'compose.composing')} — ${format}\n`;
+        const format = count === 1 ? t(lang, 'home.singleTweet') : count === 0 ? '' : `Thread · ${count} tweets`;
+        text = count > 0 ? `${t(lang, 'compose.composing')} — ${format}\n` : `${t(lang, 'compose.composing')}\n`;
 
+        // Instruction display
+        if (options?.awaitingInstruction) {
+            text += `\n${t(lang, 'compose.awaitingInstruction')}\n`;
+        } else if (options?.instruction) {
+            const instrPreview = options.instruction.length > 120 ? options.instruction.substring(0, 117) + '...' : options.instruction;
+            text += `\n${t(lang, 'compose.instructionPrefix')} ${escapeHtml(instrPreview)}\n`;
+        }
+
+        let totalMedia = 0;
         for (let i = 0; i < tweets.length; i++) {
             const tw = tweets[i];
-            const media = tw.hasMedia ? ' 📷' : '';
+            const mc = tw.mediaCount;
+            totalMedia += mc;
+            const mediaIndicator = mc === 0 ? '' : mc <= 4 ? ' ' + '📷'.repeat(mc) : ` 📷×${mc}`;
             const len = tw.text.length;
             const over = len > 280;
             const preview = tw.text.length > 80 ? tw.text.substring(0, 77) + '...' : tw.text;
             const safePreview = escapeHtml(preview);
-            text += `\n${i + 1}. ${safePreview}${media}`;
+            text += `\n${i + 1}. ${safePreview}${mediaIndicator}`;
             text += `\n    <i>${len}/280${over ? ' ⚠️' : ''}</i>`;
+            if (mc > 4) {
+                text += `\n    ${t(lang, 'compose.xImageLimit').replace('{count}', String(mc))}`;
+            }
+        }
+
+        // Thread-level Instagram total image warning
+        if (totalMedia > 10) {
+            text += `\n\n${t(lang, 'compose.igImageLimit').replace('{count}', String(totalMedia))}`;
         }
     }
 
@@ -187,15 +222,28 @@ ${t(lang, 'compose.aiHint')}`;
         text += `\n\n⚠️ ${warnings} ${t(lang, 'compose.exceeds280')}`;
     }
 
+    // Dynamic button row based on context
+    const toggleRow: import('../types').InlineButton[] = [];
+
+    if (!hasImages) {
+        // No images: [Image Gen] [AI] [Instruct]
+        toggleRow.push({ text: `${t(lang, 'compose.btnImage')}: ${imageGen ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_image' });
+    } else {
+        // Images present: [Analyze] [AI] [Instruct] — Analyze replaces Image Gen
+        toggleRow.push({ text: `${t(lang, 'compose.btnAnalyze')}: ${options?.analyzeImages ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_analyze' });
+    }
+
+    toggleRow.push({ text: `${t(lang, 'compose.btnAi')}: ${aiRefine ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_ai' });
+    toggleRow.push({ text: t(lang, 'compose.btnInstruct'), callback_data: 'compose:toggle_instruct' });
+
     return {
         text,
         keyboard: [
-            [{ text: t(lang, 'compose.btnPenDown'), callback_data: 'compose:pendown', style: 'success' }],
+            toggleRow,
             [
-                { text: `🎨 Image: ${imageGen ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_image' },
-                { text: `✨ AI: ${aiRefine ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_ai' },
+                { text: t(lang, 'common.cancel'), callback_data: 'compose:cancel', style: 'danger' },
+                { text: t(lang, 'compose.btnPenDown'), callback_data: 'compose:pendown', style: 'success' },
             ],
-            [{ text: t(lang, 'common.cancel'), callback_data: 'compose:cancel', style: 'danger' }],
         ],
     };
 }

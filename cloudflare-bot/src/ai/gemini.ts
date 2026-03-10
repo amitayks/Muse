@@ -276,6 +276,8 @@ function parseContentResponse(content: string): ContentResponse {
  * and "change it like [instruction]" (with instruction) modes.
  * Also handles optional image-gen attachment.
  */
+export type ImagePart = { inline_data: { mime_type: string; data: string } };
+
 export async function refineContent(
     env: Env,
     content: DraftContent,
@@ -284,6 +286,7 @@ export async function refineContent(
         generateImagePrompt?: boolean;
         chatId?: string;
         language?: string;
+        imageParts?: ImagePart[];
     },
 ): Promise<DraftContent> {
     const lang = options.language || 'en';
@@ -302,29 +305,32 @@ export async function refineContent(
         : '- Do NOT include an imagePrompt field';
     systemPrompt += `\n\nRULES:
 - Each tweet MUST be ≤ 280 characters
-- You MUST return EXACTLY ${content.tweets.length} tweet(s) in the same order
 ${imagePromptRule}
 - Return valid JSON only`;
 
     // Build user prompt — instruction framed as self-directed if present
-    let userPrompt: string;
-    if (options.instruction) {
-        userPrompt = `Here's a draft. I want to change it like this: ${options.instruction}${langInstruction}\n\n${tweetsText}`;
+    let userPromptText: string;
+    if (options.instruction && content.tweets.length === 0) {
+        userPromptText = `I want to create content like this: ${options.instruction}${langInstruction}`;
+    } else if (options.instruction) {
+        userPromptText = `Here's a draft. I want to change it like this: ${options.instruction}${langInstruction}\n\n${tweetsText}`;
     } else {
-        userPrompt = `Here's a draft. I want to rewrite it in my own voice. Keep the EXACT same number of tweets (${content.tweets.length}) in the SAME order.${langInstruction}\n\n${tweetsText}`;
+        userPromptText = `Here's a draft. I want to rewrite it in my own voice.${langInstruction}\n\n${tweetsText}`;
+    }
+
+    // If image parts provided, build multimodal prompt with tweet-image mapping
+    let userPrompt: string | Array<{ text: string } | ImagePart>;
+    if (options.imageParts && options.imageParts.length > 0) {
+        const mapping = buildImageMapping(content.tweets);
+        if (mapping) userPromptText += `\n\n${mapping}`;
+        userPromptText += '\n\nAnalyze the attached images to inform your refinement.';
+        userPrompt = [{ text: userPromptText }, ...options.imageParts];
+    } else {
+        userPrompt = userPromptText;
     }
 
     const responseText = await callGeminiText(env, systemPrompt, userPrompt);
     const result = parseContentResponse(responseText).content;
-
-    // Ensure tweet count matches
-    if (result.tweets.length !== content.tweets.length) {
-        logError('AI refinement returned wrong tweet count:', result.tweets.length, 'expected:', content.tweets.length);
-        return {
-            ...content,
-            imagePrompt: result.imagePrompt || content.imagePrompt,
-        };
-    }
 
     // Strip imagePrompt if not requested
     if (!options.generateImagePrompt) {
@@ -332,6 +338,55 @@ ${imagePromptRule}
     }
 
     return result;
+}
+
+/** Map which images belong to which tweets for the multimodal prompt */
+function buildImageMapping(tweets: DraftContent['tweets']): string {
+    const lines: string[] = [];
+    let imageIndex = 1;
+    for (let i = 0; i < tweets.length; i++) {
+        const photoCount = tweets[i].media?.filter(m => m.type === 'photo').length || 0;
+        if (photoCount > 0) {
+            const refs = Array.from({ length: photoCount }, (_, j) => `Image ${imageIndex + j}`).join(', ');
+            lines.push(`Tweet ${i + 1} has attached: ${refs}`);
+            imageIndex += photoCount;
+        }
+    }
+    return lines.length > 0 ? `Image-tweet mapping:\n${lines.join('\n')}` : '';
+}
+
+/**
+ * Build multimodal image parts from tweet media for Gemini analysis.
+ * Fetches images from R2, base64-encodes them, and returns inline_data parts.
+ */
+export async function buildImageParts(
+    env: Env,
+    tweets: DraftContent['tweets'],
+): Promise<ImagePart[]> {
+    const parts: ImagePart[] = [];
+
+    for (const tweet of tweets) {
+        for (const media of tweet.media || []) {
+            if (media.type !== 'photo') continue;
+            try {
+                const obj = await env.IMAGES.get(media.key);
+                if (!obj) continue;
+                const buffer = await obj.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64 = btoa(binary);
+                const mimeType = obj.httpMetadata?.contentType || 'image/jpeg';
+                parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
+            } catch (err) {
+                logError('buildImageParts: failed to fetch image:', media.key, err instanceof Error ? err.message : String(err));
+            }
+        }
+    }
+
+    return parts;
 }
 
 /** @deprecated Use refineContent() instead */
@@ -441,11 +496,10 @@ export async function generateImage(env: Env, content: DraftContent): Promise<{ 
     }
 }
 
-/** @deprecated Use refineContent() instead */
 export async function refineHandwrittenContent(
     env: Env,
     content: DraftContent,
-    options: { refineText: boolean; generateImagePrompt: boolean },
+    options: { refineText: boolean; generateImagePrompt: boolean; instruction?: string; imageParts?: ImagePart[] },
     language?: string,
     chatId?: string,
 ): Promise<DraftContent> {
@@ -454,13 +508,29 @@ export async function refineHandwrittenContent(
         const lang = language || 'en';
         const systemPrompt = await getPrompt(env, chatId || '', 'image-gen', lang);
         const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
-        const userPrompt = `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt that captures the theme of the content.\n\n${tweetsText}`;
+        let userPromptText = options.instruction
+            ? `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt based on this instruction: ${options.instruction}\n\n${tweetsText}`
+            : `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt that captures the theme of the content.\n\n${tweetsText}`;
+
+        // Include image analysis in image-only mode too
+        let userPrompt: string | Array<{ text: string } | ImagePart>;
+        if (options.imageParts && options.imageParts.length > 0) {
+            const mapping = buildImageMapping(content.tweets);
+            if (mapping) userPromptText += `\n\n${mapping}`;
+            userPromptText += '\n\nAnalyze the attached images to inform the imagePrompt.';
+            userPrompt = [{ text: userPromptText }, ...options.imageParts];
+        } else {
+            userPrompt = userPromptText;
+        }
+
         const responseText = await callGeminiText(env, systemPrompt + '\n\n' + buildHandwriteRules(content, options), userPrompt);
         return parseContentResponse(responseText).content;
     }
 
     return refineContent(env, content, {
+        instruction: options.instruction,
         generateImagePrompt: options.generateImagePrompt,
+        imageParts: options.imageParts,
         chatId,
         language,
     });
@@ -504,7 +574,6 @@ function buildHandwriteRules(
 
     return `RULES:
 - Each tweet MUST be ≤ 280 characters
-- You MUST return EXACTLY ${content.tweets.length} tweet(s) in the same order
 - Preserve the author's personality, word choices, and intent
 - Only fix grammar issues, awkward phrasing, and improve clarity
 - Include relevant emojis — they increase engagement
