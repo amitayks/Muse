@@ -46,3 +46,34 @@ Then generate content via Grok
 And create draft
 And send notification
 And do not generate image
+
+### Requirement: Tweet card image generation for Instagram-bound drafts
+When a draft targets any Instagram platform (post, story) and has no image (neither draft-level `image_url` nor per-tweet `media`), the system SHALL generate tweet card images via the tweet-card-renderer instead of AI image generation.
+
+#### Scenario: Instagram-bound draft without image at publish time
+- **WHEN** `publishDraft()` is called for a draft targeting Instagram Post with no image
+- **THEN** the system SHALL call the tweet card renderer to generate styled tweet card images
+- **AND** store the cards in R2 at `tweet-cards/{draftId}/{index}.png`
+- **AND** use these cards for the Instagram publish
+
+#### Scenario: Instagram-bound draft with existing image
+- **WHEN** `publishDraft()` is called for a draft targeting Instagram Post with an existing image
+- **THEN** the system SHALL use the existing image for Instagram (no tweet card generation)
+
+#### Scenario: Draft targeting only X without image
+- **WHEN** `publishDraft()` is called for a draft targeting only X with no image
+- **THEN** the existing behavior SHALL apply: attempt AI image generation, fall back to posting without image
+
+#### Scenario: Thread draft generates multiple tweet cards
+- **WHEN** a thread draft with 3 tweets targets Instagram Post with no image
+- **THEN** the system SHALL render 3 tweet card images (with connecting lines)
+- **AND** publish them as an Instagram carousel
+
+### Requirement: Repost tweet card includes original tweet
+When a repost draft targets Instagram and has no image, the tweet card SHALL render the user's commentary with an embedded card of the original tweet.
+
+#### Scenario: Repost card for Instagram
+- **WHEN** a repost draft targets Instagram Post and has no image
+- **THEN** the tweet card SHALL show the user's text at the top
+- **AND** an embedded card of the original tweet below (with original author's avatar, username, and text)
+- **AND** the user's own profile data (`own_profile_image_url`, `own_username_x`, `own_display_name_x`) SHALL be used for the outer card

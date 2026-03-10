@@ -1,36 +1,79 @@
 ### Requirement: Shared publish pipeline function
-The system SHALL provide a single `publishDraft(env, chatId, draft)` function in `core/publish.ts` that executes the full publish flow: parse content → get/generate image → upload media → post thread → update DB status → create published record.
+The system SHALL provide a single `publishDraft(env, chatId, draft)` function in `core/publish.ts` that executes the full multi-platform publish flow: parse content → determine targets → prepare media per platform → publish to each target independently → collect results → update DB status → store publish results on draft.
 
-#### Scenario: Publish draft with existing R2 image
-- **WHEN** `publishDraft()` is called and the draft has `image_url` starting with `drafts/`
-- **THEN** it reads the image from R2, uploads to X via `uploadMediaFromBuffer`, posts the thread, updates draft status to `published`, and creates a published record
+#### Scenario: Publish draft to X only (backward-compatible default)
+- **WHEN** `publishDraft()` is called and the draft has `publish_targets = { x: true }`
+- **THEN** it SHALL follow the existing X publish flow (get/generate image → upload media → post thread/quote tweet → update status)
+- **AND** store results in `draft.publish_results` as `{ x: { tweet_ids: [...], url: "..." } }`
 
-#### Scenario: Publish draft without image, generates one
-- **WHEN** `publishDraft()` is called and the draft has no `image_url` and no R2 image
-- **THEN** it calls `generateImage()` to create one, uploads to X via `uploadMediaFromBuffer`, posts the thread, and updates status
+#### Scenario: Publish draft to X and Instagram Post
+- **WHEN** `publishDraft()` is called with `publish_targets = { x: true, instagram_post: true }`
+- **THEN** it SHALL publish to X first, then to Instagram Post
+- **AND** each platform's success/failure SHALL be independent
+- **AND** results SHALL be stored as `{ x: {...}, instagram_post: {...} }` or with `errors` for failures
 
-#### Scenario: Publish draft when image generation fails
-- **WHEN** `publishDraft()` is called and image generation/upload fails
-- **THEN** it continues to post the thread without media, updates status, and creates the published record
+#### Scenario: Publish draft to Instagram Post without existing image
+- **WHEN** `publishDraft()` is called with Instagram Post target and the draft has no image
+- **THEN** it SHALL render tweet card images via the tweet card renderer
+- **AND** store the cards in R2
+- **AND** use the cards as the images for the Instagram Post
 
-#### Scenario: Publish draft returns result
-- **WHEN** `publishDraft()` completes successfully
-- **THEN** it returns `{ success: true, url: string, tweetIds: string[] }`
+#### Scenario: Publish draft to Instagram Story
+- **WHEN** `publishDraft()` is called with Instagram Story target
+- **THEN** it SHALL prepare a 9:16 story image (blurred background treatment if image exists, or first tweet card)
+- **AND** publish to Instagram via the story API
+
+#### Scenario: Publish draft to Instagram Reel
+- **WHEN** `publishDraft()` is called with Instagram Reel target and `has_video = 1`
+- **THEN** it SHALL publish the video to Instagram as a Reel via the existing reel publish function
+
+#### Scenario: Partial platform failure — X succeeds, Instagram fails
+- **WHEN** X publishing succeeds but Instagram Post fails
+- **THEN** `publish_results` SHALL contain `{ x: { tweet_ids, url }, errors: { instagram_post: "error message" } }`
+- **AND** the draft status SHALL be updated to `published`
+
+#### Scenario: All platforms fail
+- **WHEN** all selected platforms fail
+- **THEN** `publish_results` SHALL contain only `errors`
+- **AND** the draft status SHALL remain `approved` (not changed to published)
+- **AND** if the draft was scheduled, it SHALL move to `approved` status
 
 #### Scenario: Publish draft handles failure
-- **WHEN** the thread posting fails
-- **THEN** `publishDraft()` throws an error (callers handle their own error UI)
+- **WHEN** all platform publishing fails
+- **THEN** `publishDraft()` SHALL return `{ success: false, results: PublishResults }` instead of throwing
+- **AND** callers SHALL handle the failure UI based on the results
+
+#### Scenario: Publish draft returns result
+- **WHEN** `publishDraft()` completes with at least one platform succeeding
+- **THEN** it SHALL return `{ success: true, results: PublishResults }`
+
+#### Scenario: Status update and published record creation order
+- **WHEN** at least one platform publish succeeds (`anySuccess = true`)
+- **THEN** the system SHALL call `createPublished()` FIRST with the platform results
+- **AND** only after `createPublished()` succeeds SHALL it call `updateDraftStatus('published')`
+- **AND** if `createPublished()` throws, the draft status SHALL remain unchanged (approved or scheduled)
+
+#### Scenario: createPublished receives platform results
+- **WHEN** `publishDraft()` calls `createPublished()` after a successful publish
+- **THEN** it SHALL pass: `tweet_ids` (comma-joined string from `results.x.tweet_ids`, or null), `tweet_url` (from `results.x.url`, or null), `instagram_post_id` (from `results.instagram_post.post_id` or `results.instagram_story.post_id` or `results.instagram_reel.post_id`, or null), `instagram_url` (from `results.instagram_post.url` or `results.instagram_reel.url`, or null)
+
+#### Scenario: Instagram-only publish creates valid published record
+- **WHEN** `publishDraft()` publishes to Instagram Post only and it succeeds
+- **THEN** `createPublished()` SHALL be called with `tweet_ids = null` and `instagram_post_id` set
+- **AND** `updateDraftStatus('published')` SHALL be called after
+- **AND** the user SHALL see the published draft detail (not an error)
 
 ### Requirement: All publish flows use the shared pipeline
 The publish action, publish-all-approved action, cron scheduled publish, and /approve command SHALL all use `publishDraft()` instead of duplicating the publish logic.
 
 #### Scenario: Callback publish action uses pipeline
 - **WHEN** user clicks the Publish button on a draft
-- **THEN** the action handler calls `publishDraft()` and renders the result
+- **THEN** the action handler calls `publishDraft()` and renders the result with per-platform status
 
 #### Scenario: Cron publish uses pipeline
 - **WHEN** the cron handler publishes scheduled drafts
 - **THEN** it calls `publishDraft()` for each due draft
+- **AND** sends a notification showing which platforms succeeded/failed
 
 #### Scenario: Publish all approved uses pipeline
 - **WHEN** user triggers publish-all-approved (via button or /approve command)
@@ -86,29 +129,73 @@ The `drafts` table SHALL have a `source` column (`TEXT DEFAULT 'auto'`) to disti
 - **THEN** it SHALL return only drafts matching the given source value
 
 ### Requirement: Per-tweet media in publish flow
-The `publishDraft()` function SHALL support per-tweet media attachments via the `Tweet.mediaKey` field, uploading each tweet's media individually to X.
+The `publishDraft()` function SHALL support multiple media attachments per tweet via the `Tweet.media[]` field, uploading each tweet's media individually to X with a maximum of 4 images per tweet.
 
-#### Scenario: Publish thread with per-tweet media
-- **WHEN** `publishDraft()` processes a thread where individual tweets have `mediaKey`
-- **THEN** for each tweet with a `mediaKey`, it SHALL read the media from R2, upload to X via `uploadMediaFromBuffer`, and attach the media ID to that specific tweet
-- **AND** tweets without `mediaKey` SHALL be posted without media
+#### Scenario: Publish thread with multiple images per tweet
+- **WHEN** `publishDraft()` processes a thread where a tweet has `media: [{key:'a'}, {key:'b'}, {key:'c'}]`
+- **THEN** all 3 media items SHALL be read from R2 and uploaded to X via `uploadMediaFromBuffer`
+- **AND** all 3 media IDs SHALL be passed to `postTweet` as `mediaIds: ["id_a", "id_b", "id_c"]`
+
+#### Scenario: Tweet with more than 4 images truncates for X
+- **WHEN** a tweet has 6 images in `media[]`
+- **THEN** only the first 4 SHALL be uploaded and attached for X publishing
+- **AND** the remaining 2 SHALL be silently skipped (no error thrown)
+
+#### Scenario: Thread with mixed media counts
+- **WHEN** a thread has tweet 1 with 3 images, tweet 2 with no images, tweet 3 with 1 image
+- **THEN** tweet 1 SHALL have 3 media IDs attached, tweet 2 SHALL have none, tweet 3 SHALL have 1
 
 #### Scenario: Fallback to draft-level image for auto drafts
 - **WHEN** `publishDraft()` processes a draft with no per-tweet media but with a draft-level `image_url`
 - **THEN** the existing behavior SHALL apply: the draft-level image is attached to the first tweet only
 
+#### Scenario: Instagram collects all images across tweets
+- **WHEN** `publishToIGPost()` processes a thread with multi-image tweets
+- **THEN** ALL images across all tweets SHALL be collected for the carousel (up to Instagram's 10-image limit)
+
+### Requirement: postThread accepts multi-media per tweet
+The `postThread()` function in `x.ts` SHALL accept `perTweetMediaIds` as `(string[] | null)[]` — an array of media ID arrays per tweet — instead of the current `(string | null)[]`.
+
+#### Scenario: Post tweet with multiple media IDs
+- **WHEN** `postThread()` is called with `perTweetMediaIds[0] = ["id1", "id2", "id3"]`
+- **THEN** the first tweet SHALL be posted with `media: { media_ids: ["id1", "id2", "id3"] }`
+
+#### Scenario: Post tweet with null media entry
+- **WHEN** `postThread()` is called with `perTweetMediaIds[1] = null`
+- **THEN** the second tweet SHALL be posted without media
+
+#### Scenario: Backward compatibility with single legacy mediaId
+- **WHEN** `postThread()` is called with a single `mediaId` (for auto-generated drafts)
+- **THEN** the first tweet SHALL have `media: { media_ids: [mediaId] }` (existing behavior preserved)
+
 ### Requirement: AI refinement for handwritten content
-The system SHALL provide a function to refine handwritten tweets via Gemini, preserving tweet count, order, and authorial voice.
+The system SHALL provide a function to refine handwritten tweets via Gemini, using the refine skill and identity to guide output. The AI is free to determine tweet count and structure.
 
 #### Scenario: Refine handwritten tweets
 - **WHEN** AI refinement is requested for handwritten tweets
-- **THEN** the system SHALL send the tweets to Gemini with instructions to polish grammar, clarity, and engagement impact
-- **AND** the response SHALL contain the same number of tweets in the same order
-- **AND** the user's voice and intent SHALL be preserved
+- **THEN** the system SHALL send the tweets to Gemini with the refine skill prompt and identity document
+- **AND** the runtime rules SHALL NOT enforce a specific tweet count (no "MUST return EXACTLY N tweets" constraint)
+- **AND** the `<= 280 chars per tweet` constraint SHALL remain (platform limit)
+- **AND** the user's voice and intent SHALL be preserved per the identity document
+
+#### Scenario: Refine with user instruction
+- **WHEN** AI refinement is requested with an `options.instruction` parameter
+- **THEN** the user prompt SHALL be framed as: "Here's a draft. I want to change it like this: <instruction>"
+- **AND** the AI SHALL follow the instruction while respecting the refine skill and identity
+
+#### Scenario: Refine with empty tweets and instruction
+- **WHEN** AI refinement is requested with zero tweets and an `options.instruction` provided
+- **THEN** the user prompt SHALL be framed as: "I want to create content like this: <instruction>"
+- **AND** the AI SHALL generate tweets from scratch based on the instruction, skill, and identity
 
 #### Scenario: Refine generates image prompt alongside
 - **WHEN** both AI refinement and image generation are requested
 - **THEN** Gemini SHALL return both refined tweets and a structured `ImagePromptData` in a single API call
+
+#### Scenario: Refine with multimodal image input
+- **WHEN** AI refinement is requested with `inline_data` image parts in the user prompt
+- **THEN** the system SHALL pass the multipart prompt (text + image parts) to `callGeminiText`
+- **AND** Gemini SHALL use the images for context when refining text
 
 ### Requirement: Cron publish notifications use record's chat_id
 The cron handler SHALL send publish notifications (success, failure, stale video alerts) to the `chat_id` from each record (`draft.chat_id`, `video_draft.chat_id`), NOT to `env.TELEGRAM_CHAT_ID`.
@@ -136,20 +223,61 @@ The `postTweet()` function SHALL accept an optional `quoteTweetId` in its option
 - **WHEN** `postTweet(env, "Hello world")` is called without quoteTweetId
 - **THEN** the request body SHALL NOT include `quote_tweet_id`
 
-### Requirement: Repost draft publish flow
-The `publishDraft()` function SHALL detect repost drafts by `source='repost'` and publish them as quote tweets. For single-tweet repost drafts, it SHALL call `postTweet()` with the tweet text and `quoteTweetId` from `draft.original_tweet_id`. For thread repost drafts, the first tweet SHALL be the quote tweet and subsequent tweets SHALL be replies to it.
+### Requirement: Repost draft publish flow extended
+The `publishDraft()` function SHALL detect repost drafts by `source='repost'` and handle multi-platform publishing. For X, it SHALL post as a quote tweet. For Instagram, it SHALL use the same image/tweet-card flow as regular drafts.
 
-#### Scenario: Publish single repost draft
-- **WHEN** `publishDraft()` processes a draft with `source='repost'` and `format='single'`
-- **THEN** it SHALL call `postTweet(env, text, { quoteTweetId: draft.original_tweet_id, mediaIds })` instead of `postThread()`
+#### Scenario: Publish repost to X and Instagram Post
+- **WHEN** `publishDraft()` processes a repost draft targeting X and Instagram Post
+- **THEN** X SHALL receive a quote tweet (with `quote_tweet_id`)
+- **AND** Instagram Post SHALL receive the draft's image or a rendered tweet card of the quote tweet
+- **AND** the Instagram caption SHALL be the user's commentary text
 
-#### Scenario: Publish thread repost draft
-- **WHEN** `publishDraft()` processes a draft with `source='repost'` and `format='thread'`
-- **THEN** the first tweet SHALL be posted with `quoteTweetId`, and subsequent tweets SHALL be posted as replies to the first tweet
+#### Scenario: Publish repost to Instagram Story
+- **WHEN** a repost draft targets Instagram Story
+- **THEN** the system SHALL render a quote-tweet card (user's text + embedded original tweet card) and apply the blurred 9:16 treatment
 
-#### Scenario: Repost publish result
-- **WHEN** a repost draft is published successfully
-- **THEN** it SHALL return `{ success: true, url: string, tweetIds: string[] }` matching the existing interface
+### Requirement: Multi-tweet text combining for Instagram captions
+The system SHALL combine text from multiple tweets in a thread into a single Instagram caption by joining them with double newlines.
+
+#### Scenario: Thread with 3 tweets
+- **WHEN** a thread of 3 tweets is published to Instagram
+- **THEN** the caption SHALL be `tweet1.text + "\n\n" + tweet2.text + "\n\n" + tweet3.text`
+- **AND** the combined text SHALL be trimmed to 2200 characters
+
+#### Scenario: Single tweet
+- **WHEN** a single tweet is published to Instagram
+- **THEN** the caption SHALL be the tweet text as-is (trimmed to 2200 chars if needed)
+
+### Requirement: Media preparation shared across platforms
+The publish pipeline SHALL prepare media (images, tweet cards) once and reuse across all target platforms to avoid duplicate work.
+
+#### Scenario: Image used for both X and Instagram
+- **WHEN** a draft has an image and targets both X and Instagram Post
+- **THEN** the image SHALL be read from R2 once
+- **AND** uploaded to X's media API for X publishing
+- **AND** served via the public `/media/` route URL for Instagram publishing
+
+#### Scenario: Tweet cards generated once for multiple Instagram targets
+- **WHEN** a draft with no image targets both Instagram Post and Instagram Story
+- **THEN** the tweet cards SHALL be rendered once
+- **AND** the Post SHALL use all cards (as carousel)
+- **AND** the Story SHALL use only the first card (with blurred 9:16 treatment)
+
+### Requirement: Published record simplified
+The `createPublished()` function SHALL create a record in the `published` table with only: `id`, `chat_id`, `draft_id`, `pr_number`, `published_at`. The per-platform result data (tweet URLs, Instagram post IDs, etc.) SHALL be stored in `draft.publish_results` instead.
+
+#### Scenario: Published record created on multi-platform publish
+- **WHEN** a draft is published to X and Instagram
+- **THEN** one `published` record SHALL be created with `id`, `chat_id`, `draft_id`, `pr_number`, `published_at`
+- **AND** the detailed results SHALL be in `draft.publish_results`
+
+### Requirement: PublishResult interface updated
+The `PublishResult` interface SHALL change from `{ success: true, url: string, tweetIds: string[] }` to `{ success: boolean, results: PublishResults }` where `PublishResults` contains per-platform result objects.
+
+#### Scenario: Callers updated to new interface
+- **WHEN** `publishDraft()` returns
+- **THEN** callers SHALL read `result.success` to determine overall outcome
+- **AND** read `result.results` for per-platform details (URLs, IDs, errors)
 
 ### Requirement: Image handling for repost drafts
 Repost draft publishing SHALL follow the same image handling as existing drafts: check for R2 image, upload to X if present, generate if needed and configured. The account's image config (from the linked twitter_account) SHALL control whether images are generated.

@@ -133,6 +133,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                         message_id: message.message_id,
                         photo: message.photo,
                         caption: message.caption,
+                        media_group_id: message.media_group_id,
                     },
                     isEdit,
                 } as any);

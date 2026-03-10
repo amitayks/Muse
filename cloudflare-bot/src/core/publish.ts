@@ -145,22 +145,30 @@ async function publishToX(
     // Handle media upload
     const hasPerTweetMedia = content.tweets.some(t => t.media?.length);
     let mediaId: string | undefined;
-    let perTweetMediaIds: (string | null)[] | undefined;
+    let perTweetMediaIds: (string[] | null)[] | undefined;
 
     try {
         if (hasPerTweetMedia) {
+            // Upload ALL media per tweet (up to 4 for X)
             perTweetMediaIds = await Promise.all(
                 content.tweets.map(async (tweet) => {
-                    const firstMedia = tweet.media?.[0];
-                    if (!firstMedia) return null;
-                    try {
-                        const r2Object = await env.IMAGES.get(firstMedia.key);
-                        if (!r2Object) return null;
-                        const buffer = await r2Object.arrayBuffer();
-                        return await uploadMediaFromBuffer(env, buffer);
-                    } catch {
-                        return null;
+                    const mediaItems = tweet.media?.filter(m => m.type === 'photo') || [];
+                    if (mediaItems.length === 0) return null;
+                    // X supports max 4 images per tweet — silently truncate
+                    const toUpload = mediaItems.slice(0, 4);
+                    const ids: string[] = [];
+                    for (const media of toUpload) {
+                        try {
+                            const r2Object = await env.IMAGES.get(media.key);
+                            if (!r2Object) continue;
+                            const buffer = await r2Object.arrayBuffer();
+                            const id = await uploadMediaFromBuffer(env, buffer);
+                            ids.push(id);
+                        } catch {
+                            // Skip failed uploads, continue with others
+                        }
                     }
+                    return ids.length > 0 ? ids : null;
                 })
             );
         } else {

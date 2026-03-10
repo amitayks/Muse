@@ -215,13 +215,13 @@ export async function postTweet(
 /**
  * Post a thread (multiple tweets)
  * @param mediaId - Single media ID for first tweet (legacy auto-generated drafts)
- * @param perTweetMediaIds - Per-tweet media IDs array (handwritten drafts). null entries = no media for that tweet.
+ * @param perTweetMediaIds - Per-tweet media ID arrays (handwritten drafts). null entries = no media for that tweet.
  */
 export async function postThread(
     env: Env,
     content: DraftContent,
     mediaId?: string,
-    perTweetMediaIds?: (string | null)[]
+    perTweetMediaIds?: (string[] | null)[]
 ): Promise<{ tweetIds: string[]; url: string }> {
     const tweetIds: string[] = [];
     let previousId: string | undefined;
@@ -237,7 +237,7 @@ export async function postThread(
         // Determine media for this tweet
         let mediaIds: string[] | undefined;
         if (perTweetMediaIds && perTweetMediaIds[i]) {
-            mediaIds = [perTweetMediaIds[i]!];
+            mediaIds = perTweetMediaIds[i]!;
         } else if (i === 0 && mediaId) {
             mediaIds = [mediaId];
         }

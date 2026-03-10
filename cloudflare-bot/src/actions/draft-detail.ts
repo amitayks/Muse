@@ -88,6 +88,8 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
     const tz = await getTimezone(env, chatId);
     const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
 
+    let albumMessageIds: number[] | undefined;
+
     await updateChatState(env, chatId, {
         current_view: 'draft',
         context: { selected_draft_id: draftId, draft_list_type: draftListType, draft_list_page: draftListPage },
@@ -100,11 +102,18 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
         if (perTweetMediaUrls.length >= 2) {
             const albumUrls = perTweetMediaUrls.slice(1, 10); // images 2–10
             try {
-                await sendMediaGroup(env, chatId, albumUrls);
+                albumMessageIds = await sendMediaGroup(env, chatId, albumUrls);
             } catch (albumError) {
                 console.error('Album send failed:', sanitizeError(albumError));
                 // Continue — primary image will still be sent below
             }
+        }
+
+        // Store album message IDs so they can be cleaned up on navigation
+        if (albumMessageIds?.length) {
+            await updateChatState(env, chatId, {
+                context: { selected_draft_id: draftId, draft_list_type: draftListType, draft_list_page: draftListPage, album_message_ids: albumMessageIds },
+            });
         }
 
         // If message is already a photo, update caption in place

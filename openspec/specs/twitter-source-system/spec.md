@@ -85,15 +85,19 @@ The poller SHALL buffer incomplete threads. When thread tweets are detected, the
 - **THEN** the system SHALL fetch the full thread via `searchConversation()`, update all tweet rows with complete thread data, set `status='pending'` (ready for scoring), and remove the conversation from thread_buffer
 
 ### Requirement: last_tweet_id tracking
-After each successful poll of an account, the poller SHALL update `twitter_accounts.last_tweet_id` with the highest tweet ID returned. This SHALL be the maximum ID across all tweets (including thread tweets), NOT just non-thread tweets.
+After each successful poll of an account, the poller SHALL update `twitter_accounts.last_tweet_id` with the highest tweet ID returned. This SHALL be the maximum ID across all tweets (including thread tweets), NOT just non-thread tweets. Additionally, the poller SHALL update `consecutive_empty_polls` and `next_poll_at` based on whether tweets were found.
 
-#### Scenario: Update after poll
+#### Scenario: Update after poll with tweets
 - **WHEN** tweets with IDs ["100", "101", "102"] are fetched
 - **THEN** `last_tweet_id` SHALL be updated to "102"
+- **THEN** `consecutive_empty_polls` SHALL reset to 0
+- **THEN** `next_poll_at` SHALL be set to `now + 30 minutes`
 
 #### Scenario: Empty poll
 - **WHEN** no new tweets are returned
 - **THEN** `last_tweet_id` SHALL remain unchanged
+- **THEN** `consecutive_empty_polls` SHALL increment by 1
+- **THEN** `next_poll_at` SHALL be set based on backoff formula: `min(30 * 2^(consecutive_empty_polls - 1), 240)` minutes from now
 
 ### Requirement: OAuth 1.0a for read endpoints
 The twitter-poller SHALL implement OAuth 1.0a header generation for GET requests to X API v2. The implementation SHALL reuse the same HMAC-SHA1 signature logic as the existing content-bot worker (copy the pure functions).

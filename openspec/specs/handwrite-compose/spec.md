@@ -15,7 +15,7 @@ The system SHALL provide a compose mode where users write their own tweets via s
 - **AND** `awaiting_input` SHALL be set to `'handwrite'`
 
 ### Requirement: Multi-message tweet accumulation
-While in compose mode (`awaiting_input === 'handwrite'`), each text message the user sends SHALL be buffered as a separate tweet in chronological order.
+While in compose mode (`awaiting_input === 'handwrite'`), each text message the user sends SHALL be buffered as a separate tweet in chronological order. Photo messages SHALL be grouped by `media_group_id` — photos in the same group are appended to a single tweet.
 
 #### Scenario: Text message becomes tweet
 - **WHEN** user sends a text message while in compose mode
@@ -27,11 +27,18 @@ While in compose mode (`awaiting_input === 'handwrite'`), each text message the 
 - **THEN** the bot SHALL edit its status message to show "✍️ Composing... (N tweets)" where N is the current buffer size
 - **AND** if any tweet exceeds 280 characters, the status SHALL include "⚠️ Tweet K over 280 chars"
 
-#### Scenario: Photo message becomes tweet with media
-- **WHEN** user sends a photo message (with optional caption) while in compose mode
+#### Scenario: Single photo message becomes tweet with media
+- **WHEN** user sends a single photo message (no `media_group_id`, with optional caption) while in compose mode
 - **THEN** the photo SHALL be downloaded from Telegram and stored in R2
-- **AND** a tweet SHALL be buffered with the caption as text (or empty string if no caption) and the R2 key as `mediaKey`
+- **AND** a tweet SHALL be buffered with the caption as text (or empty string if no caption) and the R2 key in `media[]`
 - **AND** the status message counter SHALL update
+
+#### Scenario: Multi-photo message groups into single tweet
+- **WHEN** user sends a multi-photo message (Telegram delivers as separate updates sharing `media_group_id`)
+- **THEN** all photos in the group SHALL be stored in R2 individually
+- **AND** all photos SHALL be appended to the same tweet's `media[]` array
+- **AND** only one tweet SHALL be created for the entire group
+- **AND** the caption from the first photo SHALL be used as the tweet text
 
 ### Requirement: Native message editing updates buffer
 The system SHALL handle `edited_message` Telegram updates to update previously buffered tweets during compose mode.
@@ -52,24 +59,42 @@ The system SHALL handle `edited_message` Telegram updates to update previously b
 - **THEN** the update SHALL be silently ignored
 
 ### Requirement: Compose mode toggle buttons
-The compose status message SHALL include toggle buttons for Image Generation and AI Refine that persist their state in `HandwriteState`.
+The compose status message SHALL include context-aware toggle buttons that adapt based on current state: whether images are attached, whether AI is enabled, and whether an instruction exists.
 
-#### Scenario: Toggle image generation on
-- **WHEN** user clicks the "🎨 Image: OFF" button
+#### Scenario: No images — show image gen, AI, and instruct buttons
+- **WHEN** no tweets have media attached
+- **THEN** the button row SHALL show: `[🎨 Image: ON/OFF]` `[✨ AI: ON/OFF]` `[📝 Instruct]`
+
+#### Scenario: Images attached, AI off — show AI and instruct buttons
+- **WHEN** at least one tweet has media AND `aiRefine` is `false`
+- **THEN** the button row SHALL show: `[✨ AI: OFF]` `[📝 Instruct]`
+
+#### Scenario: Images attached, AI on — show analyze, AI, and instruct buttons
+- **WHEN** at least one tweet has media AND `aiRefine` is `true`
+- **THEN** the button row SHALL show: `[🔍 Analyze: ON/OFF]` `[✨ AI: ON]` `[📝 Instruct]`
+
+#### Scenario: Toggle image generation on (no images)
+- **WHEN** user clicks the "🎨 Image: OFF" button and no images are attached
 - **THEN** `HandwriteState.imageGen` SHALL be set to `true`
 - **AND** the button text SHALL change to "🎨 Image: ON"
-- **AND** the status message SHALL be re-rendered with updated button
 
 #### Scenario: Toggle AI refine on
 - **WHEN** user clicks the "✨ AI: OFF" button
 - **THEN** `HandwriteState.aiRefine` SHALL be set to `true`
 - **AND** the button text SHALL change to "✨ AI: ON"
+- **AND** if images are attached, the "🔍 Analyze" button SHALL appear in the button row
+
+#### Scenario: Toggle AI refine off
+- **WHEN** user clicks the "✨ AI: ON" button
+- **THEN** `HandwriteState.aiRefine` SHALL be set to `false`
+- **AND** `HandwriteState.analyzeImages` SHALL also be set to `false`
+- **AND** the analyze button SHALL disappear from the button row
 
 ### Requirement: Pen Down finalizes compose and creates draft
-When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL be created from the buffered tweets.
+When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL be created from the buffered tweets. The AI is free to determine tweet count based on skill and identity guidance.
 
 #### Scenario: Pen down with tweets and no AI
-- **WHEN** user clicks "✏️ Pen Down" with tweets buffered and both toggles OFF
+- **WHEN** user clicks "Pen Down" with tweets buffered and both toggles OFF
 - **THEN** a draft SHALL be created with `source: 'handwrite'`, `pr_number: 0`, `pr_title` as the first tweet text (truncated to 100 chars), and `DraftContent` with the buffered tweets
 - **AND** `format` SHALL be `'single'` if 1 tweet, `'thread'` if 2+ tweets
 - **AND** `awaiting_input` SHALL be cleared
@@ -77,9 +102,14 @@ When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL
 
 #### Scenario: Pen down with AI refine enabled
 - **WHEN** user clicks "Pen Down" with `aiRefine: true`
-- **THEN** the bot SHALL send the tweets to Gemini for refinement (polish grammar, clarity, impact — preserve voice, tweet count, and order)
+- **THEN** the bot SHALL send the tweets to Gemini for refinement via the refine skill and identity
+- **AND** the AI MAY adjust tweet count based on skill guidance (no hardcoded tweet count constraint)
 - **AND** the refined tweets SHALL be used in the draft content
-- **AND** the original tweets SHALL be discarded (the refined version is the draft)
+
+#### Scenario: Pen down with instruction and no tweets
+- **WHEN** user clicks "Pen Down" with `instruction` set, `aiRefine: true`, and zero tweets buffered
+- **THEN** the AI SHALL generate content from scratch based on the instruction, skill, and identity
+- **AND** a draft SHALL be created from the AI-generated content
 
 #### Scenario: Pen down with image generation enabled
 - **WHEN** user clicks "Pen Down" with `imageGen: true`
@@ -92,9 +122,9 @@ When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL
 - **THEN** both AI refinement and image prompt generation SHALL be requested from Gemini in a single call
 - **AND** the draft SHALL contain refined tweets and an imagePrompt
 
-#### Scenario: Pen down with no tweets
-- **WHEN** user clicks "Pen Down" with zero tweets buffered
-- **THEN** the bot SHALL show an error "No tweets to save" and remain in compose mode
+#### Scenario: Pen down with no tweets and no instruction and no AI
+- **WHEN** user clicks "Pen Down" with zero tweets buffered, no instruction, and AI off
+- **THEN** the bot SHALL remain in compose mode and show the compose view as a new message
 
 ### Requirement: Cancel discards compose session
 The cancel button SHALL discard the buffer and return to the dashboard.
@@ -119,10 +149,59 @@ Recognized slash commands typed during compose mode SHALL cancel the session and
 - **THEN** the text SHALL be buffered as a tweet (not treated as a command)
 
 ### Requirement: HandwriteState type definition
-The system SHALL define `HandwriteState` and `HandwriteTweet` types for the compose buffer.
+The system SHALL define `HandwriteState` and `HandwriteTweet` types for the compose buffer, including new fields for instruction and image analysis.
 
 #### Scenario: HandwriteState stored in ChatContext
 - **WHEN** compose mode is active
 - **THEN** `ChatContext` SHALL contain `awaiting_input: 'handwrite'` and `handwrite: HandwriteState`
-- **AND** `HandwriteState` SHALL have fields: `tweets: HandwriteTweet[]`, `imageGen: boolean`, `aiRefine: boolean`, `statusMessageId: number`
-- **AND** `HandwriteTweet` SHALL have fields: `messageId: number`, `text: string`, optional `mediaKey: string`, optional `mediaType: 'photo'`
+- **AND** `HandwriteState` SHALL have fields: `tweets: HandwriteTweet[]`, `imageGen: boolean`, `aiRefine: boolean`, `analyzeImages: boolean`, `statusMessageId: number`, optional `instruction: string`, optional `instructionMessageId: number`, optional `awaitingInstruction: boolean`
+- **AND** `HandwriteTweet` SHALL have fields: `messageId: number`, `text: string`, optional `media: TweetMedia[]`, optional `mediaGroupId: string`
+
+### Requirement: Compose preview shows image counts and platform warnings
+The compose preview SHALL display per-image indicators and platform-aware limit warnings.
+
+#### Scenario: Tweet with multiple images shows camera emojis
+- **WHEN** a tweet in the compose preview has N images (1 <= N <= 4)
+- **THEN** the preview SHALL show N camera emoji characters
+
+#### Scenario: Tweet with 5+ images shows count notation
+- **WHEN** a tweet has N images where N > 4
+- **THEN** the preview SHALL show a count notation
+
+#### Scenario: X per-tweet limit warning
+- **WHEN** a tweet has more than 4 images
+- **THEN** the preview SHALL show a warning that only the first 4 will post to X
+
+#### Scenario: Instagram total image limit warning
+- **WHEN** the total image count across all tweets exceeds 10
+- **THEN** the preview SHALL show a warning that only the first 10 will post to Instagram
+
+#### Scenario: All images within limits
+- **WHEN** all tweets have 4 or fewer images and total is 10 or fewer
+- **THEN** no platform warnings SHALL be shown
+
+### Requirement: ComposeTweet type extended with media count
+The `ComposeTweet` interface SHALL replace `hasMedia?: boolean` with `mediaCount: number` to support multi-image display in the compose preview.
+
+#### Scenario: ComposeTweet with multiple images
+- **WHEN** a tweet has 3 images attached
+- **THEN** `ComposeTweet.mediaCount` SHALL be `3`
+
+#### Scenario: ComposeTweet with no images
+- **WHEN** a tweet has no images
+- **THEN** `ComposeTweet.mediaCount` SHALL be `0`
+
+### Requirement: Compose action handles new toggle callbacks
+The compose action handler SHALL route new callback values for the analyze and instruct toggles.
+
+#### Scenario: Toggle analyze callback
+- **WHEN** callback data is `compose:toggle_analyze`
+- **THEN** `HandwriteState.analyzeImages` SHALL be toggled
+- **AND** the compose preview SHALL re-render with updated buttons
+
+#### Scenario: Toggle instruct callback
+- **WHEN** callback data is `compose:toggle_instruct`
+- **THEN** `HandwriteState.awaitingInstruction` SHALL be set to `true`
+- **AND** `HandwriteState.aiRefine` SHALL be auto-enabled
+- **AND** the callback SHALL be answered with toast text "Type your instruction next"
+- **AND** the compose preview SHALL update to show the awaiting instruction cue

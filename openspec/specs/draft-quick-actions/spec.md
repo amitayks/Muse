@@ -24,6 +24,29 @@ Each draft item in `renderDraftsList` SHALL render two rows of inline buttons: t
 - **WHEN** a draft list is rendered containing a draft with status "rejected"
 - **THEN** the draft item has two rows: `[title button]` and `[🗑]`
 
+### Requirement: Draft title shows platform badges
+The draft title button in list views SHALL include platform target badges showing which platforms the draft is configured for.
+
+#### Scenario: Draft targeting X only
+- **WHEN** a draft has `publish_targets = { x: true }`
+- **THEN** the title button SHALL show the standard title without additional badges (X is the default)
+
+#### Scenario: Draft targeting X and Instagram Post
+- **WHEN** a draft has `publish_targets = { x: true, instagram_post: true }`
+- **THEN** the title button SHALL append `📸` badge to the title text
+
+#### Scenario: Draft targeting multiple Instagram options
+- **WHEN** a draft has `publish_targets = { x: true, instagram_post: true, instagram_story: true }`
+- **THEN** the title button SHALL append `📸📖` badges to the title text
+
+### Requirement: Quick publish respects publish targets
+The quick publish action from the list view SHALL publish to all platforms specified in the draft's `publish_targets`.
+
+#### Scenario: Quick publish to X and Instagram
+- **WHEN** user taps 📤 on an approved draft that targets X and Instagram Post
+- **THEN** `publishDraft()` SHALL be called with the draft's configured targets
+- **AND** the list SHALL re-render showing the draft's updated status
+
 ### Requirement: Quick approve from list
 The system SHALL allow approving a draft directly from the list view. After approval, the list SHALL re-render showing the draft's updated status with a publish button.
 
