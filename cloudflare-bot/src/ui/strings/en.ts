@@ -167,6 +167,18 @@ export const en = {
         btnLanguage: '🌐',
         btnAnalyzeIdentity: '🪞 Analyze identity',
 
+        // Identity language notification
+        identityLangNotification: '🪞 <b>Identity not available in this language</b>\n\nYour identity was analyzed in another language. You can re-analyze it for this language, or keep using the default identity.',
+        btnReanalyzeIdentity: '🪞 Re-analyze',
+        btnKeepDefault: '👍 Keep default',
+        identityNoX: '⚠️ X/Twitter credentials are required for identity analysis.',
+        identityNoXConnect: '⚠️ X/Twitter credentials are required for identity analysis.\n\nPlease connect your X account first from API Keys settings.',
+        identityReanalyzed: '✅ <b>Identity re-analysis complete!</b>\n\nYour identity document has been updated.',
+        identityReanalyzedWebApp: '✅ <b>Identity re-analysis complete!</b>\n\nYour Identity Document has been updated. You can view and edit it in the WebApp.',
+        identityAnalyzeFailed: '⚠️ Analysis failed. Your existing identity remains unchanged.',
+        identityAnalyzeFailedRetry: '⚠️ Re-analysis failed. Please try again later.\n\nYour existing identity remains unchanged.',
+        identityAnalyzeFailedNoTweets: '⚠️ Re-analysis failed. No tweets were found or an error occurred.\n\nYour existing identity remains unchanged.',
+
         // Repost defaults
         repostDefaults: '🔄 <b>Repost Defaults</b>',
         btnFastImage: '🎨 Fast Image',

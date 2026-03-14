@@ -176,3 +176,16 @@ ${t(lang, 'settings.timezoneDesc')}`,
         keyboard: presets,
     };
 }
+
+export function renderIdentityLangNotification(lang: Lang = 'en'): ViewResult {
+    return {
+        text: t(lang, 'settings.identityLangNotification'),
+        keyboard: [
+            [
+                { text: t(lang, 'settings.btnReanalyzeIdentity'), callback_data: 'identity_lang:reanalyze' },
+                { text: t(lang, 'settings.btnKeepDefault'), callback_data: 'identity_lang:keep_default' },
+            ],
+            [homeButton(lang)],
+        ],
+    };
+}

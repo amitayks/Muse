@@ -181,6 +181,49 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     rp_cancel: rpCancelAction,
     rp_follow: rpFollowAction,
     rp_no_follow: rpNoFollowAction,
+    // Identity language notification actions
+    identity_lang: async (ctx) => {
+        const { env, chatId, value } = ctx;
+        const lang = (ctx.lang || 'en') as Lang;
+
+        if (value === 'reanalyze') {
+            const { getUser } = await import('../data/user-db');
+            const { analyzeIdentity } = await import('../ai/identity');
+            const { hydrateEnv } = await import('../data/user-keys');
+            const { t } = await import('../ui/strings');
+            const user = await getUser(env, chatId);
+            if (user?.has_x !== 1) {
+                return {
+                    text: t(lang, 'settings.identityNoX'),
+                    keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],
+                };
+            }
+            try {
+                const userEnv = await hydrateEnv(env, chatId);
+                const result = await analyzeIdentity(userEnv, chatId, lang);
+                if (result) {
+                    return {
+                        text: t(lang, 'settings.identityReanalyzed'),
+                        keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],
+                    };
+                }
+                return {
+                    text: t(lang, 'settings.identityAnalyzeFailed'),
+                    keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],
+                };
+            } catch {
+                return {
+                    text: t(lang, 'settings.identityAnalyzeFailedRetry'),
+                    keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],
+                };
+            }
+        }
+
+        if (value === 'keep_default') {
+            const { renderHome } = await import('../views');
+            return renderHome(env, chatId, lang);
+        }
+    },
     // Platform toggle actions
     plat: async (ctx) => {
         // plat:show:DRAFTID → value=show, extra=DRAFTID

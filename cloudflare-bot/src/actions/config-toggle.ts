@@ -3,13 +3,15 @@ import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../data/db';
-import { getUser } from '../data/user-db';
+import { getUser, updateUser } from '../data/user-db';
 import { getRepostDefaults, getCommitDefaults } from '../data/user-settings-db';
-import { renderRepoDetail, renderError, renderSettings } from '../views';
+import { renderRepoDetail, renderError, renderSettings, renderIdentityLangNotification } from '../views';
 import { cancelRow } from '../ui/components';
 import { isValidTimezone } from '../infra/timezone';
 import { countStalePrompts } from '../ai/prompts';
 import { isAdmin } from '../infra/security';
+import { getIdentityStatus } from '../ai/identity';
+import { sendMessage } from '../integrations/telegram';
 
 export async function configToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult | void> {
     const lang = (ctx.lang || 'en') as Lang;
@@ -37,14 +39,30 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         const currentLang = await getUserLanguage(env, chatId);
         const newLang: Lang = currentLang === 'en' ? 'he' : 'en';
         await setUserLanguage(env, chatId, newLang);
+
+        // Check if identity language notification should be shown
+        const identityStatus = await getIdentityStatus(env, chatId);
+        if (identityStatus.hasAny && !identityStatus.langs.includes(newLang)) {
+            const user = await getUser(env, chatId);
+            const notified = (user?.identity_lang_notified || '').split(',').filter(Boolean);
+            if (!notified.includes(newLang)) {
+                // Send one-time notification as separate message
+                const notifView = renderIdentityLangNotification(newLang);
+                await sendMessage(env, chatId, notifView.text, notifView.keyboard);
+                // Mark as notified
+                notified.push(newLang);
+                await updateUser(env, chatId, { identity_lang_notified: notified.join(',') });
+            }
+        }
+
         const tz = await getTimezone(env, chatId);
         const ps = await getPageSize(env, chatId);
         const staleCount = await countStalePrompts(env, chatId);
         const isAdminUser = isAdmin(chatId, env);
-        const user = await getUser(env, chatId);
+        const user2 = await getUser(env, chatId);
         const rpDefaults = await getRepostDefaults(env, chatId);
         const cmDefaults = await getCommitDefaults(env, chatId);
-        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
+        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser, user2?.default_publish_targets, user2?.has_instagram === 1, rpDefaults, cmDefaults);
     }
 
     // Handle timezone configuration: config:timezone:OFFSET

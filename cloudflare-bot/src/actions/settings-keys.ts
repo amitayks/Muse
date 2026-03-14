@@ -10,7 +10,7 @@ import { getUser, updateDefaultPublishTargets } from '../data/user-db';
 import { updateChatState, getTimezone, getPageSize } from '../data/db';
 import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault } from '../data/user-settings-db';
 import { renderApiKeys, renderSettings } from '../views/settings';
-import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
+import { analyzeIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
 import { renderPlatformBadges, parsePublishTargets } from '../views/platform-toggle';
 import { editMessage, answerCallback } from '../integrations/telegram';
@@ -42,28 +42,27 @@ export async function settingsKeysAction(
         const user = await getUser(env, chatId);
         if (user?.has_x !== 1) {
             return {
-                text: '⚠️ X/Twitter credentials are required for identity analysis.\n\nPlease connect your X account first from API Keys settings.',
+                text: t(lang, 'settings.identityNoXConnect'),
                 keyboard: [
                     [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
                 ],
             };
         }
 
-        // Return analyzing message — actual analysis happens asynchronously
         try {
             const userEnv = await hydrateEnv(env, chatId);
             const result = await analyzeIdentity(userEnv, chatId, user?.language || lang);
 
             if (result) {
                 return {
-                    text: '✅ <b>Identity re-analysis complete!</b>\n\nYour Identity Document has been updated. You can view and edit it in the WebApp.',
+                    text: t(lang, 'settings.identityReanalyzedWebApp'),
                     keyboard: [
                         [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
                     ],
                 };
             } else {
                 return {
-                    text: '⚠️ Re-analysis failed. No tweets were found or an error occurred.\n\nYour existing identity remains unchanged.',
+                    text: t(lang, 'settings.identityAnalyzeFailedNoTweets'),
                     keyboard: [
                         [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
                     ],
@@ -72,7 +71,7 @@ export async function settingsKeysAction(
         } catch (error) {
             console.error('[settings] Identity re-analysis failed:', error);
             return {
-                text: '⚠️ Re-analysis failed. Please try again later.\n\nYour existing identity remains unchanged.',
+                text: t(lang, 'settings.identityAnalyzeFailedRetry'),
                 keyboard: [
                     [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
                 ],

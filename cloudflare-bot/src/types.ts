@@ -92,6 +92,9 @@ export interface User {
     last_reset_date: string | null;
     consecutive_failures: number;
 
+    // Identity language notification tracking
+    identity_lang_notified: string; // comma-separated lang codes, e.g. 'he' or 'en,he'
+
     // Timestamps
     created_at: string;
     last_active_at: string | null;

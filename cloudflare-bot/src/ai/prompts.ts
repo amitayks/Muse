@@ -14,13 +14,13 @@ import { getDefaultPromptTexts } from '../skills';
 
 // ==================== TYPES & CONSTANTS ====================
 
-export type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'image-gen';
+export type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen';
 
-/** Prompt types that users can customize (who-am-i is managed via identity analysis, not prompt editor) */
-export const USER_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote'];
+/** Prompt types that users can customize (identity = their identity doc, editable in webapp) */
+export const USER_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'identity'];
 
 /** All prompt types */
-export const ALL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'image-gen'];
+export const ALL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen'];
 
 /** Skills that receive identity injection in assembleSystemInstruction */
 export const IDENTITY_ATTACHED_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'what-i-like'];
@@ -84,7 +84,7 @@ export async function assembleSystemInstruction(
 
     // Identity injection for identity-attached skills
     if (IDENTITY_ATTACHED_SKILLS.includes(type)) {
-        const identity = await getPrompt(env, chatId, 'who-am-i', lang);
+        const identity = await getPrompt(env, chatId, 'identity', lang);
         parts.push(identity);
     }
 
@@ -168,8 +168,8 @@ export async function getDefaultPromptVersion(
 
 // ==================== ADMIN PROMPT TYPES ====================
 
-/** Prompt types that admins can edit (all 9 skill types) */
-export const ADMIN_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'image-gen'];
+/** Prompt types that admins can edit (all 10 types including identity skeleton) */
+export const ADMIN_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen'];
 
 // ==================== STALE PROMPT DETECTION ====================
 
@@ -182,6 +182,7 @@ export async function countStalePrompts(env: Env, chatId: string): Promise<numbe
         INNER JOIN default_prompts dp
             ON up.prompt_type = dp.prompt_type AND up.language = dp.language
         WHERE up.chat_id = ? AND up.based_on_version < dp.version
+            AND up.prompt_type != 'identity'
     `).bind(chatId).first<{ count: number }>();
     return row?.count ?? 0;
 }

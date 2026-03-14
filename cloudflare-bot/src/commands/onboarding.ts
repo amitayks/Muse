@@ -23,7 +23,7 @@ import {
 } from '../views/onboarding';
 import { logInfo, logError, sanitizeError } from '../infra/security';
 import { validateGeminiKey } from '../ai/gemini';
-import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
+import { analyzeIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
 import type { Lang } from '../ui/strings';
 
@@ -168,9 +168,8 @@ export async function handleOnboardingCallback(
         return;
     }
 
-    // ─── Skip X → store default identity, go to Instagram ─────────────
+    // ─── Skip X → go to Instagram (identity falls through to default skeleton) ─
     if (data === 'onboard:skip_x') {
-        await storeDefaultIdentity(env, chatId, lang);
         await updateUser(env, chatId, { onboarding_step: 'instagram' });
         await sendStepView(env, chatId, telegramChatId, messageId, 'instagram', lang);
         return;
@@ -191,9 +190,8 @@ export async function handleOnboardingCallback(
         return;
     }
 
-    // ─── Identity: Use default ────────────────────────────────────────
+    // ─── Identity: Use default (no storage needed — falls through to default_prompts skeleton) ─
     if (data === 'onboard:identity_default') {
-        await storeDefaultIdentity(env, chatId, lang);
         await updateUser(env, chatId, { onboarding_step: 'gemini_key' });
         await sendStepView(env, chatId, telegramChatId, messageId, 'gemini_key', lang);
         return;
@@ -488,8 +486,7 @@ async function handleIdentityAnalyze(
             const view = renderIdentitySnippet(snippet, lang);
             await sendMessage(env, telegramChatId, view.text, view.keyboard);
         } else {
-            // Analysis returned null — store default and show failure
-            await storeDefaultIdentity(env, chatId, lang);
+            // Analysis returned null — user falls through to default skeleton
             const failed = renderIdentityFailed(lang);
             await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
             // Advance to Gemini (with progress bar)
@@ -503,7 +500,7 @@ async function handleIdentityAnalyze(
             onboardingEnv = null;
         }
         logError('Identity analysis failed:', sanitizeError(error));
-        await storeDefaultIdentity(env, chatId, lang);
+        // User falls through to default skeleton — no storage needed
         const failed = renderIdentityFailed(lang);
         await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
         // Advance to Gemini (with progress bar)

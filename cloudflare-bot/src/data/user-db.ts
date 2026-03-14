@@ -44,7 +44,8 @@ export async function updateUser(
         'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' |
         'language' | 'default_publish_targets' |
         'own_profile_image_url' | 'own_username_x' | 'own_display_name_x' |
-        'daily_generates' | 'daily_reposts' | 'last_reset_date' | 'consecutive_failures'
+        'daily_generates' | 'daily_reposts' | 'last_reset_date' | 'consecutive_failures' |
+        'identity_lang_notified'
     >>
 ): Promise<void> {
     const sets: string[] = [];

@@ -170,6 +170,18 @@ export const he: StringsMap = {
         btnLanguage: '🌐',
         btnAnalyzeIdentity: '🪞 ניתוח זהות',
 
+        // Identity language notification
+        identityLangNotification: '🪞 <b>הזהות לא זמינה בשפה זו</b>\n\nהזהות שלך נותחה בשפה אחרת. ניתן לנתח מחדש בשפה הנוכחית, או להשתמש בזהות ברירת המחדל.',
+        btnReanalyzeIdentity: '🪞 ניתוח מחדש',
+        btnKeepDefault: '👍 השאר ברירת מחדל',
+        identityNoX: '⚠️ נדרשים פרטי X/Twitter לניתוח זהות.',
+        identityNoXConnect: '⚠️ נדרשים פרטי X/Twitter לניתוח זהות.\n\nיש לחבר את חשבון ה-X שלך תחילה מהגדרות מפתחות API.',
+        identityReanalyzed: '✅ <b>ניתוח הזהות הושלם!</b>\n\nמסמך הזהות שלך עודכן.',
+        identityReanalyzedWebApp: '✅ <b>ניתוח הזהות הושלם!</b>\n\nמסמך הזהות שלך עודכן. ניתן לצפות ולערוך אותו באפליקציית הווב.',
+        identityAnalyzeFailed: '⚠️ הניתוח נכשל. הזהות הקיימת שלך נשארת ללא שינוי.',
+        identityAnalyzeFailedRetry: '⚠️ הניתוח נכשל. נסה שוב מאוחר יותר.\n\nהזהות הקיימת שלך נשארת ללא שינוי.',
+        identityAnalyzeFailedNoTweets: '⚠️ הניתוח נכשל. לא נמצאו ציוצים או שאירעה שגיאה.\n\nהזהות הקיימת שלך נשארת ללא שינוי.',
+
         // Repost defaults
         repostDefaults: '🔄 <b>ברירות מחדל ריפוסט</b>',
         btnFastImage: '🎨 תמונה מהירה',

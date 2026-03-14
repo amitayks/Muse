@@ -1,77 +1,22 @@
-## Requirements
-
-### Requirement: Default prompts table
-The system SHALL have a `default_prompts` table with columns: `prompt_type TEXT`, `language TEXT`, `content TEXT`, `version INTEGER DEFAULT 1`, `updated_at TEXT`. Primary key SHALL be `(prompt_type, language)`.
-
-#### Scenario: Default prompt exists for content/en
-- **WHEN** the system queries `default_prompts` for type `'content'` and language `'en'`
-- **THEN** it SHALL return the seeded content generation system prompt text with version 1
-
-#### Scenario: All 7 prompt types seeded in English
-- **WHEN** the migration runs
-- **THEN** `default_prompts` SHALL contain rows for all 7 types (`content`, `edit`, `repost`, `video`, `overview`, `persona`, `scoring`) with language `'en'`
-
-### Requirement: User prompts table
-The system SHALL have a `user_prompts` table with columns: `chat_id TEXT`, `prompt_type TEXT`, `language TEXT`, `content TEXT`, `based_on_version INTEGER DEFAULT 1`, `updated_at TEXT`. Primary key SHALL be `(chat_id, prompt_type, language)`. Foreign key on `chat_id` references `users(chat_id)`.
-
-#### Scenario: User has customized content prompt
-- **WHEN** a user has saved a custom content prompt in English
-- **THEN** `user_prompts` SHALL contain a row with their `chat_id`, `prompt_type='content'`, `language='en'`, and their custom text
-
-#### Scenario: User has not customized any prompt
-- **WHEN** a new user has never edited prompts
-- **THEN** `user_prompts` SHALL have zero rows for that user's `chat_id`
-
-### Requirement: Prompt resolution with fallback
-The system SHALL provide a `getPrompt(env, chatId, type, lang)` function that resolves the active prompt with three-level fallback: (1) user custom prompt, (2) global default in requested language, (3) global default in English.
-
-#### Scenario: User has custom prompt
-- **WHEN** `getPrompt(env, '123', 'content', 'he')` is called and user 123 has a custom Hebrew content prompt
-- **THEN** it SHALL return the user's custom Hebrew prompt text
-
-#### Scenario: User has no custom, default exists
-- **WHEN** `getPrompt(env, '123', 'content', 'he')` is called, user 123 has no custom prompt, and a Hebrew default exists
-- **THEN** it SHALL return the global default Hebrew content prompt
-
-#### Scenario: No custom, no target language default, English fallback
-- **WHEN** `getPrompt(env, '123', 'content', 'he')` is called, user has no custom, and no Hebrew default exists
-- **THEN** it SHALL fall back to the English default content prompt
+## MODIFIED Requirements
 
 ### Requirement: Prompt type constants
-The system SHALL define a `PromptType` union type with values `'content' | 'edit' | 'repost' | 'video' | 'overview' | 'persona' | 'scoring' | 'handwrite_refine' | 'handwrite_image'`. It SHALL also export `USER_EDITABLE_PROMPTS` array containing `['content', 'edit', 'repost']` and `ALL_PROMPTS` containing all 9 types.
+The system SHALL define a `PromptType` union type with values `'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen'`. It SHALL export `USER_EDITABLE_SKILLS` array containing `['work-progress', 'refine', 'quote', 'identity']`, `ADMIN_EDITABLE_SKILLS` containing all 10 types, and `ALL_SKILLS` containing all 10 types. `IDENTITY_ATTACHED_SKILLS` SHALL resolve identity via `'identity'` prompt type (not `'who-am-i'`).
 
 #### Scenario: Type safety for prompt operations
 - **WHEN** a function accepts a `PromptType` parameter
-- **THEN** only the 9 valid prompt type strings SHALL be accepted at compile time
+- **THEN** only the 10 valid prompt type strings SHALL be accepted at compile time
 
-### Requirement: Save user prompt
-The system SHALL provide a `saveUserPrompt(env, chatId, type, lang, content)` function that upserts a row in `user_prompts` with the current default version as `based_on_version`.
+#### Scenario: Identity is user-editable
+- **WHEN** checking `USER_EDITABLE_SKILLS`
+- **THEN** it SHALL include `'identity'`
 
-#### Scenario: First-time save
-- **WHEN** `saveUserPrompt(env, '123', 'content', 'en', 'My custom prompt')` is called and no existing row exists
-- **THEN** a new row SHALL be inserted with `based_on_version` set to the current `default_prompts.version` for that type/lang
-
-#### Scenario: Update existing custom prompt
-- **WHEN** `saveUserPrompt()` is called and a row already exists
-- **THEN** the row SHALL be updated with new content and refreshed `based_on_version` and `updated_at`
-
-### Requirement: Delete user prompt (reset to default)
-The system SHALL provide a `deleteUserPrompt(env, chatId, type, lang)` function that removes the user's custom prompt, reverting them to the global default.
-
-#### Scenario: Reset custom prompt
-- **WHEN** `deleteUserPrompt(env, '123', 'content', 'en')` is called
-- **THEN** the row SHALL be deleted from `user_prompts`
-- **AND** subsequent `getPrompt()` calls SHALL return the global default
-
-### Requirement: Update default prompt with version bump
-The system SHALL provide an `updateDefaultPrompt(env, type, lang, content)` function that updates the default prompt content and increments the `version` by 1.
-
-#### Scenario: Admin pushes new default
-- **WHEN** `updateDefaultPrompt(env, 'content', 'en', 'Updated prompt...')` is called with current version 3
-- **THEN** the row SHALL be updated with new content, `version` set to 4, and `updated_at` refreshed
+#### Scenario: Identity and who-am-i are both admin-editable
+- **WHEN** checking `ADMIN_EDITABLE_SKILLS`
+- **THEN** it SHALL include both `'identity'` and `'who-am-i'`
 
 ### Requirement: User prompt staleness check
-The system SHALL provide a `getUserPromptStatus(env, chatId, type, lang)` function that returns whether the user has a custom prompt and whether it's stale (based on older default version).
+The system SHALL provide a `getUserPromptStatus(env, chatId, type, lang)` function that returns whether the user has a custom prompt and whether it's stale (based on older default version). The `countStalePrompts` function SHALL exclude `prompt_type = 'identity'` from the stale count.
 
 #### Scenario: User has stale custom prompt
 - **WHEN** user's `based_on_version` is 2 and current default version is 4
@@ -84,3 +29,24 @@ The system SHALL provide a `getUserPromptStatus(env, chatId, type, lang)` functi
 #### Scenario: User has no custom prompt
 - **WHEN** no `user_prompts` row exists for the user/type/lang
 - **THEN** `getUserPromptStatus()` SHALL return `{ isCustom: false, isStale: false, basedOnVersion: 0, currentVersion: N }`
+
+#### Scenario: Stale identity excluded from count
+- **WHEN** user has a `user_prompts` row for `identity` with outdated `based_on_version`, and a stale `work-progress` prompt
+- **THEN** `countStalePrompts()` SHALL return 1 (only counting work-progress, not identity)
+
+## ADDED Requirements
+
+### Requirement: System instruction resolves identity from identity prompt type
+The `assembleSystemInstruction` function SHALL resolve identity injection using `getPrompt(env, chatId, 'identity', lang)` instead of `getPrompt(env, chatId, 'who-am-i', lang)`. This ensures the user's identity document (or skeleton default) is injected, never the analysis skill.
+
+#### Scenario: Identity-attached skill assembles with user's analyzed identity
+- **WHEN** `assembleSystemInstruction(env, chatId, 'work-progress', 'en')` is called and user has an analyzed identity in `user_prompts(chatId, 'identity', 'en')`
+- **THEN** the system instruction SHALL contain the skill prompt + the user's analyzed identity document
+
+#### Scenario: Identity-attached skill assembles with skeleton default
+- **WHEN** `assembleSystemInstruction(env, chatId, 'work-progress', 'en')` is called and user has NO `user_prompts` row for `identity/en`
+- **THEN** the system instruction SHALL contain the skill prompt + the skeleton default from `default_prompts('identity', 'en')`
+
+#### Scenario: Assembly never includes analysis skill as identity
+- **WHEN** `assembleSystemInstruction` resolves identity for any user
+- **THEN** the resolved identity text SHALL never be the `who-am-i` analysis skill content from `default_prompts`

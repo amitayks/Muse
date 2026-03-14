@@ -140,7 +140,8 @@ export function handleAdminPromptEditorPage(): Response {
         <option value="know-my-project">/know-my-project — Repo analysis &amp; summary</option>
         <option value="persona">/persona — Twitter account research</option>
         <option value="what-i-like">/what-i-like — Tweet relevance scoring</option>
-        <option value="who-am-i">/who-am-i — Identity document</option>
+        <option value="who-am-i">/who-am-i — Identity analysis skill</option>
+        <option value="identity">/identity — Default identity skeleton</option>
         <option value="image-gen">/image-gen — Visual direction module</option>
       </select>
     </div>

@@ -460,6 +460,19 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('Prompt storage migration note:', String(promptError));
         }
 
+        // Migration: Add identity_lang_notified column to users table (014)
+        try {
+            const usersInfo4 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasIdentityLangNotified = usersInfo4.results?.some((col: any) => col.name === 'identity_lang_notified');
+
+            if (!hasIdentityLangNotified) {
+                await env.DB.prepare(`ALTER TABLE users ADD COLUMN identity_lang_notified TEXT DEFAULT '';`).run();
+                logInfo('Added identity_lang_notified column to users table');
+            }
+        } catch (identityLangError) {
+            logInfo('Identity lang notified migration note:', String(identityLangError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

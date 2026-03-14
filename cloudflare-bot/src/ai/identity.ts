@@ -60,18 +60,21 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
     const analysisSkill = await getDefaultPromptText(env, 'who-am-i', lang);
     const identityDocument = await callGeminiText(env, analysisSkill, userPrompt, { jsonMode: false });
 
-    // 4. Store in user_prompts
-    await saveUserPrompt(env, chatId, 'who-am-i', lang, identityDocument);
+    // 4. Store in user_prompts as 'identity' (not 'who-am-i' which is the analysis skill)
+    await saveUserPrompt(env, chatId, 'identity', lang, identityDocument);
     console.log(`[identity] Stored identity document for user ${chatId} (${identityDocument.length} chars)`);
 
     return { document: identityDocument, tweetCount: tweets.length };
 }
 
 /**
- * Store the default skeleton identity for a user who skips analysis.
+ * Check if a user has an analyzed (non-default) identity document.
+ * Returns info about which languages have custom identity rows.
  */
-export async function storeDefaultIdentity(env: Env, chatId: string, lang: string): Promise<void> {
-    const skeleton = await getDefaultPromptText(env, 'who-am-i', lang);
-    await saveUserPrompt(env, chatId, 'who-am-i', lang, skeleton);
-    console.log(`[identity] Stored default skeleton identity for user ${chatId}`);
+export async function getIdentityStatus(env: Env, chatId: string): Promise<{ hasAny: boolean; langs: string[] }> {
+    const rows = await env.DB.prepare(
+        'SELECT language FROM user_prompts WHERE chat_id = ? AND prompt_type = ?'
+    ).bind(chatId, 'identity').all<{ language: string }>();
+    const langs = rows.results.map(r => r.language);
+    return { hasAny: langs.length > 0, langs };
 }
