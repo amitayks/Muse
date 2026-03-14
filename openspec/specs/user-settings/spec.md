@@ -6,13 +6,14 @@ The home dashboard SHALL include a "Settings" button that navigates to the setti
 - **THEN** the bot displays the settings view showing current timezone
 
 ### Requirement: Settings view displays current timezone
-The settings view SHALL display the user's current timezone, page size, language preference, system prompts button (with stale badge when applicable), default publish targets button, and API key connection status. It SHALL NOT display video settings (those are in Video Studio). It SHALL include an API Keys management section. For admin users, a separate admin prompts button SHALL also appear.
+The settings view SHALL display the user's current timezone, page size, language preference, system prompts button (with stale badge when applicable), default publish targets button, repost defaults section, and API key connection status. It SHALL NOT display video settings (those are in Video Studio). It SHALL include an API Keys management section. For admin users, a separate admin prompts button SHALL also appear.
 
 #### Scenario: User views settings
 - **WHEN** user opens settings
-- **THEN** the view shows language, timezone, page size, default publish targets, API Keys section, and a Home button. No video settings button is shown.
+- **THEN** the view shows language, timezone, page size, default publish targets, repost defaults, API Keys section, and a Home button. No video settings button is shown.
 - **AND** the language button SHALL display the current language with flag emoji (e.g., `🌐 🇺🇸 English` or `🌐 🇮🇱 עברית`)
 - **AND** the default platforms button SHALL display current default targets with emoji badges
+- **AND** the repost defaults section SHALL show `[🎨 Fast Image: OFF/ON]` and `[📷 Source Analysis: ON/OFF]` toggles
 
 #### Scenario: User views settings with stale prompts
 - **WHEN** user opens settings and has stale custom prompts
@@ -159,3 +160,61 @@ The `users` table SHALL have a `default_publish_targets` column (`TEXT DEFAULT '
 #### Scenario: Read defaults
 - **WHEN** `getUser(env, chatId)` is called
 - **THEN** the returned user object SHALL include `default_publish_targets` field
+
+### Requirement: Commit default settings on users table
+The `users` table SHALL have columns for controlling commit compose and webhook auto-generation defaults.
+
+#### Scenario: commit_fast_image column
+- **WHEN** the users table is queried
+- **THEN** `commit_fast_image` SHALL be an INTEGER column with DEFAULT 1
+- **AND** value 1 means webhook auto-generated drafts include imagePrompt (current behavior)
+- **AND** value 0 means webhook auto-generated drafts skip imagePrompt for faster generation
+
+#### Scenario: commit_fast_ai column
+- **WHEN** the users table is queried
+- **THEN** `commit_fast_ai` SHALL be an INTEGER column with DEFAULT 1
+- **AND** value 1 means commit compose defaults `aiRefine` to true
+- **AND** value 0 means commit compose defaults `aiRefine` to false
+
+### Requirement: Commit defaults section in settings view
+The settings view SHALL include a "Commit Defaults" section with toggle buttons.
+
+#### Scenario: Settings view renders commit defaults
+- **WHEN** `renderSettings` is called
+- **THEN** the settings message SHALL include a "Commit Defaults" section
+- **AND** the section SHALL show: `[Auto Image: ON/OFF]` `[Auto AI: ON/OFF]`
+- **AND** the toggle buttons SHALL use callback_data `settings:commit:fast_image` and `settings:commit:fast_ai`
+
+#### Scenario: Toggle commit fast image setting
+- **WHEN** user clicks the `[Auto Image]` toggle
+- **THEN** `commit_fast_image` SHALL be toggled (0<->1) in the users table
+- **AND** the settings view SHALL re-render with updated toggle state
+
+#### Scenario: Toggle commit fast AI setting
+- **WHEN** user clicks the `[Auto AI]` toggle
+- **THEN** `commit_fast_ai` SHALL be toggled (0<->1) in the users table
+- **AND** the settings view SHALL re-render with updated toggle state
+
+### Requirement: Commit defaults applied to fast generation and compose entry
+The commit default settings SHALL affect both the `fastCommitAction` fast generation behavior and compose mode entry defaults.
+
+#### Scenario: Fast generation respects commit_fast_image
+- **WHEN** user clicks `[⚡ Fast]` on a commit event notification
+- **THEN** `fastCommitAction` SHALL read `getCommitDefaults(env, chatId)`
+- **AND** if `commitFastImage` is `false`, `generateContent` SHALL be called with `{ generateImagePrompt: false }`
+- **AND** if `commitFastImage` is `true`, `generateContent` SHALL be called with image generation enabled
+- **AND** lazy image generation via `ensureImage` SHALL only be called when `commitFastImage` is `true`
+
+#### Scenario: Fast generation respects commit_fast_ai
+- **WHEN** user clicks `[⚡ Fast]` on a commit event notification
+- **THEN** `fastCommitAction` SHALL always generate with AI (Fast = auto-generate)
+- **AND** the `commit_fast_ai` setting SHALL NOT affect fast generation (it always uses AI)
+- **AND** `commit_fast_ai` only affects the compose mode default toggle state
+
+#### Scenario: Compose entry respects commit_fast_ai
+- **WHEN** user enters commit compose mode via `[✏️ Edit]`
+- **THEN** `ComposeState.aiRefine` SHALL be initialized from the user's `commit_fast_ai` setting
+
+#### Scenario: Compose entry respects commit_fast_image
+- **WHEN** user enters commit compose mode via `[✏️ Edit]`
+- **THEN** `ComposeState.imageGen` SHALL be initialized from the user's `commit_fast_image` setting

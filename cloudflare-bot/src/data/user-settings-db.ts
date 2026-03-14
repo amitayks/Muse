@@ -149,3 +149,79 @@ export async function setPageSize(env: Env, chatId: string, size: number): Promi
         .bind(size, chatId)
         .run();
 }
+
+// ==================== REPOST DEFAULTS ====================
+
+export interface RepostDefaults {
+    fastGenerateImage: boolean;
+    analyzeSourceImage: boolean;
+}
+
+/**
+ * Get repost default settings for a chat
+ */
+export async function getRepostDefaults(env: Env, chatId: string): Promise<RepostDefaults> {
+    const result = await env.DB.prepare(
+        'SELECT fast_generate_image, analyze_source_image FROM users WHERE chat_id = ?'
+    )
+        .bind(chatId)
+        .first<{ fast_generate_image: number | null; analyze_source_image: number | null }>();
+    return {
+        fastGenerateImage: result?.fast_generate_image === 1,
+        analyzeSourceImage: result?.analyze_source_image !== 0, // default ON
+    };
+}
+
+/**
+ * Toggle a repost default setting for a chat
+ */
+export async function setRepostDefault(
+    env: Env,
+    chatId: string,
+    field: 'fast_generate_image' | 'analyze_source_image',
+    value: boolean
+): Promise<void> {
+    await env.DB.prepare(
+        `UPDATE users SET ${field} = ?, updated_at = datetime('now') WHERE chat_id = ?`
+    )
+        .bind(value ? 1 : 0, chatId)
+        .run();
+}
+
+// ==================== COMMIT DEFAULTS ====================
+
+export interface CommitDefaults {
+    commitFastImage: boolean;
+    commitFastAi: boolean;
+}
+
+/**
+ * Get commit default settings for a chat
+ */
+export async function getCommitDefaults(env: Env, chatId: string): Promise<CommitDefaults> {
+    const result = await env.DB.prepare(
+        'SELECT commit_fast_image, commit_fast_ai FROM users WHERE chat_id = ?'
+    )
+        .bind(chatId)
+        .first<{ commit_fast_image: number | null; commit_fast_ai: number | null }>();
+    return {
+        commitFastImage: result?.commit_fast_image !== 0, // default ON
+        commitFastAi: result?.commit_fast_ai !== 0,       // default ON
+    };
+}
+
+/**
+ * Toggle a commit default setting for a chat
+ */
+export async function setCommitDefault(
+    env: Env,
+    chatId: string,
+    field: 'commit_fast_image' | 'commit_fast_ai',
+    value: boolean
+): Promise<void> {
+    await env.DB.prepare(
+        `UPDATE users SET ${field} = ?, updated_at = datetime('now') WHERE chat_id = ?`
+    )
+        .bind(value ? 1 : 0, chatId)
+        .run();
+}

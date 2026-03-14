@@ -23,6 +23,7 @@ ${t(lang, 'repost.promptHint')}`,
     };
 }
 
+/** @deprecated Use compose mode with sourceTweet header instead. Kept for backward compat. */
 export function renderRepostPreview(params: {
     tweetId: string;
     username: string;
@@ -74,6 +75,7 @@ ${escapeHtml(preview)}`;
     return { text, keyboard };
 }
 
+/** @deprecated Use compose mode pen-down flow instead. Kept for backward compat. */
 export function renderRepostGenerating(username: string, lang: Lang = 'en'): ViewResult {
     return {
         text: `${t(lang, 'repost.generatingTitle').replace('{username}', username)}

@@ -8,6 +8,7 @@ import type { Env, ContentSource, DraftContent, ImagePromptData, RepoOverview, O
 import { logInfo, logError, sanitizeContent } from '../infra/security';
 import { getRepoOverview } from '../data/db';
 import { getPrompt, assembleSystemInstruction } from './prompts';
+import { buildPromptSections } from './prompt-utils';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_TEXT_MODEL = 'gemini-3.1-pro-preview';
@@ -119,10 +120,21 @@ function buildImagePrompt(content: DraftContent): ImagePromptData {
 }
 
 /**
+ * Options for generateContent — user context from compose mode
+ */
+export interface GenerateContentOptions {
+    userTweets?: string[];
+    instruction?: string;
+    userImageParts?: ImagePart[];
+    generateImagePrompt?: boolean;
+}
+
+/**
  * Generate tweet content from a content source (PR or commit)
  * If repoId is provided, fetches the repo overview from D1 to enrich the prompt.
+ * Optional compose-mode options support user tweets, instructions, and image analysis.
  */
-export async function generateContent(env: Env, source: ContentSource, repoId?: string, language?: string, chatId?: string): Promise<ContentResponse> {
+export async function generateContent(env: Env, source: ContentSource, repoId?: string, language?: string, chatId?: string, options?: GenerateContentOptions): Promise<ContentResponse> {
     // Fetch overview if repoId is provided
     let overview: RepoOverview | null = null;
     if (repoId) {
@@ -133,10 +145,30 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         }
     }
 
-    const prompt = buildContentPrompt(source, overview, language);
+    const prompt = buildContentPrompt(source, overview, language, options);
     const contentSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'work-progress', language || 'en');
-    const responseText = await callGeminiText(env, contentSystemPrompt, prompt);
-    return parseContentResponse(responseText);
+
+    // Build multimodal prompt when user images are present
+    let userPrompt: string | Array<{ text: string } | ImagePart>;
+    if (options?.userImageParts && options.userImageParts.length > 0) {
+        userPrompt = [
+            { text: prompt },
+            ...options.userImageParts,
+            { text: '\nThe images above were attached by the author as context. Consider them when generating content.' },
+        ];
+    } else {
+        userPrompt = prompt;
+    }
+
+    const responseText = await callGeminiText(env, contentSystemPrompt, userPrompt);
+    const result = parseContentResponse(responseText);
+
+    // Strip imagePrompt when generateImagePrompt is explicitly false
+    if (options?.generateImagePrompt === false && result.content.imagePrompt) {
+        delete result.content.imagePrompt;
+    }
+
+    return result;
 }
 
 export interface GeminiOptions {
@@ -593,7 +625,7 @@ Respond ONLY with valid JSON:
  * SECURITY: Sanitizes input content to prevent prompt injection and excessive size
  * Sends ONLY commit messages and file names — no title, body, author, or stats
  */
-function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string): string {
+function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string, options?: GenerateContentOptions): string {
     const { data } = source;
 
     // Sanitize commit messages
@@ -622,6 +654,15 @@ function buildContentPrompt(source: ContentSource, overview?: RepoOverview | nul
         overviewSection = parts.join('\n') + '\n\n';
     }
 
+    // Build user context sections (initial thoughts + instruction) from compose mode
+    const userSections = options ? buildPromptSections({
+        userTweets: options.userTweets,
+        instruction: options.instruction,
+    }) : '';
+
+    // Image prompt rule: only include when explicitly requested or by default (no options = legacy behavior)
+    const includeImagePrompt = options ? (options.generateImagePrompt !== false) : true;
+
     return `${overviewSection}Create a social media package for this code change.
 
 **Commits:**
@@ -634,9 +675,9 @@ ${isSimple
         ? 'This is a focused change — create a single impactful tweet.'
         : 'This is a substantial change — create a thread (2-5 tweets). First tweet hooks, rest adds depth.'}
 
-**Language:** Write all tweet text in ${language === 'he' ? 'Hebrew' : 'English'}.
+${userSections}**Language:** Write all tweet text in ${language === 'he' ? 'Hebrew' : 'English'}.
 
-Remember: Valid JSON only. Each tweet ≤ 280 chars. imagePrompt must be a structured JSON object.`;
+Remember: Valid JSON only. Each tweet ≤ 280 chars.${includeImagePrompt ? ' imagePrompt must be a structured JSON object.' : ''}`;
 }
 
 // ==================== VIDEO SCRIPT GENERATION ====================

@@ -201,7 +201,7 @@ export interface Draft {
     pr_number: number;
     pr_title: string;
     commit_sha: string;
-    source: string; // 'auto' | 'handwrite' | 'repost'
+    source: string; // 'auto' | 'handwrite' | 'repost' | 'commit'
     status: DraftStatus;
     content: string; // JSON string of DraftContent
     image_url: string | null;
@@ -211,6 +211,7 @@ export interface Draft {
     publish_targets: string; // JSON string of PublishTargets
     publish_results: string; // JSON string of PublishResults
     has_video: number; // 0 or 1
+    event_id: string | null; // FK to commit_events.id (for commit/PR drafts)
     created_at: string;
     updated_at: string;
 }
@@ -688,7 +689,7 @@ export interface TelegramUpdate {
 export interface ChatContext {
     awaiting_input?: 'commit_sha' | 'schedule' | 'schedule_time' | 'delete' | 'add_repo' | 'add_account' | 'edit_draft' | 'handwrite' | 'timezone' | 'edit_overview' | 'video_preset_name' | 'edit_character' | 'repost_url' | 'update_key';
     key_service?: 'gemini' | 'x' | 'github' | 'instagram';
-    handwrite?: HandwriteState;
+    compose?: ComposeState;
     videoCompose?: VideoComposeState;
     characterCreate?: CharacterCreateState;
     lookCreate?: LookCreateState;
@@ -743,16 +744,45 @@ export interface LookCreateState {
     imageKey?: string;
 }
 
-// Handwrite compose mode types
-export interface HandwriteTweet {
+// Compose mode types (unified for handwrite and repost)
+export interface ComposeTweet {
     messageId: number;
     text: string;
     media?: TweetMedia[];
     mediaGroupId?: string;
 }
 
-export interface HandwriteState {
-    tweets: HandwriteTweet[];
+export interface ComposeSourceTweet {
+    tweetId: string;
+    username: string;
+    displayName?: string;
+    text: string;
+    threadText?: string;
+    mediaUrl?: string;
+    isThread: boolean;
+    metrics?: { likes: number; retweets: number; replies: number; quotes: number };
+    tweetUrl: string;
+}
+
+export interface ComposeSourceCommit {
+    type: 'pr' | 'commit';
+    repo: string;            // "owner/repo"
+    repoShort: string;       // "repo" (display)
+    repoId?: string;         // DB repo ID for overview context
+    title: string;           // PR title or commit message first line
+    prNumber?: number;       // PR number if from PR
+    commitSha: string;       // head commit SHA
+    commitMessages: string[];
+    fileNames: string[];
+    filesChanged: number;
+    additions: number;
+    deletions: number;
+    author: string;
+}
+
+export interface ComposeState {
+    mode: 'handwrite' | 'repost' | 'commit';
+    tweets: ComposeTweet[];
     imageGen: boolean;
     aiRefine: boolean;
     analyzeImages: boolean;
@@ -760,5 +790,12 @@ export interface HandwriteState {
     instruction?: string;
     instructionMessageId?: number;
     awaitingInstruction?: boolean;
+    // Repost-specific (only when mode === 'repost')
+    sourceTweet?: ComposeSourceTweet;
+    sourceAccountId?: string;
+    batchTweetId?: string;
+    // Commit-specific (only when mode === 'commit')
+    sourceCommit?: ComposeSourceCommit;
+    eventId?: string; // commit_events.id for draft linkage
 }
 

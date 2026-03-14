@@ -38,9 +38,9 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
 
     const config = parseTwitterAccountConfig(account);
 
-    // Generate content (with media if enabled)
+    // Generate content (with media if enabled) — use account's analyzeMedia setting
     const imageUrl = config.analyzeMedia ? tweet.media_url : null;
-    const content = await generateRepostContent(ctx.env, tweet, account.id, config, undefined, imageUrl);
+    const content = await generateRepostContent(ctx.env, tweet, account.id, config, undefined, imageUrl, ctx.lang || 'en');
     if (!content) {
         return renderError('Failed to generate content. Please try again.', lang);
     }
@@ -68,7 +68,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
     // Edit batch message in-place (just update buttons, keep content)
     if (tweet.batch_message_id) {
         try {
-            await rebuildBatchMessage(ctx.env, ctx.chatId, tweet.batch_message_id);
+            await rebuildBatchMessage(ctx.env, ctx.chatId, tweet.batch_message_id, lang);
         } catch (error) {
             console.error('[tw_gen] Failed to edit batch message:', error);
         }
@@ -88,7 +88,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
  * Rebuild and edit a batch notification message after generating a draft.
  * Finds which page the tweet is on and rebuilds that page.
  */
-async function rebuildBatchMessage(env: import('../types').Env, chatId: string, batchMessageId: number): Promise<void> {
+export async function rebuildBatchMessage(env: import('../types').Env, chatId: string, batchMessageId: number, lang: import('../ui/strings').Lang = 'en'): Promise<void> {
     const tweets = await getScoredTweetsByBatchMessage(env, chatId, batchMessageId);
     if (tweets.length === 0) return;
 
@@ -110,8 +110,7 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
     const pageItems = tweets.slice(0, pageSize);
 
     const pageLabel = totalPages > 1 ? ` (1/${totalPages})` : '';
-    // Note: rebuildBatchMessage doesn't have lang context, using English default
-    const lines: string[] = [`${t('en', 'notifications.newTweetsDetected')}${pageLabel}\n`];
+    const lines: string[] = [`${t(lang, 'notifications.newTweetsDetected')}${pageLabel}\n`];
     const keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
 
     for (const tweet of pageItems) {
@@ -124,7 +123,12 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
         const preview = tweet.text.substring(0, 80).replace(/\n/g, ' ');
 
         lines.push(`${scoreEmoji} <b>@${account.username}</b> (${score}/10)${threadLabel}`);
-        lines.push(`${preview}${tweet.text.length > 80 ? '...' : ''}`);
+        const previewText = `${preview}${tweet.text.length > 80 ? '...' : ''}`;
+        if (tweet.tweet_url) {
+            lines.push(`<a href="${tweet.tweet_url}">${previewText}</a>`);
+        } else {
+            lines.push(previewText);
+        }
         if (tweet.relevance_reason) {
             lines.push(`<i>${tweet.relevance_reason}</i>`);
         }
@@ -132,19 +136,17 @@ async function rebuildBatchMessage(env: import('../types').Env, chatId: string, 
 
         const row: Array<{ text: string; callback_data?: string; url?: string }> = [];
         if (tweet.draft_id) {
-            row.push({ text: t('en', 'notifications.generated'), callback_data: `noop:${tweet.id}` });
+            row.push({ text: t(lang, 'notifications.generated'), callback_data: `draft:${tweet.draft_id}` });
         } else {
-            row.push({ text: t('en', 'notifications.generateFor').replace('{username}', account.username), callback_data: `action:tw_gen:${tweet.id}` });
-        }
-        if (tweet.tweet_url) {
-            row.push({ text: t('en', 'notifications.openLink'), url: tweet.tweet_url });
+            row.push({ text: t(lang, 'notifications.btnFast'), callback_data: `action:fast_gen:${tweet.id}` });
+            row.push({ text: t(lang, 'notifications.btnEditRepost'), callback_data: `action:edit_rp:${tweet.id}` });
         }
         keyboard.push(row);
     }
 
     if (totalPages > 1) {
-        lines.push(`<i>${tweets.length} ${t('en', 'notifications.tweetsTotal')}</i>`);
-        keyboard.push([{ text: t('en', 'common.next'), callback_data: `tw_batch:1` }]);
+        lines.push(`<i>${tweets.length} ${t(lang, 'notifications.tweetsTotal')}</i>`);
+        keyboard.push([{ text: t(lang, 'common.next'), callback_data: `tw_batch:1` }]);
     }
 
     await editMessage(env, chatId, batchMessageId, lines.join('\n'), keyboard);

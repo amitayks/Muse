@@ -4,6 +4,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { setTimezone, getTimezone, getPageSize, updateChatState } from '../data/db';
 import { getUser } from '../data/user-db';
+import { getRepostDefaults, getCommitDefaults } from '../data/user-settings-db';
 import { respond } from '../core/respond';
 import { renderSettings } from '../views/settings';
 import { isValidTimezone } from '../infra/timezone';
@@ -34,6 +35,8 @@ export async function timezoneInput(ctx: HandlerContext & { text: string; contex
     const staleCount = await countStalePrompts(env, chatId);
     const isAdminUser = isAdmin(chatId, env);
     const user = await getUser(env, chatId);
-    const view = renderSettings(savedTz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
+    const rpDefaults = await getRepostDefaults(env, chatId);
+    const cmDefaults = await getCommitDefaults(env, chatId);
+    const view = renderSettings(savedTz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
     await respond(env, chatId, view, { viewName: 'settings', context: null });
 }

@@ -263,6 +263,31 @@ export async function getTwitterTweet(env: Env, chatId: string, tweetId: string)
 }
 
 /**
+ * Get thread context: fetch tweets from the same conversation, ordered by position.
+ * Returns concatenated text of all thread tweets (excluding the tweet itself).
+ */
+export async function getThreadContext(
+    env: Env,
+    chatId: string,
+    conversationId: string,
+    excludeTweetId?: string,
+): Promise<string | undefined> {
+    const rows = await env.DB.prepare(
+        'SELECT text FROM twitter_tweets WHERE chat_id = ? AND conversation_id = ? ORDER BY thread_position ASC'
+    )
+        .bind(chatId, conversationId)
+        .all<{ text: string }>();
+
+    if (!rows.results || rows.results.length === 0) return undefined;
+
+    const texts = excludeTweetId
+        ? rows.results.filter(r => r.text).map(r => r.text)
+        : rows.results.map(r => r.text);
+
+    return texts.length > 0 ? texts.join('\n\n') : undefined;
+}
+
+/**
  * Create a tweet record
  */
 export async function createTwitterTweet(

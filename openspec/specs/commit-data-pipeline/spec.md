@@ -64,6 +64,109 @@ The `buildContentPrompt()` function SHALL send commit messages, file names, AND 
 - **THEN** it SHALL accept a `repoId` parameter to look up the overview
 - **AND** the overview lookup SHALL NOT block or fail the prompt if the overview is missing
 
+### Requirement: buildContentPrompt accepts optional user context
+The `buildContentPrompt` function SHALL accept optional `userTweets` and `instruction` parameters and append corresponding sections to the user prompt when present.
+
+#### Scenario: Prompt with user initial thoughts
+- **WHEN** `options.userTweets` is provided and non-empty
+- **THEN** the prompt SHALL include a "MY INITIAL THOUGHTS:" section with numbered user tweets
+- **AND** the section SHALL appear after the commit/file data and before the language instruction
+
+#### Scenario: Prompt with instruction
+- **WHEN** `options.instruction` is provided and non-empty
+- **THEN** the prompt SHALL include a "WHAT I'M GOING FOR:" section with the instruction text
+- **AND** the section SHALL appear after the initial thoughts section (if present)
+
+#### Scenario: Prompt without user context
+- **WHEN** neither `userTweets` nor `instruction` is provided
+- **THEN** the prompt SHALL remain identical to the current format (backward compatible)
+
+### Requirement: generateContent accepts optional user context
+The `generateContent` function SHALL accept optional parameters for user tweets, instruction, and image parts via an options object.
+
+#### Scenario: Generate with user tweets and instruction
+- **WHEN** `generateContent` is called with `options.userTweets` and `options.instruction`
+- **THEN** these SHALL be passed through to `buildContentPrompt`
+- **AND** the `work-progress` skill SHALL handle the initial thoughts through its "initial thoughts" paragraph
+
+#### Scenario: Generate with user image parts
+- **WHEN** `generateContent` is called with `options.userImageParts`
+- **THEN** the user prompt SHALL be built as a multimodal prompt with text + image parts
+- **AND** the images SHALL be appended after the text prompt for Gemini analysis
+
+#### Scenario: Generate with default options (backward compatible)
+- **WHEN** `generateContent` is called without options
+- **THEN** behavior SHALL be identical to current implementation
+
+### Requirement: Shared prompt section builder utility
+A reusable `buildPromptSections` utility SHALL construct the "MY INITIAL THOUGHTS" and "WHAT I'M GOING FOR" sections from optional parameters.
+
+#### Scenario: Build sections for repost prompt
+- **WHEN** `buildPromptSections` is called with `userTweets` and `instruction`
+- **THEN** it SHALL return formatted section strings identical to the sections in `buildRepostUserPrompt`
+
+#### Scenario: Build sections for commit prompt
+- **WHEN** `buildPromptSections` is called with `userTweets` and `instruction`
+- **THEN** it SHALL return the same formatted sections
+- **AND** `buildContentPrompt` SHALL use this utility instead of inline formatting
+
+#### Scenario: Build sections with empty inputs
+- **WHEN** both `userTweets` and `instruction` are empty/undefined
+- **THEN** `buildPromptSections` SHALL return an empty string
+
+### Requirement: generateContent strips imagePrompt when disabled
+When `generateImagePrompt` is explicitly set to `false` in the options, `generateContent` SHALL remove the `imagePrompt` field from the generated content after parsing.
+
+#### Scenario: imagePrompt stripped when generateImagePrompt is false
+- **WHEN** `generateContent` is called with `options.generateImagePrompt === false`
+- **THEN** after `parseContentResponse` returns the content
+- **AND** if the content has an `imagePrompt` field (from the model response or fallback)
+- **THEN** `imagePrompt` SHALL be deleted from the `DraftContent`
+- **AND** the returned `ContentResponse.content` SHALL NOT contain `imagePrompt`
+
+#### Scenario: imagePrompt preserved when generateImagePrompt is true
+- **WHEN** `generateContent` is called with `options.generateImagePrompt === true` or without the option
+- **THEN** the `imagePrompt` field SHALL remain on the content (existing behavior preserved)
+
+#### Scenario: imagePrompt preserved when no options passed
+- **WHEN** `generateContent` is called without an `options` parameter (legacy callers)
+- **THEN** the `imagePrompt` field SHALL remain on the content (backward compatible)
+
+### Requirement: /generate command creates commit event instead of entering compose
+The `/generate` command flow SHALL create a `commit_events` row and show an event summary with `[⚡ Fast] [✏️ Edit]` buttons, instead of immediately entering compose mode.
+
+#### Scenario: User sends SHA via /generate command
+- **WHEN** user sends `/generate abc1234` or sends a commit SHA while `awaiting_input === 'commit_sha'`
+- **THEN** the handler SHALL fetch the content source from GitHub via `getContentSource`
+- **AND** look up the watched repo by owner/repo to get `repoId`
+- **AND** build a `ContentSource` from the fetched data
+- **AND** call `createCommitEvent` with the fetched data (same fields as webhook handler)
+- **AND** show the event summary message with `[⚡ Fast] [✏️ Edit]` buttons
+- **AND** the handler SHALL NOT enter compose mode directly
+
+#### Scenario: Event summary message for /generate
+- **WHEN** the commit event is created from `/generate`
+- **THEN** the "Generating..." status message SHALL be edited to show the event summary
+- **AND** the summary SHALL show: event type emoji, repo, title, author, stats
+- **AND** buttons SHALL be `[⚡ Fast] [✏️ Edit]`
+- **AND** the `message_id` SHALL be stored on the event for edit-in-place
+
+#### Scenario: Duplicate detection in /generate
+- **WHEN** user sends a SHA that already has a `commit_events` row
+- **THEN** the existing event SHALL be shown (not a duplicate)
+- **AND** if the event already has a `draft_id`, the summary SHALL show `[✅ Generated] [👀 View]` instead
+
+#### Scenario: Fetch failure in /generate
+- **WHEN** `getContentSource` fails (GitHub API error, SHA not found)
+- **THEN** the "Generating..." message SHALL be edited to show an error
+- **AND** the user SHALL be prompted to retry with a different SHA
+- **AND** `awaiting_input` SHALL remain `'commit_sha'` for retry
+
+#### Scenario: /generate clears awaiting state after event creation
+- **WHEN** the commit event is created and summary is shown
+- **THEN** `awaiting_input` SHALL be cleared (set context to null or remove `awaiting_input`)
+- **AND** the user SHALL NOT be in input-awaiting state anymore
+
 ### Requirement: Remove codeContext from RepoConfig
 The system SHALL remove the `codeContext` field from `RepoConfig`, the `CodeContextLevel` type, and all related UI (toggle button in callback handler, display in views).
 

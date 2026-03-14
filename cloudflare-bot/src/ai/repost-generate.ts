@@ -2,7 +2,7 @@
  * Repost Content Generation — Generates quote tweet content via Gemini
  *
  * Used by the content-bot for on-demand generation when user clicks [Generate]
- * on a batch notification tweet.
+ * on a batch notification tweet, and for compose mode repost pen down.
  */
 
 import type { Env, DraftContent, TwitterTweet, TwitterAccountConfig } from '../types';
@@ -10,9 +10,16 @@ import { getTwitterAccountOverview } from '../data/db';
 import { buildRepostUserPrompt } from './repost-prompt';
 import { assembleSystemInstruction } from './prompts';
 import { callGeminiText } from './gemini';
+import type { ImagePart } from './gemini';
 
 /**
  * Generate repost content for a tweet
+ *
+ * Extended parameters (optional) support compose mode:
+ * - userTweets: user-written "initial thoughts" from compose buffer
+ * - instruction: user instruction for the AI
+ * - threadText: full thread context (concatenated text of thread tweets)
+ * - userImageParts: pre-built image parts from user-attached images
  */
 export async function generateRepostContent(
     env: Env,
@@ -22,6 +29,10 @@ export async function generateRepostContent(
     personaOverride?: string | null,
     imageUrl?: string | null,
     language?: string,
+    userTweets?: string[],
+    instruction?: string,
+    threadText?: string,
+    userImageParts?: ImagePart[],
 ): Promise<DraftContent | null> {
     // Load persona context — use override if provided, else fetch from followed account only
     let persona: string | undefined;
@@ -41,17 +52,20 @@ export async function generateRepostContent(
         persona,
         recentTweets: [], // No tweet history — identity system replaces this context
         hasImage: !!imageUrl,
+        threadText,
+        userTweets,
+        instruction,
     });
 
     const repostSystemPrompt = await assembleSystemInstruction(env, tweet.chat_id, 'quote', language || 'en');
 
     try {
-        // Build parts — text + optional image
+        // Build parts — text + optional source image + optional user images
         const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
             { text: userPrompt },
         ];
 
-        // Fetch and attach image if available
+        // Fetch and attach source tweet image if available
         if (imageUrl) {
             try {
                 const imgResponse = await fetch(imageUrl);
@@ -65,6 +79,13 @@ export async function generateRepostContent(
                 }
             } catch (error) {
                 console.error('[repost-gen] Failed to fetch tweet image:', error);
+            }
+        }
+
+        // Append user-attached image parts if provided
+        if (userImageParts && userImageParts.length > 0) {
+            for (const part of userImageParts) {
+                parts.push(part);
             }
         }
 

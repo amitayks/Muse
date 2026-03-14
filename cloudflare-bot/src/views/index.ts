@@ -9,3 +9,4 @@ export { renderAccountsList, renderAccountDetail, renderAddAccount, renderDelete
 export { renderSettings, renderApiKeys, renderPageSizeSelect, renderTimezoneSelect } from './settings';
 export { renderVideoStudioHome, renderVideoRepoHome, renderVideoList, renderVideoDetail, renderVideoConfig, renderScriptPreview } from './video-studio';
 export { renderVideoSettingsHome, renderCharacterList, renderCharacterDetail, renderRemoveCharacterConfirm, renderVoiceSelect, renderEmotionSelect, renderDefaultSettings, renderHeyGenSettings, renderInstagramSettings } from './video-settings';
+export { renderEventSummary, renderEventButtons } from './commit-events';

@@ -1,38 +1,17 @@
 /**
- * /handwrite command — enter compose mode
- *
- * Sends the compose message itself so it can capture the Telegram message ID
- * and store it as statusMessageId for later counter updates.
+ * /handwrite command — enter compose mode (handwrite)
  */
 
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState } from '../data/db';
-import { sendMessage } from '../integrations/telegram';
-import { renderCompose } from '../views';
+import { enterComposeMode } from '../actions/compose-init';
 
 export async function handwriteCommand(ctx: HandlerContext): Promise<ViewResult | void> {
     const { env, chatId } = ctx;
     const lang = (ctx.lang || 'en') as Lang;
 
-    const view = renderCompose([], [], false, false, lang);
-    const msgId = await sendMessage(env, chatId, view.text, view.keyboard);
-
-    await updateChatState(env, chatId, {
-        current_view: 'compose',
-        message_id: msgId,
-        context: {
-            awaiting_input: 'handwrite',
-            handwrite: {
-                tweets: [],
-                imageGen: false,
-                aiRefine: false,
-                analyzeImages: false,
-                statusMessageId: msgId,
-            },
-        },
-    });
+    await enterComposeMode(env, chatId, lang, { mode: 'handwrite' });
 
     // Return void — message already sent
 }

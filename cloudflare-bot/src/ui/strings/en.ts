@@ -79,6 +79,10 @@ export const en = {
         missingField: 'Missing field.',
         noOverview: 'No overview found. Bootstrap one first.',
         videoAdminOnly: '❌ Video Studio is only available to the admin.',
+        commitEventNotFound: 'Commit event not found.',
+        commitAlreadyGenerated: 'A draft has already been generated for this event.',
+        commitFetchFailed: '❌ <b>Generation failed</b>\n\nCouldn\'t fetch data for <code>{sha}</code>.\n\nSend another commit SHA or PR number to try again.',
+        commitSourceParseFailed: 'Failed to parse event source data.',
     },
 
     success: {
@@ -125,6 +129,19 @@ export const en = {
         awaitingInstruction: '📝 Type your instruction next...',
         instructionPrefix: '📝',
 
+        // Repost compose mode
+        repostHeader: '🔄 <b>Repost from @{username}</b>',
+        repostInstructions: 'Add your own tweets, images, or instructions — or just tap <b>Pen Down</b> to generate.',
+        repostThreadIndicator: '🧵 Thread',
+        repostImageIndicator: '🖼 Has image',
+        andMoreTweets: '...and {count} more',
+
+        // Commit compose mode
+        commitHeader: '📌 <b>{repoShort} | {title}</b>',
+        commitStats: '{commits} commits · {files} files',
+        commitStatsFull: '{commits} commits · {files} files · +{additions} / -{deletions}',
+        commitInstructions: 'Add your own tweets, attach images, or tap <b>Pen Down</b> to generate from this change.',
+
         // Compose status messages
         generatingFromInstruction: '✨ Generating from instruction...',
         refiningAndImage: '✨ Refining text & generating image...',
@@ -149,6 +166,16 @@ export const en = {
         btnSystemPromptsAdmin: 'System Prompts (Admin)',
         btnLanguage: '🌐',
         btnAnalyzeIdentity: '🪞 Analyze identity',
+
+        // Repost defaults
+        repostDefaults: '🔄 <b>Repost Defaults</b>',
+        btnFastImage: '🎨 Fast Image',
+        btnSourceAnalysis: '📷 Source Analysis',
+
+        // Commit defaults
+        commitDefaults: '💻 <b>Commit Defaults</b>',
+        btnCommitFastImage: '🎨 Auto Image',
+        btnCommitFastAi: '🤖 Auto AI',
 
         languageEn: '🇺🇸 English',
         languageHe: '🇮🇱 עברית',
@@ -651,6 +678,7 @@ export const en = {
         btnApprove: '✅ Approve',
         btnView: '👀 View',
         btnEdit: '✏️ Edit',
+        btnEditCompose: '✏️ Edit',
         btnDelete: '🗑 Delete',
 
         // Cron — scheduled draft notifications
@@ -685,6 +713,20 @@ export const en = {
         generated: '✅ Generated',
         generateFor: '⚡ Generate @{username}',
         openLink: '🔗 Open',
+        btnFast: '⚡ Fast',
+        btnEditRepost: '✏️ Edit',
+
+        // Commit event notifications
+        eventTitle: '{emoji} <b>{label}</b>',
+        eventRepo: '<b>Repo:</b> <code>{repo}</code>',
+        eventAuthor: '<b>Author:</b> {author}',
+        eventStats: '{files} files · +{additions} / -{deletions}',
+        eventCommitCount: '{count} commit(s)',
+        prMergedLabel: 'PR #{number} Merged',
+        pushLabel: '{count} commit{plural} pushed',
+        btnFastCommit: '⚡ Fast',
+        btnEditCommit: '✏️ Edit',
+        btnGenerated: '✅ Generated',
     },
 
     actions: {

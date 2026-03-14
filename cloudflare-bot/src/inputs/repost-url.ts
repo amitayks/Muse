@@ -1,18 +1,19 @@
 /**
  * Repost URL Input Handler
  *
- * Parses tweet URL → fetches tweet + author → checks duplicates → shows preview.
+ * Parses tweet URL → fetches tweet + author → enters compose mode with source tweet.
  */
 
 import type { HandlerContext, InputHandler } from '../core/router';
-import type { ChatContext } from '../types';
+import type { ChatContext, ComposeSourceTweet } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getExistingRepostDraft, getTwitterAccounts } from '../data/db';
-import { getTweetById } from '../integrations/x';
+import { getExistingRepostDraft, getTwitterAccounts } from '../data/db';
+import { getRepostDefaults } from '../data/user-settings-db';
+import { getTweetById, searchConversation } from '../integrations/x';
 import { cancelRow } from '../ui/components';
-import { renderRepostPreview } from '../views/repost';
 import { sendMessage } from '../integrations/telegram';
+import { enterComposeMode } from '../actions/compose-init';
 
 /** Parse a tweet URL and extract username + tweet ID */
 function parseTweetUrl(text: string): { username: string; tweetId: string } | null {
@@ -57,7 +58,7 @@ export const repostUrlInput: InputHandler = async (
 
     // Extract first photo URL (skip videos/gifs)
     const photoMedia = media?.find(m => m.type === 'photo');
-    const mediaUrl = photoMedia?.url || null;
+    const mediaUrl = photoMedia?.url || undefined;
 
     // Check for thread
     const isThread = !!(tweet.conversation_id && tweet.referenced_tweets?.some(
@@ -81,34 +82,49 @@ export const repostUrlInput: InputHandler = async (
         replies: tweet.public_metrics.reply_count,
     } : undefined;
 
-    // Store preview state in context
-    await updateChatState(env, chatId, {
-        current_view: 'repost_preview',
-        context: {
-            repost_preview: {
-                tweet_id: tweetId,
-                username: author?.username || username,
-                tweet_text: tweet.text,
-                author_name: author?.name || null,
-                author_bio: author?.description || null,
-                is_followed: !!followedAccount,
-                user_id: author?.id || null,
-                media_url: mediaUrl,
-                author_profile_image_url: author?.profile_image_url || null,
-            },
-        },
-    });
+    // Fetch thread context if this tweet is part of a conversation
+    let threadText: string | undefined;
+    if (isThread && tweet.conversation_id && tweet.conversation_id !== tweetId) {
+        try {
+            const threadTweets = await searchConversation(env, tweet.conversation_id, author?.username || username);
+            if (threadTweets.length > 0) {
+                // Sort by created_at and concatenate (limit to 10 tweets)
+                const sorted = threadTweets
+                    .filter(t => t.id !== tweetId)
+                    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+                    .slice(0, 10);
+                if (sorted.length > 0) {
+                    threadText = sorted.map(t => t.text).join('\n\n');
+                }
+            }
+        } catch (err) {
+            console.warn('[repost] Thread fetch failed, proceeding with single tweet:', err);
+        }
+    }
 
-    const view = renderRepostPreview({
+    // Build source tweet for compose mode
+    const tweetUrl = `https://x.com/${author?.username || username}/status/${tweetId}`;
+    const sourceTweet: ComposeSourceTweet = {
         tweetId,
         username: author?.username || username,
         displayName: author?.name,
-        tweetText: tweet.text,
+        text: tweet.text,
+        threadText,
+        mediaUrl,
         isThread,
         metrics,
-        existingDraftId: existingDraft?.id,
-        hasImage: !!mediaUrl,
-    }, lang);
+        tweetUrl,
+    };
 
-    await sendMessage(env, chatId, view.text, view.keyboard);
+    // Read user's repost defaults to initialize compose toggles
+    const defaults = await getRepostDefaults(env, chatId);
+
+    // Enter compose mode directly (replaces old repost_preview flow)
+    await enterComposeMode(env, chatId, lang, {
+        mode: 'repost',
+        sourceTweet,
+        sourceAccountId: followedAccount?.id,
+        existingDraftId: existingDraft?.id,
+        imageGen: defaults.fastGenerateImage,
+    });
 };

@@ -8,7 +8,7 @@ import type { Lang } from '../ui/strings';
 import { homeButton, backButton, backHomeRow, selectedItemLabel } from '../ui/components';
 import { renderPlatformBadges, parsePublishTargets } from './platform-toggle';
 
-export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en', workerUrl?: string, staleCount = 0, isAdminUser = false, defaultTargets?: string, hasInstagram = false): ViewResult {
+export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en', workerUrl?: string, staleCount = 0, isAdminUser = false, defaultTargets?: string, hasInstagram = false, repostDefaults?: { fastGenerateImage: boolean; analyzeSourceImage: boolean }, commitDefaults?: { commitFastImage: boolean; commitFastAi: boolean }): ViewResult {
     const displayTz = timezone === 'UTC' ? t(lang, 'settings.utcDefault') : timezone;
     const langLabel = lang === 'en' ? '🌐 🇮🇱 עברית' : '🌐 🇺🇸 English' ;
 
@@ -48,20 +48,51 @@ export function renderSettings(timezone: string, pageSize = 5, lang: Lang = 'en'
         callback_data: 'settings:plat:show',
     }]);
 
-    // Row 5: api keys
+    // Row 5: repost defaults
+    if (repostDefaults) {
+        const check = (v: boolean) => v ? 'ON' : 'OFF';
+        keyboard.push([
+            { text: `${t(lang, 'settings.btnFastImage')}: ${check(repostDefaults.fastGenerateImage)}`, callback_data: 'settings:rp:fast_image' },
+            { text: `${t(lang, 'settings.btnSourceAnalysis')}: ${check(repostDefaults.analyzeSourceImage)}`, callback_data: 'settings:rp:source_analysis' },
+        ]);
+    }
+
+    // Row 6: commit defaults
+    if (commitDefaults) {
+        const check = (v: boolean) => v ? 'ON' : 'OFF';
+        keyboard.push([
+            { text: `${t(lang, 'settings.btnCommitFastImage')}: ${check(commitDefaults.commitFastImage)}`, callback_data: 'settings:commit:fast_image' },
+            { text: `${t(lang, 'settings.btnCommitFastAi')}: ${check(commitDefaults.commitFastAi)}`, callback_data: 'settings:commit:fast_ai' },
+        ]);
+    }
+
+    // Row 7: api keys
     keyboard.push(
         [{ text: t(lang, 'settings.btnApiKeys'), callback_data: 'settings:keys' }],
         [homeButton(lang)],
     );
 
-    return {
-        text: `${t(lang, 'settings.title')}
+    let text = `${t(lang, 'settings.title')}
 
 ${t(lang, 'settings.timezone')} ${t(lang, 'common.arrow')} <code>${displayTz}</code>
 ${t(lang, 'settings.pageSize')} ${t(lang, 'common.arrow')} <code>${pageSize} ${t(lang, 'settings.items')}</code>
-${t(lang, 'settings.language')} ${t(lang, 'common.arrow')} <code>${lang === 'en' ? 'English' : 'עברית'}</code>`,
-        keyboard,
-    };
+${t(lang, 'settings.language')} ${t(lang, 'common.arrow')} <code>${lang === 'en' ? 'English' : 'עברית'}</code>`;
+
+    if (repostDefaults) {
+        const onOff = (v: boolean) => v ? '✅' : '⬜';
+        text += `\n\n${t(lang, 'settings.repostDefaults')}
+${onOff(repostDefaults.fastGenerateImage)} ${t(lang, 'settings.btnFastImage')}
+${onOff(repostDefaults.analyzeSourceImage)} ${t(lang, 'settings.btnSourceAnalysis')}`;
+    }
+
+    if (commitDefaults) {
+        const onOff = (v: boolean) => v ? '✅' : '⬜';
+        text += `\n\n${t(lang, 'settings.commitDefaults')}
+${onOff(commitDefaults.commitFastImage)} ${t(lang, 'settings.btnCommitFastImage')}
+${onOff(commitDefaults.commitFastAi)} ${t(lang, 'settings.btnCommitFastAi')}`;
+    }
+
+    return { text, keyboard };
 }
 
 export function renderPageSizeSelect(currentSize = 5, lang: Lang = 'en'): ViewResult {

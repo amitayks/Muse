@@ -1,20 +1,22 @@
 /**
  * GitHub Webhook Handler - Process incoming webhook events
  *
+ * Deferred generation model: webhook creates a commit_event row and sends
+ * a notification with [⚡ Fast] [✏️ Edit] buttons. No AI generation happens here.
+ *
  * Per-user webhook verification: looks up all repos matching owner/repo,
  * tries each row's webhook_secret to identify the owning user,
  * then hydrates env with the user's API keys for processing.
  */
 
-import type { Env, GitHubPullRequestEvent, GitHubPushEvent, DraftContent, ContentSource } from '../types';
+import type { Env, GitHubPullRequestEvent, GitHubPushEvent, ContentSource } from '../types';
 import type { Lang } from '../ui/strings';
-import { t } from '../ui/strings';
-import { getAllReposByOwnerRepo, createDraft, getDraftByCommitSha, parseRepoConfig, applyOverviewPatches, getUserLanguage } from '../data/db';
-import { getUser } from '../data/user-db';
+import { getAllReposByOwnerRepo, parseRepoConfig, getUserLanguage } from '../data/db';
+import { createCommitEvent, getCommitEventByCommitSha, updateCommitEvent } from '../data/commit-events-db';
 import { verifyWebhookSignature } from '../integrations/webhook';
-import { generateContent } from '../ai/gemini';
 import { getPR } from '../integrations/github';
 import { sendMessage } from '../integrations/telegram';
+import { renderEventSummary, renderEventButtons } from '../views/commit-events';
 import { hydrateEnv } from '../data/user-keys';
 import { logInfo, logError } from '../infra/security';
 
@@ -99,7 +101,7 @@ export async function handleGitHubWebhook(
 }
 
 /**
- * Handle pull_request event
+ * Handle pull_request event — create commit_event and send notification
  */
 async function handlePullRequestEvent(
     env: Env,
@@ -124,49 +126,55 @@ async function handlePullRequestEvent(
 
     logInfo(`Processing merged PR #${pr.number}: ${pr.title} in ${repoFullName}`);
 
-    const existing = await getDraftByCommitSha(env, chatId, pr.head.sha);
+    // Dedup check via commit_events
+    const existing = await getCommitEventByCommitSha(env, chatId, pr.head.sha);
     if (existing) {
-        logInfo(`Draft already exists for commit ${pr.head.sha.slice(0, 7)}, skipping`);
-        return { processed: true, message: `Draft already exists for PR #${pr.number}` };
+        logInfo(`Commit event already exists for ${pr.head.sha.slice(0, 7)}, skipping`);
+        return { processed: true, message: `Event already exists for PR #${pr.number}` };
     }
 
     try {
+        // Enrich with full PR data from GitHub API
         const prData = await getPR(env, repoFullName, pr.number);
         const userLang = await getUserLanguage(env, chatId);
 
         const contentSource: ContentSource = {
             type: 'pr',
             data: prData,
+            repo: repoFullName,
         };
 
-        const result = await generateContent(env, contentSource, repoId, userLang, chatId);
-        const draftContent = result.content;
-
-        if (result.overviewUpdates) {
-            try {
-                await applyOverviewPatches(env, repoId, result.overviewUpdates);
-            } catch (patchError) {
-                logError('Overview patch failed (non-blocking):', patchError);
-            }
-        }
-
-        const repoShort = repoFullName.split('/')[1] || repoFullName;
-        const ghUser = await getUser(env, chatId);
-        const draftId = await createDraft(env, chatId, {
-            pr_number: pr.number,
-            pr_title: `${repoShort} | ${pr.title}`,
-            commit_sha: pr.head.sha,
-            content: JSON.stringify(draftContent),
-            publish_targets: ghUser?.default_publish_targets || undefined,
+        // Create commit event (no AI, no draft)
+        const eventId = await createCommitEvent(env, {
+            repoId,
+            chatId,
+            eventType: 'pr',
+            commitSha: pr.head.sha,
+            prNumber: pr.number,
+            title: pr.title,
+            author: pr.user.login,
+            branch: targetBranch,
+            filesChanged: prData.files_changed,
+            additions: prData.additions,
+            deletions: prData.deletions,
+            commitCount: prData.commits.length,
+            sourceData: JSON.stringify(contentSource),
+            eventAt: pr.merged_at || undefined,
         });
 
+        // Send notification with [⚡ Fast] [✏️ Edit] buttons
         try {
-            await sendNotification(env, chatId, 'pr', pr.number, pr.title, repoFullName, draftId, draftContent, userLang as Lang);
+            const messageId = await sendEventNotification(
+                env, chatId, 'pr', pr.number, pr.title, repoFullName, prData.author,
+                prData.files_changed, prData.additions, prData.deletions,
+                prData.commits.length, eventId, null, userLang as Lang,
+            );
+            await updateCommitEvent(env, eventId, { messageId });
         } catch (notifyError) {
-            logError('Telegram notification failed (draft saved):', notifyError);
+            logError('Telegram notification failed (event saved):', notifyError);
         }
 
-        return { processed: true, message: `Created draft for PR #${pr.number}` };
+        return { processed: true, message: `Created event for PR #${pr.number}` };
     } catch (error) {
         logError('Error processing PR webhook:', error);
         return { processed: false, message: String(error) };
@@ -174,7 +182,7 @@ async function handlePullRequestEvent(
 }
 
 /**
- * Handle push event
+ * Handle push event — create commit_event and send notification
  */
 async function handlePushEvent(
     env: Env,
@@ -200,10 +208,11 @@ async function handlePushEvent(
 
     logInfo(`Processing push to ${branch}: ${commit.message.split('\n')[0]}`);
 
-    const existing = await getDraftByCommitSha(env, chatId, commit.id);
+    // Dedup check via commit_events
+    const existing = await getCommitEventByCommitSha(env, chatId, commit.id);
     if (existing) {
-        logInfo(`Draft already exists for commit ${commit.id.slice(0, 7)}, skipping`);
-        return { processed: true, message: `Draft already exists for push ${commit.id.slice(0, 7)}` };
+        logInfo(`Commit event already exists for ${commit.id.slice(0, 7)}, skipping`);
+        return { processed: true, message: `Event already exists for push ${commit.id.slice(0, 7)}` };
     }
 
     try {
@@ -220,6 +229,7 @@ async function handlePushEvent(
 
         const contentSource: ContentSource = {
             type: 'commit',
+            repo: repoFullName,
             data: {
                 sha: commit.id,
                 title: commit.message.split('\n')[0],
@@ -235,34 +245,37 @@ async function handlePushEvent(
         };
 
         const pushUserLang = await getUserLanguage(env, chatId);
-        const result = await generateContent(env, contentSource, repoId, pushUserLang, chatId);
-        const draftContent = result.content;
 
-        if (result.overviewUpdates) {
-            try {
-                await applyOverviewPatches(env, repoId, result.overviewUpdates);
-            } catch (patchError) {
-                logError('Overview patch failed (non-blocking):', patchError);
-            }
-        }
-
-        const repoShort = repoFullName.split('/')[1] || repoFullName;
-        const pushUser = await getUser(env, chatId);
-        const draftId = await createDraft(env, chatId, {
-            pr_number: 0,
-            pr_title: `${repoShort} | ${commit.message.split('\n')[0]}`,
-            commit_sha: commit.id,
-            content: JSON.stringify(draftContent),
-            publish_targets: pushUser?.default_publish_targets || undefined,
+        // Create commit event (no AI, no draft)
+        const eventId = await createCommitEvent(env, {
+            repoId,
+            chatId,
+            eventType: 'push',
+            commitSha: commit.id,
+            title: commit.message.split('\n')[0],
+            author: commit.author.username || commit.author.name,
+            branch,
+            filesChanged: totalFiles,
+            additions: 0,
+            deletions: 0,
+            commitCount: event.commits.length,
+            sourceData: JSON.stringify(contentSource),
+            eventAt: commit.timestamp || undefined,
         });
 
+        // Send notification with [⚡ Fast] [✏️ Edit] buttons
         try {
-            await sendNotification(env, chatId, 'push', event.commits.length, commit.message.split('\n')[0], repoFullName, draftId, draftContent, pushUserLang as Lang);
+            const messageId = await sendEventNotification(
+                env, chatId, 'push', event.commits.length, commit.message.split('\n')[0],
+                repoFullName, commit.author.username || commit.author.name,
+                totalFiles, 0, 0, event.commits.length, eventId, null, pushUserLang as Lang,
+            );
+            await updateCommitEvent(env, eventId, { messageId });
         } catch (notifyError) {
-            logError('Telegram notification failed (draft saved):', notifyError);
+            logError('Telegram notification failed (event saved):', notifyError);
         }
 
-        return { processed: true, message: `Created draft for push ${commit.id.slice(0, 7)}` };
+        return { processed: true, message: `Created event for push ${commit.id.slice(0, 7)}` };
     } catch (error) {
         logError('Error processing push webhook:', error);
         return { processed: false, message: String(error) };
@@ -270,48 +283,26 @@ async function handlePushEvent(
 }
 
 /**
- * Send Telegram notification for auto-generated content
- * Sends to the repo owner's chatId (not admin)
+ * Send Telegram notification for a commit event (no draft, no AI content)
+ * Returns the message_id for edit-in-place tracking.
  */
-async function sendNotification(
+async function sendEventNotification(
     env: Env,
     chatId: string,
     eventType: 'pr' | 'push',
     number: number,
     title: string,
     repo: string,
-    draftId: string,
-    content: DraftContent,
+    author: string,
+    filesChanged: number,
+    additions: number,
+    deletions: number,
+    commitCount: number,
+    eventId: string,
+    draftId: string | null,
     lang: Lang = 'en'
-): Promise<void> {
-    const emoji = eventType === 'pr' ? '🔀' : '📤';
-    const eventLabel = eventType === 'pr'
-        ? t(lang, 'notifications.newPrMerged').replace('{number}', String(number))
-        : t(lang, 'notifications.commitsPushed').replace('{count}', String(number)).replace('{plural}', number > 1 ? 's' : '');
-
-    const preview = content.tweets[0]?.text.slice(0, 100) || '';
-    const threadInfo = content.format === 'thread' ? ` (${content.tweets.length} tweets)` : '';
-
-    const text = `${t(lang, 'notifications.newEventTitle').replace('{emoji}', emoji).replace('{label}', eventLabel)}
-
-${t(lang, 'notifications.repo')} <code>${repo}</code>
-${t(lang, 'notifications.titleLabel')} ${title}
-
-${t(lang, 'notifications.generatedContent').replace('{threadInfo}', threadInfo)}
-<i>${preview}${preview.length === 100 ? '...' : ''}</i>
-
-${t(lang, 'notifications.autoGeneratedReview')}`;
-
-    const keyboard = [
-        [
-            { text: t(lang, 'notifications.btnApprove'), callback_data: `action:approve:${draftId}` },
-            { text: t(lang, 'notifications.btnView'), callback_data: `draft:${draftId}` },
-        ],
-        [
-            { text: t(lang, 'notifications.btnEdit'), callback_data: `action:edit:${draftId}` },
-            { text: t(lang, 'notifications.btnDelete'), callback_data: `action:delete_draft:${draftId}` },
-        ],
-    ];
-
-    await sendMessage(env, chatId, text, keyboard);
+): Promise<number> {
+    const text = renderEventSummary(eventType, number, title, repo, author, filesChanged, additions, deletions, commitCount, lang);
+    const keyboard = renderEventButtons(eventId, draftId, lang);
+    return sendMessage(env, chatId, text, keyboard);
 }

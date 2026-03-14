@@ -87,9 +87,15 @@ export function buildBatchPage(
         const scoreEmoji = score >= 8 ? '🔥' : score >= 6 ? '⭐' : '📝';
         const threadLabel = tweet.is_thread ? ' [Thread]' : '';
         const preview = tweet.text.substring(0, 80).replace(/\n/g, ' ');
+        const previewText = `${preview}${tweet.text.length > 80 ? '...' : ''}`;
 
         lines.push(`${scoreEmoji} <b>@${account.username}</b> (${score}/10)${threadLabel}`);
-        lines.push(`${preview}${tweet.text.length > 80 ? '...' : ''}`);
+        // Wrap tweet text as clickable link if URL available
+        if (tweet.tweet_url) {
+            lines.push(`<a href="${tweet.tweet_url}">${previewText}</a>`);
+        } else {
+            lines.push(previewText);
+        }
         if (tweet.relevance_reason) {
             lines.push(`<i>${tweet.relevance_reason}</i>`);
         }
@@ -102,20 +108,17 @@ export function buildBatchPage(
 
     const text = lines.join('\n');
 
-    // Build keyboard — 2 buttons per tweet row: [Generate] [Open Tweet]
+    // Build keyboard — 2 buttons per tweet row: [Fast] [Edit] or [Generated]
     const keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
 
-    for (const { tweet, account } of items) {
+    for (const { tweet } of items) {
         const row: Array<{ text: string; callback_data?: string; url?: string }> = [];
 
         if (tweet.draft_id) {
             row.push({ text: '✅ Generated', callback_data: `draft:${tweet.draft_id}` });
         } else {
-            row.push({ text: `⚡ Generate @${account.username}`, callback_data: `action:tw_gen:${tweet.id}` });
-        }
-
-        if (tweet.tweet_url) {
-            row.push({ text: '🔗 Open', url: tweet.tweet_url });
+            row.push({ text: '⚡ Fast', callback_data: `action:fast_gen:${tweet.id}` });
+            row.push({ text: '✏️ Edit', callback_data: `action:edit_rp:${tweet.id}` });
         }
 
         keyboard.push(row);

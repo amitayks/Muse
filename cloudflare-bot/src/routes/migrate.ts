@@ -371,6 +371,65 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('Language column migration note:', String(languageError));
         }
 
+        // Migration: Add commit default settings to users table (012)
+        try {
+            const usersInfo3 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasCommitFastImage = usersInfo3.results?.some((col: any) => col.name === 'commit_fast_image');
+
+            if (!hasCommitFastImage) {
+                await execStatements(env.DB, [
+                    `ALTER TABLE users ADD COLUMN commit_fast_image INTEGER DEFAULT 1;`,
+                    `ALTER TABLE users ADD COLUMN commit_fast_ai INTEGER DEFAULT 1;`,
+                ]);
+                logInfo('Added commit default settings columns to users table');
+            }
+        } catch (commitDefaultsError) {
+            logInfo('Commit defaults migration note:', String(commitDefaultsError));
+        }
+
+        // Migration: Create commit_events table and add event_id to drafts (013)
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS commit_events (
+                    id TEXT PRIMARY KEY,
+                    repo_id TEXT NOT NULL,
+                    chat_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    commit_sha TEXT NOT NULL,
+                    pr_number INTEGER,
+                    title TEXT NOT NULL,
+                    author TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    files_changed INTEGER DEFAULT 0,
+                    additions INTEGER DEFAULT 0,
+                    deletions INTEGER DEFAULT 0,
+                    commit_count INTEGER DEFAULT 1,
+                    source_data TEXT NOT NULL,
+                    status TEXT DEFAULT 'notified',
+                    draft_id TEXT,
+                    message_id INTEGER,
+                    event_at TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    UNIQUE(chat_id, commit_sha)
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_commit_events_chat ON commit_events(chat_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_commit_events_repo ON commit_events(repo_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_commit_events_status ON commit_events(status);`,
+                `CREATE INDEX IF NOT EXISTS idx_commit_events_sha ON commit_events(chat_id, commit_sha);`,
+            ]);
+            logInfo('Ensured commit_events table exists');
+
+            // Add event_id to drafts if missing
+            const draftsInfo4 = await env.DB.prepare("PRAGMA table_info(drafts)").all();
+            const hasEventId = draftsInfo4.results?.some((col: any) => col.name === 'event_id');
+            if (!hasEventId) {
+                await env.DB.prepare(`ALTER TABLE drafts ADD COLUMN event_id TEXT;`).run();
+                logInfo('Added event_id column to drafts table');
+            }
+        } catch (commitEventsError) {
+            logInfo('Commit events migration note:', String(commitEventsError));
+        }
+
         // Migration: Create prompt storage tables and seed defaults
         try {
             await execStatements(env.DB, [
@@ -448,7 +507,7 @@ export async function handleWipeUser(request: Request, url: URL, env: Env): Prom
             'users', 'drafts', 'published', 'repos', 'repo_overviews',
             'video_drafts', 'video_published', 'video_presets',
             'twitter_accounts', 'twitter_account_overviews', 'twitter_tweets',
-            'user_prompts',
+            'commit_events', 'user_prompts',
         ];
 
         for (const table of tables) {

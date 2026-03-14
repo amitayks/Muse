@@ -72,6 +72,8 @@ import { configToggleAction } from '../actions/config-toggle';
 import { accountDetailAction, addAccountAction, followAction, unfollowAction, deleteAccountAction, confirmDeleteAccountAction, bootstrapAction } from '../actions/account-actions';
 import { accountConfigToggleAction } from '../actions/account-config';
 import { tweetGenerateAction } from '../actions/tweet-generate';
+import { fastGenerateAction } from '../actions/fast-generate';
+import { editRepostAction } from '../actions/edit-repost';
 import { schedDayAction } from '../actions/schedule-day';
 import { composeAction } from '../actions/compose';
 import { deleteDraftAction, confirmDeleteDraftAction, cancelDeleteDraftAction } from '../actions/delete-draft';
@@ -85,6 +87,8 @@ import { rpGenAction, rpCancelAction } from '../actions/repost-preview';
 import { rpFollowAction, rpNoFollowAction } from '../actions/repost-follow';
 import { settingsKeysAction } from '../actions/settings-keys';
 import { platformToggleAction, platformShowAction, platformDoneAction } from '../actions/platform-toggle';
+import { editComposeAction } from '../actions/edit-compose';
+import { fastCommitAction } from '../actions/fast-commit';
 
 /** Action handlers keyed by the `action` part of `action:ACTION:ID` */
 const actionSubHandlers: Record<string, ActionHandler> = {
@@ -110,6 +114,10 @@ const actionSubHandlers: Record<string, ActionHandler> = {
     // Twitter account actions
     add_account: addAccountAction as ActionHandler,
     tw_gen: tweetGenerateAction as ActionHandler,
+    fast_gen: fastGenerateAction as ActionHandler,
+    edit_rp: editRepostAction as ActionHandler,
+    edit_compose: editComposeAction as ActionHandler,
+    fast_commit: fastCommitAction as ActionHandler,
     tw_follow: followAction as ActionHandler,
     tw_unfollow: unfollowAction as ActionHandler,
     tw_delete: deleteAccountAction as ActionHandler,

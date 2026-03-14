@@ -1,6 +1,11 @@
 /**
  * Repost Preview Actions — Generation trigger, cancel
  *
+ * @deprecated These handlers use the old repost_preview flow.
+ * New code uses compose mode (enterComposeMode) for reposts and
+ * fast_gen / edit_rp for batch notifications. Kept for backward
+ * compatibility with in-flight callback buttons.
+ *
  * Handles: rp_gen:TWEET_ID, rp_gen_anyway:TWEET_ID, rp_cancel
  */
 

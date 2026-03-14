@@ -152,6 +152,9 @@ export interface ComposeOptions {
     instruction?: string;
     awaitingInstruction?: boolean;
     analyzeImages?: boolean;
+    sourceTweet?: import('../types').ComposeSourceTweet;
+    sourceCommit?: import('../types').ComposeSourceCommit;
+    existingDraftId?: string;
 }
 
 export function renderCompose(
@@ -164,11 +167,40 @@ export function renderCompose(
 ): ViewResult {
     const count = tweets.length;
     const hasImages = tweets.some(tw => tw.mediaCount > 0);
+    const sourceTweet = options?.sourceTweet;
+    const sourceCommit = options?.sourceCommit;
 
-    let text: string;
+    let text = '';
 
-    if (count === 0 && !options?.instruction && !options?.awaitingInstruction) {
-        text = `${t(lang, 'compose.title')}
+    // Source tweet header (repost mode)
+    if (sourceTweet) {
+        text += renderSourceTweetHeader(sourceTweet, lang);
+        text += '\n\n';
+    }
+
+    // Source commit header (commit mode)
+    if (sourceCommit) {
+        text += renderSourceCommitHeader(sourceCommit, lang);
+        text += '\n\n';
+    }
+
+    // Duplicate warning
+    if (options?.existingDraftId) {
+        text += `${t(lang, 'repost.duplicateWarning')}\n\n`;
+    }
+
+    const isEmpty = count === 0 && !options?.instruction && !options?.awaitingInstruction;
+
+    if (isEmpty) {
+        if (sourceTweet) {
+            // Repost mode empty state
+            text += `${t(lang, 'compose.title')}\n\n${t(lang, 'compose.repostInstructions')}`;
+        } else if (sourceCommit) {
+            // Commit mode empty state
+            text += `${t(lang, 'compose.title')}\n\n${t(lang, 'compose.commitInstructions')}`;
+        } else {
+            // Handwrite mode empty state
+            text += `${t(lang, 'compose.title')}
 
 ${t(lang, 'compose.instructions')}
 
@@ -182,9 +214,10 @@ ${t(lang, 'compose.imageHint')}
 ${t(lang, 'compose.aiHint')}
 ${t(lang, 'compose.instructHint')}
 ${t(lang, 'compose.analyzeHint')}`;
+        }
     } else {
         const format = count === 1 ? t(lang, 'home.singleTweet') : count === 0 ? '' : `Thread · ${count} tweets`;
-        text = count > 0 ? `${t(lang, 'compose.composing')} — ${format}\n` : `${t(lang, 'compose.composing')}\n`;
+        text += count > 0 ? `${t(lang, 'compose.composing')} — ${format}\n` : `${t(lang, 'compose.composing')}\n`;
 
         // Instruction display
         if (options?.awaitingInstruction) {
@@ -194,21 +227,36 @@ ${t(lang, 'compose.analyzeHint')}`;
             text += `\n${t(lang, 'compose.instructionPrefix')} ${escapeHtml(instrPreview)}\n`;
         }
 
+        // Tweet preview with truncation (max 5 shown)
+        const maxPreview = 5;
+        const tweetsToShow = tweets.slice(0, maxPreview);
         let totalMedia = 0;
-        for (let i = 0; i < tweets.length; i++) {
-            const tw = tweets[i];
+
+        for (let i = 0; i < tweetsToShow.length; i++) {
+            const tw = tweetsToShow[i];
             const mc = tw.mediaCount;
             totalMedia += mc;
             const mediaIndicator = mc === 0 ? '' : mc <= 4 ? ' ' + '📷'.repeat(mc) : ` 📷×${mc}`;
             const len = tw.text.length;
             const over = len > 280;
-            const preview = tw.text.length > 80 ? tw.text.substring(0, 77) + '...' : tw.text;
+            const preview = tw.text.length > 60 ? tw.text.substring(0, 57) + '...' : tw.text;
             const safePreview = escapeHtml(preview);
             text += `\n${i + 1}. ${safePreview}${mediaIndicator}`;
             text += `\n    <i>${len}/280${over ? ' ⚠️' : ''}</i>`;
             if (mc > 4) {
                 text += `\n    ${t(lang, 'compose.xImageLimit').replace('{count}', String(mc))}`;
             }
+        }
+
+        // Count remaining media from hidden tweets
+        for (let i = maxPreview; i < tweets.length; i++) {
+            totalMedia += tweets[i].mediaCount;
+        }
+
+        // Truncation indicator
+        if (tweets.length > maxPreview) {
+            const remaining = tweets.length - maxPreview;
+            text += `\n\n${t(lang, 'compose.andMoreTweets').replace('{count}', String(remaining))}`;
         }
 
         // Thread-level Instagram total image warning
@@ -225,7 +273,7 @@ ${t(lang, 'compose.analyzeHint')}`;
     // Dynamic button row based on context
     const toggleRow: import('../types').InlineButton[] = [];
 
-    if (!hasImages) {
+    if (!hasImages && !(sourceTweet?.mediaUrl)) {
         // No images: [Image Gen] [AI] [Instruct]
         toggleRow.push({ text: `${t(lang, 'compose.btnImage')}: ${imageGen ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_image' });
     } else {
@@ -236,14 +284,84 @@ ${t(lang, 'compose.analyzeHint')}`;
     toggleRow.push({ text: `${t(lang, 'compose.btnAi')}: ${aiRefine ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_ai' });
     toggleRow.push({ text: t(lang, 'compose.btnInstruct'), callback_data: 'compose:toggle_instruct' });
 
-    return {
-        text,
-        keyboard: [
-            toggleRow,
-            [
-                { text: t(lang, 'common.cancel'), callback_data: 'compose:cancel', style: 'danger' },
-                { text: t(lang, 'compose.btnPenDown'), callback_data: 'compose:pendown', style: 'success' },
-            ],
-        ],
-    };
+    // Bottom action row
+    const actionRow: import('../types').InlineButton[] = [
+        { text: t(lang, 'common.cancel'), callback_data: 'compose:cancel', style: 'danger' },
+        { text: t(lang, 'compose.btnPenDown'), callback_data: 'compose:pendown', style: 'success' },
+    ];
+
+    const keyboard: import('../types').InlineButton[][] = [toggleRow];
+
+    // Duplicate warning: add View Existing button
+    if (options?.existingDraftId) {
+        keyboard.push([{ text: t(lang, 'repost.viewExisting'), callback_data: `draft:${options.existingDraftId}` }]);
+    }
+
+    keyboard.push(actionRow);
+
+    return { text, keyboard };
+}
+
+/** Render source tweet pinned header for repost compose mode */
+function renderSourceTweetHeader(
+    sourceTweet: import('../types').ComposeSourceTweet,
+    lang: Lang,
+): string {
+    const header = t(lang, 'compose.repostHeader').replace('{username}', sourceTweet.username);
+    const tweetPreview = sourceTweet.text.length > 120
+        ? sourceTweet.text.substring(0, 117) + '...'
+        : sourceTweet.text;
+
+    let lines = `${header}\n<a href="${sourceTweet.tweetUrl}">${escapeHtml(tweetPreview)}</a>`;
+
+    // Metrics
+    if (sourceTweet.metrics) {
+        const m = sourceTweet.metrics;
+        lines += `\n❤️ ${m.likes} · 🔁 ${m.retweets} · 💬 ${m.replies}`;
+    }
+
+    // Indicators
+    const indicators: string[] = [];
+    if (sourceTweet.isThread) indicators.push(t(lang, 'compose.repostThreadIndicator'));
+    if (sourceTweet.mediaUrl) indicators.push(t(lang, 'compose.repostImageIndicator'));
+    if (indicators.length > 0) {
+        lines += `\n${indicators.join(' · ')}`;
+    }
+
+    lines += '\n─────────────────';
+
+    return lines;
+}
+
+/** Render source commit pinned header for commit compose mode */
+function renderSourceCommitHeader(
+    sourceCommit: import('../types').ComposeSourceCommit,
+    lang: Lang,
+): string {
+    const title = sourceCommit.title.length > 80
+        ? sourceCommit.title.substring(0, 77) + '...'
+        : sourceCommit.title;
+    const header = t(lang, 'compose.commitHeader')
+        .replace('{repoShort}', escapeHtml(sourceCommit.repoShort))
+        .replace('{title}', escapeHtml(title));
+
+    let lines = header;
+
+    // Stats line
+    const commitCount = sourceCommit.commitMessages.length;
+    if (sourceCommit.additions > 0 || sourceCommit.deletions > 0) {
+        lines += `\n${t(lang, 'compose.commitStatsFull')
+            .replace('{commits}', String(commitCount))
+            .replace('{files}', String(sourceCommit.filesChanged))
+            .replace('{additions}', String(sourceCommit.additions))
+            .replace('{deletions}', String(sourceCommit.deletions))}`;
+    } else {
+        lines += `\n${t(lang, 'compose.commitStats')
+            .replace('{commits}', String(commitCount))
+            .replace('{files}', String(sourceCommit.filesChanged))}`;
+    }
+
+    lines += '\n─────────────────';
+
+    return lines;
 }

@@ -82,6 +82,10 @@ export const he: StringsMap = {
         missingField: 'שדה חסר.',
         noOverview: 'לא נמצא סקירה. בצע Bootstrap קודם.',
         videoAdminOnly: '❌ סטודיו וידאו זמין רק למנהל.',
+        commitEventNotFound: 'אירוע קומיט לא נמצא.',
+        commitAlreadyGenerated: 'כבר נוצרה טיוטה לאירוע זה.',
+        commitFetchFailed: '❌ <b>היצירה נכשלה</b>\n\nלא ניתן לשלוף נתונים עבור <code>{sha}</code>.\n\nשלח SHA או מספר PR אחר כדי לנסות שוב.',
+        commitSourceParseFailed: 'נכשל בפענוח נתוני מקור האירוע.',
     },
 
     success: {
@@ -128,6 +132,19 @@ export const he: StringsMap = {
         awaitingInstruction: '📝 הקלד את ההוראה שלך עכשיו...',
         instructionPrefix: '📝',
 
+        // Repost compose mode
+        repostHeader: '🔄 <b>ריפוסט מ-@{username}</b>',
+        repostInstructions: 'הוסף ציוצים, תמונות או הוראות משלך — או פשוט לחץ <b>הנח עט</b> ליצירה.',
+        repostThreadIndicator: '🧵 שרשור',
+        repostImageIndicator: '🖼 יש תמונה',
+        andMoreTweets: '...ועוד {count}',
+
+        // Commit compose mode
+        commitHeader: '📌 <b>{repoShort} | {title}</b>',
+        commitStats: '{commits} קומיטים · {files} קבצים',
+        commitStatsFull: '{commits} קומיטים · {files} קבצים · +{additions} / -{deletions}',
+        commitInstructions: 'הוסף ציוצים משלך, צרף תמונות, או לחץ <b>הנח עט</b> ליצירה מהשינוי הזה.',
+
         // Compose status messages
         generatingFromInstruction: '✨ מייצר מהוראה...',
         refiningAndImage: '✨ משפר טקסט ומייצר תמונה...',
@@ -152,6 +169,16 @@ export const he: StringsMap = {
         btnSystemPromptsAdmin: 'פרומפטים של המערכת (מנהל)',
         btnLanguage: '🌐',
         btnAnalyzeIdentity: '🪞 ניתוח זהות',
+
+        // Repost defaults
+        repostDefaults: '🔄 <b>ברירות מחדל ריפוסט</b>',
+        btnFastImage: '🎨 תמונה מהירה',
+        btnSourceAnalysis: '📷 ניתוח מקור',
+
+        // Commit defaults
+        commitDefaults: '💻 <b>ברירות מחדל קומיטים</b>',
+        btnCommitFastImage: '🎨 תמונה אוטומטית',
+        btnCommitFastAi: '🤖 AI אוטומטי',
 
         languageEn: '🇺🇸 English',
         languageHe: '🇮🇱 עברית',
@@ -608,6 +635,7 @@ export const he: StringsMap = {
         btnApprove: '✅ אשר',
         btnView: '👀 צפה',
         btnEdit: '✏️ ערוך',
+        btnEditCompose: '✏️ ערוך',
         btnDelete: '🗑 מחק',
 
         // Cron — scheduled draft notifications
@@ -641,6 +669,20 @@ export const he: StringsMap = {
         generated: '✅ נוצר',
         generateFor: '⚡ צור @{username}',
         openLink: '🔗 פתח',
+        btnFast: '⚡ מהיר',
+        btnEditRepost: '✏️ ערוך',
+
+        // Commit event notifications
+        eventTitle: '{emoji} <b>{label}</b>',
+        eventRepo: '<b>ריפו:</b> <code>{repo}</code>',
+        eventAuthor: '<b>מחבר:</b> {author}',
+        eventStats: '{files} קבצים · +{additions} / -{deletions}',
+        eventCommitCount: '{count} קומיט(ים)',
+        prMergedLabel: 'PR #{number} מוזג',
+        pushLabel: '{count} קומיט{plural} נדחפו',
+        btnFastCommit: '⚡ מהיר',
+        btnEditCommit: '✏️ ערוך',
+        btnGenerated: '✅ נוצר',
     },
 
     actions: {

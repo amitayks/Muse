@@ -5,6 +5,8 @@
  * This file only exports the user prompt builder function.
  */
 
+import { buildPromptSections } from './prompt-utils';
+
 /**
  * Build the user prompt for repost content generation
  */
@@ -16,12 +18,22 @@ export function buildRepostUserPrompt(params: {
     persona?: string | null;
     recentTweets?: string[];
     hasImage?: boolean;
+    threadText?: string;
+    userTweets?: string[];
+    instruction?: string;
 }): string {
     const parts: string[] = [];
 
     parts.push(`ORIGINAL TWEET by @${params.authorUsername}${params.isThread ? ' (Thread)' : ''}:`);
     parts.push(params.originalTweet);
     parts.push('');
+
+    // Full thread context (when available)
+    if (params.threadText) {
+        parts.push('FULL THREAD CONTEXT:');
+        parts.push(params.threadText);
+        parts.push('');
+    }
 
     parts.push(`SETTINGS:`);
     parts.push(`- Language: ${params.language === 'he' ? 'Hebrew' : 'English'}`);
@@ -44,6 +56,15 @@ export function buildRepostUserPrompt(params: {
     if (params.hasImage) {
         parts.push('NOTE: The original tweet includes an attached image (shown above). Consider the image content when crafting your response — reference what you see if relevant.');
         parts.push('');
+    }
+
+    // User's initial thoughts and instruction (shared with commit pipeline)
+    const userSections = buildPromptSections({
+        userTweets: params.userTweets,
+        instruction: params.instruction,
+    });
+    if (userSections) {
+        parts.push(userSections);
     }
 
     parts.push('Generate a quote tweet response that adds genuine value.');

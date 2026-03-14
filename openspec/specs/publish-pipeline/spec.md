@@ -110,19 +110,25 @@ After publishing a draft via the publish action handler, the system SHALL return
 - **THEN** the action SHALL return `renderError()` with a retry suggestion
 
 ### Requirement: Draft source field
-The `drafts` table SHALL have a `source` column (`TEXT DEFAULT 'auto'`) to distinguish draft origin. Values: `'auto'` for webhook/generate-created drafts, `'handwrite'` for user-composed drafts, `'repost'` for Twitter quote-tweet drafts.
+The `drafts` table SHALL have a `source` column (`TEXT DEFAULT 'auto'`) to distinguish draft origin. Values: `'auto'` for webhook/generate-created drafts, `'handwrite'` for user-composed drafts, `'repost'` for Twitter quote-tweet drafts. Repost drafts can now be created from both the compose pen-down flow and the batch fast-generate flow.
 
 #### Scenario: Auto-generated draft has source auto
 - **WHEN** a draft is created via webhook or `/generate` command
 - **THEN** `source` SHALL default to `'auto'`
 
 #### Scenario: Handwritten draft has source handwrite
-- **WHEN** a draft is created via pen-down in compose mode
+- **WHEN** a draft is created via pen-down in compose mode with `mode: 'handwrite'`
 - **THEN** `source` SHALL be set to `'handwrite'`
 
-#### Scenario: Repost draft has source repost
-- **WHEN** a draft is created from a Twitter quote-tweet generation
+#### Scenario: Repost draft from compose has source repost
+- **WHEN** a draft is created via pen-down in compose mode with `mode: 'repost'`
 - **THEN** `source` SHALL be set to `'repost'`
+- **AND** `original_tweet_id` and `original_tweet_url` SHALL be set from `sourceTweet`
+
+#### Scenario: Repost draft from fast generate has source repost
+- **WHEN** a draft is created via batch fast generate
+- **THEN** `source` SHALL be set to `'repost'`
+- **AND** `original_tweet_id` and `original_tweet_url` SHALL be set from the `twitter_tweets` row
 
 #### Scenario: Query drafts by source
 - **WHEN** `getDraftsBySource(env, chatId, source)` is called
@@ -169,10 +175,10 @@ The `postThread()` function in `x.ts` SHALL accept `perTweetMediaIds` as `(strin
 - **THEN** the first tweet SHALL have `media: { media_ids: [mediaId] }` (existing behavior preserved)
 
 ### Requirement: AI refinement for handwritten content
-The system SHALL provide a function to refine handwritten tweets via Gemini, using the refine skill and identity to guide output. The AI is free to determine tweet count and structure.
+The system SHALL provide a function to refine handwritten tweets via Gemini, using the refine skill and identity to guide output. The AI is free to determine tweet count and structure. This function is used only in handwrite mode pen down.
 
 #### Scenario: Refine handwritten tweets
-- **WHEN** AI refinement is requested for handwritten tweets
+- **WHEN** AI refinement is requested for handwritten tweets (compose `mode: 'handwrite'`)
 - **THEN** the system SHALL send the tweets to Gemini with the refine skill prompt and identity document
 - **AND** the runtime rules SHALL NOT enforce a specific tweet count (no "MUST return EXACTLY N tweets" constraint)
 - **AND** the `<= 280 chars per tweet` constraint SHALL remain (platform limit)

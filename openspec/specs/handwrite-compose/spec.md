@@ -1,13 +1,14 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Handwrite compose mode lifecycle
 The system SHALL provide a compose mode where users write their own tweets via sequential Telegram messages. The mode is entered via `/handwrite` command or dashboard button, accumulates messages as tweets, and exits on "Pen Down" or cancel.
 
 #### Scenario: Enter compose via slash command
 - **WHEN** user sends `/handwrite`
-- **THEN** the bot SHALL send a new message "✍️ Composing... (0 tweets)\nSend your tweets below. Each message = one tweet." with Pen Down, Image Gen toggle, AI Refine toggle, and Cancel buttons
+- **THEN** the bot SHALL call `enterComposeMode` with `mode: 'handwrite'`
+- **AND** the compose message SHALL show handwrite-specific instructions with Pen Down, Image Gen toggle, AI Refine toggle, Instruct button, and Cancel buttons
 - **AND** `awaiting_input` SHALL be set to `'handwrite'`
-- **AND** the status message ID SHALL be stored in `HandwriteState.statusMessageId`
+- **AND** the status message ID SHALL be stored in `ComposeState.statusMessageId`
 
 #### Scenario: Enter compose via dashboard button
 - **WHEN** user clicks the "Handwrite" button on the dashboard
@@ -91,23 +92,23 @@ The compose status message SHALL include context-aware toggle buttons that adapt
 - **AND** the analyze button SHALL disappear from the button row
 
 ### Requirement: Pen Down finalizes compose and creates draft
-When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL be created from the buffered tweets. The AI is free to determine tweet count based on skill and identity guidance.
+When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL be created from the buffered tweets. The behavior depends on the compose mode.
 
-#### Scenario: Pen down with tweets and no AI
-- **WHEN** user clicks "Pen Down" with tweets buffered and both toggles OFF
+#### Scenario: Pen down in handwrite mode with tweets and no AI
+- **WHEN** user clicks "Pen Down" in handwrite mode with tweets buffered and both toggles OFF
 - **THEN** a draft SHALL be created with `source: 'handwrite'`, `pr_number: 0`, `pr_title` as the first tweet text (truncated to 100 chars), and `DraftContent` with the buffered tweets
 - **AND** `format` SHALL be `'single'` if 1 tweet, `'thread'` if 2+ tweets
 - **AND** `awaiting_input` SHALL be cleared
 - **AND** the user SHALL see `renderDraftDetail()` for the new draft
 
-#### Scenario: Pen down with AI refine enabled
-- **WHEN** user clicks "Pen Down" with `aiRefine: true`
+#### Scenario: Pen down in handwrite mode with AI refine enabled
+- **WHEN** user clicks "Pen Down" in handwrite mode with `aiRefine: true`
 - **THEN** the bot SHALL send the tweets to Gemini for refinement via the refine skill and identity
 - **AND** the AI MAY adjust tweet count based on skill guidance (no hardcoded tweet count constraint)
 - **AND** the refined tweets SHALL be used in the draft content
 
-#### Scenario: Pen down with instruction and no tweets
-- **WHEN** user clicks "Pen Down" with `instruction` set, `aiRefine: true`, and zero tweets buffered
+#### Scenario: Pen down in handwrite mode with instruction and no tweets
+- **WHEN** user clicks "Pen Down" in handwrite mode with `instruction` set, `aiRefine: true`, and zero tweets buffered
 - **THEN** the AI SHALL generate content from scratch based on the instruction, skill, and identity
 - **AND** a draft SHALL be created from the AI-generated content
 
@@ -116,11 +117,6 @@ When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL
 - **THEN** the bot SHALL send the tweets to Gemini to generate an `imagePrompt`
 - **AND** the `imagePrompt` SHALL be stored in the `DraftContent`
 - **AND** image generation from the prompt happens on-demand when viewing the draft (existing flow)
-
-#### Scenario: Pen down with both toggles enabled
-- **WHEN** user clicks "Pen Down" with both `aiRefine: true` and `imageGen: true`
-- **THEN** both AI refinement and image prompt generation SHALL be requested from Gemini in a single call
-- **AND** the draft SHALL contain refined tweets and an imagePrompt
 
 #### Scenario: Pen down with no tweets and no instruction and no AI
 - **WHEN** user clicks "Pen Down" with zero tweets buffered, no instruction, and AI off
@@ -132,7 +128,7 @@ The cancel button SHALL discard the buffer and return to the dashboard.
 #### Scenario: Cancel compose
 - **WHEN** user clicks "❌ Cancel" on the compose status message
 - **THEN** `awaiting_input` SHALL be cleared
-- **AND** `HandwriteState` SHALL be cleared from context
+- **AND** `ComposeState` SHALL be cleared from context
 - **AND** the user SHALL see the dashboard (`renderHome()`)
 - **AND** any R2 media stored during the session SHALL remain (orphan cleanup is deferred)
 
@@ -149,13 +145,13 @@ Recognized slash commands typed during compose mode SHALL cancel the session and
 - **THEN** the text SHALL be buffered as a tweet (not treated as a command)
 
 ### Requirement: HandwriteState type definition
-The system SHALL define `HandwriteState` and `HandwriteTweet` types for the compose buffer, including new fields for instruction and image analysis.
+The system SHALL define `ComposeState` (renamed from `HandwriteState`) and `ComposeTweet` (renamed from `HandwriteTweet`) types for the compose buffer, including fields for mode, source tweet context, instruction, and image analysis.
 
-#### Scenario: HandwriteState stored in ChatContext
+#### Scenario: ComposeState stored in ChatContext
 - **WHEN** compose mode is active
-- **THEN** `ChatContext` SHALL contain `awaiting_input: 'handwrite'` and `handwrite: HandwriteState`
-- **AND** `HandwriteState` SHALL have fields: `tweets: HandwriteTweet[]`, `imageGen: boolean`, `aiRefine: boolean`, `analyzeImages: boolean`, `statusMessageId: number`, optional `instruction: string`, optional `instructionMessageId: number`, optional `awaitingInstruction: boolean`
-- **AND** `HandwriteTweet` SHALL have fields: `messageId: number`, `text: string`, optional `media: TweetMedia[]`, optional `mediaGroupId: string`
+- **THEN** `ChatContext` SHALL contain `awaiting_input: 'handwrite'` and `compose: ComposeState`
+- **AND** `ComposeState` SHALL have fields: `mode: 'handwrite' | 'repost'`, `tweets: ComposeTweet[]`, `imageGen: boolean`, `aiRefine: boolean`, `analyzeImages: boolean`, `statusMessageId: number`, optional `instruction: string`, optional `instructionMessageId: number`, optional `awaitingInstruction: boolean`, optional `sourceTweet`, optional `sourceAccountId: string`, optional `batchTweetId: string`
+- **AND** `ComposeTweet` SHALL have fields: `messageId: number`, `text: string`, optional `media: TweetMedia[]`, optional `mediaGroupId: string`
 
 ### Requirement: Compose preview shows image counts and platform warnings
 The compose preview SHALL display per-image indicators and platform-aware limit warnings.
@@ -192,16 +188,71 @@ The `ComposeTweet` interface SHALL replace `hasMedia?: boolean` with `mediaCount
 - **THEN** `ComposeTweet.mediaCount` SHALL be `0`
 
 ### Requirement: Compose action handles new toggle callbacks
-The compose action handler SHALL route new callback values for the analyze and instruct toggles.
+The compose action handler SHALL route callback values for all toggles including analyze and instruct.
 
 #### Scenario: Toggle analyze callback
 - **WHEN** callback data is `compose:toggle_analyze`
-- **THEN** `HandwriteState.analyzeImages` SHALL be toggled
+- **THEN** `ComposeState.analyzeImages` SHALL be toggled
 - **AND** the compose preview SHALL re-render with updated buttons
 
 #### Scenario: Toggle instruct callback
 - **WHEN** callback data is `compose:toggle_instruct`
-- **THEN** `HandwriteState.awaitingInstruction` SHALL be set to `true`
-- **AND** `HandwriteState.aiRefine` SHALL be auto-enabled
+- **THEN** `ComposeState.awaitingInstruction` SHALL be set to `true`
+- **AND** `ComposeState.aiRefine` SHALL be auto-enabled
 - **AND** the callback SHALL be answered with toast text "Type your instruction next"
 - **AND** the compose preview SHALL update to show the awaiting instruction cue
+
+### Requirement: Compose preview truncation for message length safety
+The compose view SHALL truncate content to stay within Telegram's 4096 character message limit.
+
+#### Scenario: Many user tweets in buffer
+- **WHEN** the compose buffer has more than 5 tweets
+- **THEN** the compose preview SHALL show the first 5 tweets with individual previews
+- **AND** a "...and N more" indicator SHALL be shown for remaining tweets
+
+#### Scenario: Long tweet text truncation
+- **WHEN** a tweet in the buffer exceeds 60 characters
+- **THEN** the compose preview SHALL truncate it to 60 characters with "..."
+
+### Requirement: ComposeState mode type widened
+The `ComposeState.mode` field SHALL accept `'commit'` in addition to existing `'handwrite'` and `'repost'` values.
+
+#### Scenario: ComposeState with commit mode
+- **WHEN** commit compose mode is active
+- **THEN** `ComposeState.mode` SHALL be `'commit'`
+- **AND** `ComposeState.sourceCommit` SHALL contain `ComposeSourceCommit` data
+- **AND** all existing compose behaviors (toggle buttons, message buffering, instruction capture, cancel) SHALL work identically to handwrite and repost modes
+
+### Requirement: renderCompose extended with commit header
+The `renderCompose` function SHALL render a source commit header when `ComposeOptions.sourceCommit` is present.
+
+#### Scenario: Compose view with source commit
+- **WHEN** `ComposeOptions.sourceCommit` is provided
+- **THEN** the compose message SHALL display a pinned header with repo name, title, commit count, file count, and optional additions/deletions
+- **AND** a separator SHALL appear between the header and the tweet buffer area
+
+### Requirement: enterComposeMode supports commit mode
+The `enterComposeMode` function SHALL accept `mode: 'commit'` with `sourceCommit` context.
+
+#### Scenario: Enter compose for commit
+- **WHEN** `enterComposeMode` is called with `mode: 'commit'`
+- **THEN** `ComposeState.aiRefine` SHALL default to `true`
+- **AND** `ComposeState.imageGen` SHALL default to `true`
+- **AND** `ComposeState.sourceCommit` SHALL be set from options
+- **AND** `renderCompose` SHALL be called with `sourceCommit` in options
+
+### Requirement: Pen down handler branches for commit mode
+The `handlePenDown` function SHALL branch on `compose.mode === 'commit'` for commit-specific generation logic.
+
+#### Scenario: Pen down dispatches to commit handler
+- **WHEN** pen down is triggered and `compose.mode === 'commit'`
+- **THEN** the handler SHALL call `handleCommitPenDown` which uses the `work-progress` skill for AI generation
+- **AND** draft creation SHALL use `source: 'commit'` with commit metadata (`pr_number`, `pr_title`, `commit_sha`)
+
+### Requirement: ComposeOptions extended with sourceCommit
+The `ComposeOptions` interface SHALL include an optional `sourceCommit` field for passing commit context to `renderCompose`.
+
+#### Scenario: ComposeOptions type
+- **WHEN** building compose view for commit mode
+- **THEN** `ComposeOptions` SHALL accept `sourceCommit?: ComposeSourceCommit`
+- **AND** the field SHALL be passed through from `buildComposeView` helper

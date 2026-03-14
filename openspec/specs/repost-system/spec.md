@@ -1,7 +1,7 @@
 ## Trigger & Input
 
 ### Requirement: Repost command and dashboard button
-The system SHALL provide a `/repost` command and a "🔄 RePost" button on the home dashboard that enters the repost URL input mode.
+The system SHALL provide a `/repost` command and a "🔄 RePost" button on the home dashboard that enters the repost flow. Instead of showing a static preview, the flow SHALL enter compose mode directly after fetching the tweet.
 
 #### Scenario: User triggers repost via command
 - **WHEN** user sends `/repost`
@@ -23,30 +23,36 @@ The system SHALL parse tweet URLs to extract the tweet ID and username. Supporte
 - **THEN** bot displays an error message with format examples and keeps `awaiting_input` as `repost_url`
 
 ### Requirement: Tweet preview with engagement metrics
-The system SHALL fetch the tweet via X API and display a preview before generating, including: author name/username, tweet text (truncated if long), engagement metrics (likes, retweets, quotes), thread indicator if applicable.
+The system SHALL fetch the tweet via X API and enter compose mode with the source tweet context, including: author name/username, tweet text (as clickable link), engagement metrics, thread indicator if applicable.
 
-#### Scenario: Standalone tweet preview
+#### Scenario: Standalone tweet enters compose
 - **WHEN** bot fetches a standalone tweet successfully
-- **THEN** bot displays preview with author info, tweet text, metrics, and action buttons: tone selector row, [Generate] button, [Cancel] button
+- **THEN** bot enters compose mode with `mode: 'repost'` and `sourceTweet` populated from fetched data
+- **AND** the compose view SHALL display the source tweet header with author info, linked tweet text, and metrics
+- **AND** compose controls (image, AI, instruction, pen down, cancel) SHALL be available
 
-#### Scenario: Thread tweet preview
+#### Scenario: Thread tweet enters compose with full context
 - **WHEN** bot fetches a tweet that is part of a thread (self-reply chain)
-- **THEN** bot displays preview indicating "Thread (N tweets)" and fetches the full thread text for context
+- **THEN** bot SHALL fetch the full thread context (up to 10 tweets in the conversation)
+- **AND** store the concatenated thread text in `sourceTweet.threadText`
+- **AND** the compose header SHALL indicate "Thread (N tweets)"
 
 #### Scenario: Tweet fetch fails
 - **WHEN** X API returns an error or the tweet doesn't exist
 - **THEN** bot displays "Tweet not found or inaccessible" with a retry prompt
 
 ### Requirement: Duplicate detection
-The system SHALL check if a repost draft or published post already exists for the given tweet ID before generating.
+The system SHALL check if a repost draft or published post already exists for the given tweet ID before entering compose mode.
 
 #### Scenario: Existing draft found
 - **WHEN** user submits a URL for a tweet that already has a repost draft
-- **THEN** bot warns "You already have a repost draft for this tweet" and offers [View Existing Draft] and [Generate Anyway] buttons
+- **THEN** the compose view SHALL show a duplicate warning banner
+- **AND** a [View Existing] button SHALL be included in the compose button row
+- **AND** the user MAY still compose and pen down to create a new draft
 
 #### Scenario: No duplicate found
 - **WHEN** user submits a URL for a tweet with no existing repost
-- **THEN** bot proceeds to the preview step normally
+- **THEN** bot enters compose mode normally without any warning
 
 ## Persona
 
@@ -177,26 +183,30 @@ When media is included in the Gemini call, the repost prompt SHALL inform the AI
 ## Content Generation
 
 ### Requirement: Dedicated repost content generation prompt
-The system SHALL have a dedicated generation prompt in its own file (`ai/repost-prompt.ts`), separate from the existing content generation prompt. It SHALL instruct Gemini to create a quote-tweet response that adds genuine commentary, insight, or value to the original tweet. The prompt SHALL receive: the original tweet text, the account persona overview (if available), and language setting. Tone and hashtag preferences are no longer passed — they are controlled by the skills/identity system.
+The system SHALL have a dedicated generation prompt in its own file (`ai/repost-prompt.ts`), separate from the existing content generation prompt. It SHALL instruct Gemini to create a quote-tweet response that adds genuine commentary, insight, or value to the original tweet. The prompt SHALL receive: the original tweet text, the account persona overview (if available), language setting, optional user tweets as initial thoughts, and optional instruction.
 
 #### Scenario: Generate with full context
-- **WHEN** generation is triggered for a tweet from @vercel
-- **THEN** the prompt SHALL include the original tweet, @vercel's persona overview, and language setting
+- **WHEN** generation is triggered for a tweet from @vercel with user tweets and instruction
+- **THEN** the prompt SHALL include the original tweet, @vercel's persona overview, language setting, user tweets under "MY INITIAL THOUGHTS", and instruction under "WHAT I'M GOING FOR"
 
 #### Scenario: Generate without persona
 - **WHEN** generation is triggered and no persona overview exists for the account
-- **THEN** the prompt SHALL still generate content using only the tweet text
+- **THEN** the prompt SHALL still generate content using only the tweet text and any user-provided context
+
+#### Scenario: Generate with thread context
+- **WHEN** generation is triggered for a tweet that is part of a thread and `threadText` is provided
+- **THEN** the prompt SHALL include a "FULL THREAD CONTEXT" section with the ordered thread text
 
 ### Requirement: AI generation with context
-The system SHALL generate a quote-tweet draft using the repost generation prompt, with context including: the tweet text (full thread if applicable), author profile info, persona overview (from account or persona cache), and the selected tone.
+The system SHALL generate a quote-tweet draft using the repost generation prompt, with context including: the tweet text (full thread if applicable), author profile info, persona overview (from account or persona cache), optional user tweets, and optional instruction.
 
 #### Scenario: Generation for followed account
-- **WHEN** user clicks Generate for a tweet from a followed account
-- **THEN** bot uses the stored persona overview and account config, generates content, creates a draft with source='repost', and shows the draft detail with image
+- **WHEN** pen down triggers generation in repost mode for a followed account
+- **THEN** bot uses the stored persona overview and account config, generates content via the quote skill, creates a draft with `source='repost'`, and shows the draft detail
 
-#### Scenario: Generation for unknown account
-- **WHEN** user clicks Generate for a tweet from an account not being followed
-- **THEN** bot fetches/creates persona via X API profile + Gemini web search, caches it, generates content using DEFAULT config (with selected tone override), and shows draft detail
+#### Scenario: Generation for unknown account via manual repost
+- **WHEN** pen down triggers generation in repost mode for an account not being followed
+- **THEN** bot fetches/creates persona via X API profile + Gemini web search, caches it, generates content, and shows draft detail
 
 ### Requirement: Repost uses user-level language
 The `buildRepostUserPrompt()` function SHALL use the user's global language setting (`user.language`) instead of the account-level `config.language` to determine the language instruction sent to Gemini.
@@ -253,6 +263,8 @@ When a repost draft is generated, the system SHALL create a row in the `drafts` 
 #### Scenario: Auto-approve draft creation
 - **WHEN** the account has `autoApprove=true` and the tweet scores above threshold
 - **THEN** the draft SHALL be created with `status='approved'` instead of `'draft'`
+
+> **Note:** The static repost preview with [Generate], [Open Tweet], [Cancel] buttons has been removed. The repost flow now enters compose mode directly instead of showing a static preview. `renderRepostPreview`, `renderRepostGenerating`, `rpGenAction`, and `rpCancelAction` are deprecated. The follow prompt logic has moved from `rpGenAction` to the pen-down handler for repost mode.
 
 ### Requirement: Link twitter_tweet to draft after generation
 After a draft is created from a scored tweet, the `twitter_tweets` row SHALL have its `status` updated to `'drafted'` and `draft_id` set to the created draft's ID.

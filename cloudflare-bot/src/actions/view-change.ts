@@ -53,7 +53,8 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
                 current_view: 'compose',
                 context: {
                     awaiting_input: 'handwrite',
-                    handwrite: {
+                    compose: {
+                        mode: 'handwrite',
                         tweets: [],
                         imageGen: false,
                         aiRefine: false,
@@ -82,7 +83,10 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             const isAdminUser = isAdmin(chatId, env);
             const { getUser } = await import('../data/user-db');
             const settingsUser = await getUser(env, chatId);
-            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, settingsUser?.default_publish_targets, settingsUser?.has_instagram === 1);
+            const { getRepostDefaults, getCommitDefaults } = await import('../data/user-settings-db');
+            const rpDefaults = await getRepostDefaults(env, chatId);
+            const cmDefaults = await getCommitDefaults(env, chatId);
+            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, settingsUser?.default_publish_targets, settingsUser?.has_instagram === 1, rpDefaults, cmDefaults);
         }
         case 'page_size_select': {
             await updateChatState(env, chatId, { current_view: 'page_size_select', context: null });

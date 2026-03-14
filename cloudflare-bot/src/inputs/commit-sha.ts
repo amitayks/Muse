@@ -1,33 +1,57 @@
+/**
+ * Commit SHA Input Handler — processes user's commit SHA or PR number
+ *
+ * Deferred generation model: fetches content source from GitHub,
+ * creates a commit_event, and shows event summary with [⚡ Fast] [✏️ Edit] buttons.
+ * No AI generation happens here.
+ */
+
 import type { HandlerContext } from '../core/router';
-import type { ChatContext } from '../types';
+import type { ChatContext, ContentSource } from '../types';
 import type { Lang } from '../ui/strings';
-import { updateChatState, createDraft, getTimezone, getRepoByOwnerRepo, applyOverviewPatches } from '../data/db';
-import { getUser } from '../data/user-db';
+import { t } from '../ui/strings';
+import { updateChatState, getRepoByOwnerRepo } from '../data/db';
+import { createCommitEvent, getCommitEventByCommitSha, updateCommitEvent } from '../data/commit-events-db';
 import { getContentSource } from '../integrations/github';
-import { generateContent } from '../ai/gemini';
-import { sendMessage, editMessage, deleteMessage, sendPhoto } from '../integrations/telegram';
-import { ensureImage } from '../data/storage';
-import { renderGenerating, renderDraftDetail } from '../views';
-import { truncateHtml } from '../ui/utils';
+import { sendMessage, editMessage } from '../integrations/telegram';
+import { renderEventSummary, renderEventButtons } from '../views/commit-events';
+import { renderGenerating } from '../views';
 import { cancelRow } from '../ui/components';
 import { sanitizeError } from '../infra/security';
 
 export async function commitShaInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
     const { env, chatId, text: sha } = ctx;
-    const lang = ((ctx as any).lang || 'en') as Lang;
+    const lang = (ctx.lang || 'en') as Lang;
 
     const genView = renderGenerating(sha, lang);
     const genMessageId = await sendMessage(env, chatId, genView.text, genView.keyboard);
 
     try {
         const source = await getContentSource(env, sha.substring(0, 7));
-        const prNumber = source.type === 'pr' ? source.data.number : 0;
-        const originalTitle = source.type === 'pr' ? source.data.title : source.data.title;
-        const repoShort = source.repo ? source.repo.split('/')[1] || source.repo : '';
-        const prTitle = repoShort ? `${repoShort} | ${originalTitle}` : originalTitle;
+        const commitSha = source.type === 'pr' ? source.data.commits[0] || sha : source.data.sha;
 
-        // Try to find the watched repo ID for overview context
-        let repoId: string | undefined;
+        // Dedup check: if event already exists for this SHA, show it
+        const existingEvent = await getCommitEventByCommitSha(env, chatId, commitSha);
+        if (existingEvent) {
+            const eventType = existingEvent.event_type as 'pr' | 'push';
+            const number = eventType === 'pr' ? (existingEvent.pr_number || 0) : existingEvent.commit_count;
+            const repoName = source.repo || '';
+
+            const text = renderEventSummary(
+                eventType, number, existingEvent.title, repoName,
+                existingEvent.author, existingEvent.files_changed,
+                existingEvent.additions, existingEvent.deletions,
+                existingEvent.commit_count, lang,
+            );
+            const keyboard = renderEventButtons(existingEvent.id, existingEvent.draft_id, lang);
+
+            await editMessage(env, chatId, genMessageId, text, keyboard);
+            await updateChatState(env, chatId, { context: null });
+            return;
+        }
+
+        // Look up repo ID for the event
+        let repoId = '';
         if (source.repo) {
             const [owner, repo] = source.repo.split('/');
             if (owner && repo) {
@@ -36,68 +60,53 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
             }
         }
 
-        const result = await generateContent(env, source, repoId, lang, chatId);
-        const content = result.content;
+        // Build event params — normalize 'commit' to 'push' to match webhook convention
+        const eventType = source.type === 'pr' ? 'pr' : 'push';
+        const prNumber = source.type === 'pr' ? source.data.number : 0;
+        const title = source.type === 'pr' ? source.data.title : source.data.title;
+        const author = source.data.author;
+        const filesChanged = source.data.files_changed;
+        const additions = source.data.additions;
+        const deletions = source.data.deletions;
+        const commitCount = source.type === 'pr' ? source.data.commits.length : 1;
 
-        // Apply overview patches (non-blocking)
-        if (result.overviewUpdates && repoId) {
-            try {
-                await applyOverviewPatches(env, repoId, result.overviewUpdates);
-            } catch (patchError) {
-                console.error('Overview patch failed (non-blocking):', patchError);
-            }
-        }
-
-        const user = await getUser(env, chatId);
-        const draftId = await createDraft(env, chatId, {
-            pr_number: prNumber,
-            pr_title: prTitle,
-            commit_sha: sha,
-            content: JSON.stringify(content),
-            publish_targets: user?.default_publish_targets || undefined,
+        // Create commit event
+        const eventId = await createCommitEvent(env, {
+            repoId,
+            chatId,
+            eventType,
+            commitSha,
+            prNumber: prNumber || undefined,
+            title,
+            author,
+            branch: '',
+            filesChanged,
+            additions,
+            deletions,
+            commitCount,
+            sourceData: JSON.stringify(source),
         });
 
+        // Show event summary with [⚡ Fast] [✏️ Edit] buttons
+        const number = eventType === 'pr' ? prNumber : commitCount;
+        const text = renderEventSummary(
+            eventType, number, title, source.repo || '', author,
+            filesChanged, additions, deletions, commitCount, lang,
+        );
+        const keyboard = renderEventButtons(eventId, null, lang);
+
+        await editMessage(env, chatId, genMessageId, text, keyboard);
+
+        // Store message_id on event for edit-in-place
+        await updateCommitEvent(env, eventId, { messageId: genMessageId });
+
+        // Clear awaiting_input
         await updateChatState(env, chatId, { context: null });
-
-        // Generate image for the draft
-        await editMessage(env, chatId, genMessageId, '🎨 Generating image...');
-
-        let imageUrl: string | null = null;
-        try {
-            imageUrl = await ensureImage(env, chatId, { id: draftId, content: JSON.stringify(content) });
-        } catch (imgError) {
-            console.error('Image generation failed:', sanitizeError(imgError));
-        }
-
-        const tz = await getTimezone(env, chatId);
-        const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
-
-        let finalMessageId: number;
-
-        if (imageUrl) {
-            // Delete the text "Generating..." message and send photo with draft detail
-            try {
-                await deleteMessage(env, chatId, genMessageId);
-            } catch { /* ignore */ }
-            const fullImageUrl = `${env.WORKER_URL}${imageUrl}`;
-            const caption = truncateHtml(view.text, 1024);
-            finalMessageId = await sendPhoto(env, chatId, fullImageUrl, caption, view.keyboard);
-        } else {
-            // No image — edit the "Generating..." message with draft detail
-            await editMessage(env, chatId, genMessageId, view.text, view.keyboard);
-            finalMessageId = genMessageId;
-        }
-
-        await updateChatState(env, chatId, {
-            message_id: finalMessageId,
-            current_view: 'draft',
-            context: { selected_draft_id: draftId },
-        });
     } catch (error) {
         console.error('Generate error:', sanitizeError(error));
         // Keep awaiting_input so user can retry with a different SHA
-        await sendMessage(env, chatId,
-            `❌ <b>Generation failed</b>\n\nCouldn't generate content for <code>${sha.substring(0, 7)}</code>.\n\nSend another commit SHA or PR number to try again.`,
+        await editMessage(env, chatId, genMessageId,
+            t(lang, 'error.commitFetchFailed').replace('{sha}', sha.substring(0, 7)),
             [cancelRow('view:home', lang)]
         );
     }

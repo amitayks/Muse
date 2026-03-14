@@ -8,6 +8,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getUser, updateDefaultPublishTargets } from '../data/user-db';
 import { updateChatState, getTimezone, getPageSize } from '../data/db';
+import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault } from '../data/user-settings-db';
 import { renderApiKeys, renderSettings } from '../views/settings';
 import { analyzeIdentity, storeDefaultIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
@@ -21,6 +22,16 @@ export async function settingsKeysAction(
 ): Promise<ViewResult | void> {
     const { env, chatId, value, extra } = ctx;
     const lang = (ctx.lang || 'en') as Lang;
+
+    // ==================== REPOST DEFAULTS ====================
+    if (value === 'rp') {
+        return handleRepostDefaults(ctx, lang, extra);
+    }
+
+    // ==================== COMMIT DEFAULTS ====================
+    if (value === 'commit') {
+        return handleCommitDefaults(ctx, lang, extra);
+    }
 
     // ==================== PLATFORM TOGGLE FOR DEFAULT TARGETS ====================
     if (value === 'plat') {
@@ -141,6 +152,58 @@ export async function settingsKeysAction(
     }
 }
 
+// ==================== Repost Defaults Sub-handler ====================
+
+async function handleRepostDefaults(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    extra?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    // settings:rp:fast_image → toggle fast_generate_image
+    // settings:rp:source_analysis → toggle analyze_source_image
+    const fieldMap: Record<string, 'fast_generate_image' | 'analyze_source_image'> = {
+        fast_image: 'fast_generate_image',
+        source_analysis: 'analyze_source_image',
+    };
+
+    const field = fieldMap[extra || ''];
+    if (!field) return;
+
+    const current = await getRepostDefaults(env, chatId);
+    const currentValue = field === 'fast_generate_image' ? current.fastGenerateImage : current.analyzeSourceImage;
+    await setRepostDefault(env, chatId, field, !currentValue);
+
+    return returnToSettings(ctx, lang);
+}
+
+// ==================== Commit Defaults Sub-handler ====================
+
+async function handleCommitDefaults(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    extra?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    // settings:commit:fast_image → toggle commit_fast_image
+    // settings:commit:fast_ai → toggle commit_fast_ai
+    const fieldMap: Record<string, 'commit_fast_image' | 'commit_fast_ai'> = {
+        fast_image: 'commit_fast_image',
+        fast_ai: 'commit_fast_ai',
+    };
+
+    const field = fieldMap[extra || ''];
+    if (!field) return;
+
+    const current = await getCommitDefaults(env, chatId);
+    const currentValue = field === 'commit_fast_image' ? current.commitFastImage : current.commitFastAi;
+    await setCommitDefault(env, chatId, field, !currentValue);
+
+    return returnToSettings(ctx, lang);
+}
+
 // ==================== Settings Platform Toggle Sub-handler ====================
 
 async function handleSettingsPlat(
@@ -257,5 +320,7 @@ async function returnToSettings(
     const staleCount = await countStalePrompts(env, chatId);
     const isAdminUser = isAdmin(chatId, env);
     const user = await getUser(env, chatId);
-    return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1);
+    const rpDefaults = await getRepostDefaults(env, chatId);
+    const cmDefaults = await getCommitDefaults(env, chatId);
+    return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
 }

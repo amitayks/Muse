@@ -189,6 +189,7 @@ export async function createDraft(
         original_tweet_url?: string;
         publish_targets?: string;
         has_video?: number;
+        event_id?: string;
     }
 ): Promise<string> {
     const id = generateId();
@@ -197,10 +198,10 @@ export async function createDraft(
     const publishTargets = data.publish_targets || '{"x":true}';
     const hasVideo = data.has_video || 0;
     await env.DB.prepare(
-        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url, publish_targets, has_video)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url, publish_targets, has_video, event_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, data.content, source, status, data.original_tweet_id || null, data.original_tweet_url || null, publishTargets, hasVideo)
+        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, data.content, source, status, data.original_tweet_id || null, data.original_tweet_url || null, publishTargets, hasVideo, data.event_id || null)
         .run();
     return id;
 }
