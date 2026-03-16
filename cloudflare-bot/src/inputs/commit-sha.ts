@@ -12,7 +12,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { updateChatState, getRepoByOwnerRepo } from '../data/db';
 import { createCommitEvent, getCommitEventByCommitSha, updateCommitEvent } from '../data/commit-events-db';
-import { getContentSource } from '../integrations/github';
+import { getContentSource, GitHubTokenMissingError } from '../integrations/github';
 import { sendMessage, editMessage } from '../integrations/telegram';
 import { renderEventSummary, renderEventButtons } from '../views/commit-events';
 import { renderGenerating } from '../views';
@@ -104,9 +104,17 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
         await updateChatState(env, chatId, { context: null });
     } catch (error) {
         console.error('Generate error:', sanitizeError(error));
+
+        let errorText: string;
+        if (error instanceof GitHubTokenMissingError) {
+            errorText = t(lang, 'error.githubTokenMissing');
+        } else {
+            errorText = t(lang, 'error.commitFetchFailed').replace('{sha}', sha.substring(0, 7));
+        }
+
         // Keep awaiting_input so user can retry with a different SHA
         await editMessage(env, chatId, genMessageId,
-            t(lang, 'error.commitFetchFailed').replace('{sha}', sha.substring(0, 7)),
+            errorText,
             [cancelRow('view:home', lang)]
         );
     }

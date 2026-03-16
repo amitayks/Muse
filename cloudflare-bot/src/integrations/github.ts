@@ -74,13 +74,25 @@ async function githubFetch<T>(env: Env, path: string): Promise<T> {
     return response.json() as Promise<T>;
 }
 
+/** Custom error for missing GitHub token */
+export class GitHubTokenMissingError extends Error {
+    constructor() {
+        super('GitHub token not configured');
+        this.name = 'GitHubTokenMissingError';
+    }
+}
+
 /**
- * Search for a commit by SHA across all owner repos
- * Returns the commit and the repo it was found in
+ * Search for a commit by SHA across the user's accessible repos.
+ * Never falls back to unscoped search to prevent returning other users' commits.
  */
 async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; commit: CommitSearchResult['items'][0] } | null> {
+    if (!env.GITHUB_TOKEN) {
+        throw new GitHubTokenMissingError();
+    }
+
     try {
-        // If GITHUB_OWNER is set, search scoped to that owner first
+        // If GITHUB_OWNER is set, search scoped to that owner
         if (env.GITHUB_OWNER) {
             const searchResult = await githubFetch<CommitSearchResult>(
                 env,
@@ -107,21 +119,13 @@ async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; c
             }
         }
 
-        // Fallback: search by hash only (works for any authenticated user)
-        const fallbackSearch = await githubFetch<CommitSearchResult>(
-            env,
-            `/search/commits?q=hash:${sha}`
-        );
-
-        if (fallbackSearch.items.length === 0) {
-            return null;
-        }
-
-        return {
-            repo: fallbackSearch.items[0].repository.full_name,
-            commit: fallbackSearch.items[0],
-        };
+        // No GITHUB_OWNER: search authenticated user's own repos only
+        // The GitHub Search API with just hash: scoped to authenticated user's visibility
+        // But this can still return public repos from others, so we don't use unscoped search.
+        // Instead, return null to signal "not found in your repos".
+        return null;
     } catch (error) {
+        if (error instanceof GitHubTokenMissingError) throw error;
         console.error('Commit search error:', error);
         return null;
     }

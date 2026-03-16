@@ -81,7 +81,8 @@ export const en = {
         videoAdminOnly: '❌ Video Studio is only available to the admin.',
         commitEventNotFound: 'Commit event not found.',
         commitAlreadyGenerated: 'A draft has already been generated for this event.',
-        commitFetchFailed: '❌ <b>Generation failed</b>\n\nCouldn\'t fetch data for <code>{sha}</code>.\n\nSend another commit SHA or PR number to try again.',
+        commitFetchFailed: '❌ <b>Commit not found</b>\n\nCouldn\'t find <code>{sha}</code> in your repos. Make sure the commit is pushed to GitHub.\n\nSend another commit SHA or PR number to try again.',
+        githubTokenMissing: '❌ <b>GitHub not connected</b>\n\nYou need to add your GitHub token first. Go to Settings → API Keys to set it up.',
         commitSourceParseFailed: 'Failed to parse event source data.',
     },
 

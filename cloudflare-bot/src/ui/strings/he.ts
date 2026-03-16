@@ -84,7 +84,8 @@ export const he: StringsMap = {
         videoAdminOnly: '❌ סטודיו וידאו זמין רק למנהל.',
         commitEventNotFound: 'אירוע קומיט לא נמצא.',
         commitAlreadyGenerated: 'כבר נוצרה טיוטה לאירוע זה.',
-        commitFetchFailed: '❌ <b>היצירה נכשלה</b>\n\nלא ניתן לשלוף נתונים עבור <code>{sha}</code>.\n\nשלח SHA או מספר PR אחר כדי לנסות שוב.',
+        commitFetchFailed: '❌ <b>קומיט לא נמצא</b>\n\nלא נמצא <code>{sha}</code> בריפוים שלך. וודא שהקומיט נדחף ל-GitHub.\n\nשלח SHA או מספר PR אחר כדי לנסות שוב.',
+        githubTokenMissing: '❌ <b>GitHub לא מחובר</b>\n\nצריך להוסיף את הטוקן של GitHub קודם. לך להגדרות ← מפתחות API כדי להגדיר.',
         commitSourceParseFailed: 'נכשל בפענוח נתוני מקור האירוע.',
     },
 
