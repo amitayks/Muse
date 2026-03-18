@@ -43,3 +43,14 @@ The `getUserKeys` function SHALL NEVER fall back to `env` Worker secrets if a us
 #### Scenario: Missing key does not fallback
 - **WHEN** a user's `gemini_key_enc` is null and `getUserKeys` is called
 - **THEN** the function does NOT return `env.GOOGLE_API_KEY` from Worker secrets — it returns undefined for that field or throws if the key is required
+
+### Requirement: Env hydration includes GitHub username
+The `hydrateEnv` function SHALL populate `env.GITHUB_OWNER` from the user's stored `github_username` field. This makes the GitHub username available to all downstream consumers via the standard env object.
+
+#### Scenario: User has github_username stored
+- **WHEN** env is hydrated for a user with `github_username` = "octocat"
+- **THEN** `env.GITHUB_OWNER` SHALL be set to "octocat"
+
+#### Scenario: User has no github_username
+- **WHEN** env is hydrated for a user with `github_username` = null
+- **THEN** `env.GITHUB_OWNER` SHALL remain undefined

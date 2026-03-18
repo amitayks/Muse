@@ -67,3 +67,10 @@ After successful publishing, the system SHALL create a record in `video_publishe
 - **WHEN** a video is successfully published to at least one platform
 - **THEN** a `video_published` record SHALL be created
 - **AND** the video draft status SHALL be updated to "published"
+
+### Requirement: Remove character truncation from video tweet captions
+When publishing a video to X, the system SHALL NOT truncate the tweet caption to 280 characters.
+
+#### Scenario: Video publish to X
+- **WHEN** the system publishes a video draft to X
+- **THEN** the tweet caption SHALL be posted at full length without truncation
