@@ -58,14 +58,7 @@ Respond ONLY with valid JSON:
   "format": "single",
   "tweets": [{ "text": "...", "index": 0 }],
   "imagePrompt": null
-}
-
-Constraints:
-- Each tweet MUST be <=280 characters
-- DO NOT summarize the original — add a NEW perspective
-- Include emojis where natural to my voice
-- Stay true to my identity's voice and tone
-- Single tweet by default. Only use thread format if the content genuinely warrants multi-part response.`;
+}`;
 
 export const QUOTE_HE = `משהו פשוט נחת מולי והראש שלי כבר זז. ראיתי את הפוסט הזה, משהו בו הפעיל אותי, ועכשיו אני צריך להבין מה בדיוק אני רוצה להגיד.
 
@@ -127,11 +120,4 @@ export const QUOTE_HE = `משהו פשוט נחת מולי והראש שלי כ�
   "format": "single",
   "tweets": [{ "text": "...", "index": 0 }],
   "imagePrompt": null
-}
-
-אילוצים:
-- כל ציוץ חייב להיות <=280 תווים
-- לא לסכם את המקור — להוסיף פרספקטיבה חדשה
-- לכלול אימוג'ים היכן שטבעי לקול שלי
-- להישאר נאמן לקול ולטון של הזהות שלי
-- ציוץ בודד כברירת מחדל. להשתמש בפורמט שרשור רק אם התוכן באמת מצדיק תגובה מרובת-חלקים.`;
+}`;

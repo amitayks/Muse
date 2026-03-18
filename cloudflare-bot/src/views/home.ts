@@ -237,12 +237,9 @@ ${t(lang, 'compose.analyzeHint')}`;
             const mc = tw.mediaCount;
             totalMedia += mc;
             const mediaIndicator = mc === 0 ? '' : mc <= 4 ? ' ' + '📷'.repeat(mc) : ` 📷×${mc}`;
-            const len = tw.text.length;
-            const over = len > 280;
             const preview = tw.text.length > 60 ? tw.text.substring(0, 57) + '...' : tw.text;
             const safePreview = escapeHtml(preview);
             text += `\n${i + 1}. ${safePreview}${mediaIndicator}`;
-            text += `\n    <i>${len}/280${over ? ' ⚠️' : ''}</i>`;
             if (mc > 4) {
                 text += `\n    ${t(lang, 'compose.xImageLimit').replace('{count}', String(mc))}`;
             }
@@ -263,11 +260,6 @@ ${t(lang, 'compose.analyzeHint')}`;
         if (totalMedia > 10) {
             text += `\n\n${t(lang, 'compose.igImageLimit').replace('{count}', String(totalMedia))}`;
         }
-    }
-
-    if (charWarnings.length > 0) {
-        const warnings = charWarnings.map(i => `Tweet ${i}`).join(', ');
-        text += `\n\n⚠️ ${warnings} ${t(lang, 'compose.exceeds280')}`;
     }
 
     // Dynamic button row based on context

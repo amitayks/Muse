@@ -35,9 +35,6 @@ export function buildRepostUserPrompt(params: {
         parts.push('');
     }
 
-    parts.push(`SETTINGS:`);
-    parts.push(`- Language: ${params.language === 'he' ? 'Hebrew' : 'English'}`);
-    parts.push('');
 
     if (params.persona) {
         parts.push(`PERSONA CONTEXT (about @${params.authorUsername}):`);
@@ -53,11 +50,6 @@ export function buildRepostUserPrompt(params: {
         parts.push('');
     }
 
-    if (params.hasImage) {
-        parts.push('NOTE: The original tweet includes an attached image (shown above). Consider the image content when crafting your response — reference what you see if relevant.');
-        parts.push('');
-    }
-
     // User's initial thoughts and instruction (shared with commit pipeline)
     const userSections = buildPromptSections({
         userTweets: params.userTweets,
@@ -66,8 +58,6 @@ export function buildRepostUserPrompt(params: {
     if (userSections) {
         parts.push(userSections);
     }
-
-    parts.push('Generate a quote tweet response that adds genuine value.');
 
     return parts.join('\n');
 }

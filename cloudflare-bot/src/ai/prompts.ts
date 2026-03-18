@@ -23,7 +23,7 @@ export const USER_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'q
 export const ALL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen'];
 
 /** Skills that receive identity injection in assembleSystemInstruction */
-export const IDENTITY_ATTACHED_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'what-i-like'];
+export const IDENTITY_ATTACHED_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'what-i-like', 'image-gen'];
 
 export interface UserPromptStatus {
     isCustom: boolean;

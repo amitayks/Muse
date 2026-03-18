@@ -585,13 +585,11 @@ async function handleInstruct(
 }
 
 function buildComposeView(compose: ComposeState, lang: Lang): ViewResult {
-    const charWarnings: number[] = [];
-    const composeTweets = compose.tweets.map((t, i) => {
-        if (t.text.length > 280) charWarnings.push(i + 1);
+    const composeTweets = compose.tweets.map((t) => {
         return { text: t.text, mediaCount: t.media?.length || 0 };
     });
 
-    return renderCompose(composeTweets, charWarnings, compose.imageGen, compose.aiRefine, lang, {
+    return renderCompose(composeTweets, [], compose.imageGen, compose.aiRefine, lang, {
         instruction: compose.instruction,
         awaitingInstruction: compose.awaitingInstruction,
         analyzeImages: compose.analyzeImages,

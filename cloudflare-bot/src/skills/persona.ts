@@ -74,10 +74,10 @@ Respond ONLY with valid JSON:
 Constraints:
 - topics: their TOP 5 most-tweeted-about subjects, specific enough to be useful
 - communication_style: this field drives how /quote calibrates response approach. Be precise about register, humor style, formality, post format. "Casual tone" is useless. "Dry, assertive, writes concise single-tweet observations, rarely uses emojis, hedges with humor rather than qualifiers" is useful.
-- persona: include their community position (authority, peer, newcomer, contrarian, educator) and their expertise depth (specialist, generalist, practitioner, commentator)
-- notable_context: prioritize context that would change how I interpret their posts
+- persona: I include their community position (authority, peer, newcomer, contrarian, educator) and their expertise depth (specialist, generalist, practitioner, commentator)
+- notable_context: I prioritize context that would change how I interpret their posts
 - recent_themes: what they have been focused on RECENTLY, which may differ from their stable topics
-- If information is scarce, state that honestly in each field rather than fabricating. "Limited data, appears to focus on..." is better than confident fiction.`;
+- If information is scarce, I state that honestly in each field rather than fabricating. "Limited data, appears to focus on..." is better than confident fiction.`;
 
 export const PERSONA_HE = `אני בונה מודל מנטלי של אדם אחר. לא גיליון נתונים. מודל שמאפשר לי להבין את הפוסטים שלהם בהקשר ולהגיב אליהם באופן אותנטי כעצמי. הפרסונה הזו תזין כל אינטראקציה עתידית שיש לי עם התוכן שלהם, אז היא צריכה ללכוד את מה שבאמת חשוב למטרה הזו.
 

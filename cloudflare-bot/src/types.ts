@@ -365,7 +365,7 @@ export interface VideoScriptResponse {
     title: string;
     scenes: VideoScene[];
     caption: string;        // Instagram caption (max 2200 chars)
-    twitterCaption: string; // Twitter caption (max 280 chars)
+    twitterCaption: string;
     totalWordCount: number;
 }
 

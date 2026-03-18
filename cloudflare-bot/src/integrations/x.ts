@@ -342,7 +342,7 @@ export async function postQuoteTweet(
     env: Env,
     text: string,
     quoteTweetId: string,
-    options: { mediaIds?: string[] } = {}
+    options: { mediaIds?: string[]; originalTweetUrl?: string } = {}
 ): Promise<string> {
     const body: Record<string, unknown> = {
         text,
@@ -367,12 +367,53 @@ export async function postQuoteTweet(
 
     if (!response.ok) {
         const error = await response.text();
+
+        // Fallback: on 403 (quote not allowed), retry as regular tweet with URL appended
+        if (response.status === 403 && options.originalTweetUrl) {
+            console.log('Quote tweet 403, falling back to URL embed:', options.originalTweetUrl);
+            const fallbackText = `${text}\n\n${options.originalTweetUrl}`;
+            return postTweetWithUrl(env, fallbackText, options.mediaIds);
+        }
+
         console.error('X postQuoteTweet failed:', response.status, error);
         throw new Error(`X API error ${response.status}: ${error}`);
     }
 
     const data = await response.json() as { data: { id: string } };
     console.log('Posted quote tweet:', data.data.id);
+    return data.data.id;
+}
+
+async function postTweetWithUrl(
+    env: Env,
+    text: string,
+    mediaIds?: string[],
+): Promise<string> {
+    const body: Record<string, unknown> = { text };
+    if (mediaIds && mediaIds.length > 0) {
+        body.media = { media_ids: mediaIds };
+    }
+
+    const url = `${X_API_V2}/tweets`;
+    const authHeader = await generateOAuthHeader(env, 'POST', url);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Authorization: authHeader,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        console.error('X postTweetWithUrl failed:', response.status, error);
+        throw new Error(`X API error ${response.status}: ${error}`);
+    }
+
+    const data = await response.json() as { data: { id: string } };
+    console.log('Posted fallback tweet with URL:', data.data.id);
     return data.data.id;
 }
 

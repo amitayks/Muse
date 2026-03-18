@@ -117,7 +117,6 @@ export const en = {
         btnPenDown: '✏️ Pen Down',
         btnImage: '🎨 Image',
         btnAi: '✨ AI',
-        exceeds280: 'exceed 280 chars — will be trimmed on publish',
         xImageLimit: '⚠️ 𝕏: {count}/4 — only first 4 will post',
         igImageLimit: '⚠️ IG: <s>{count}/10</s> — only first 10 will post',
 

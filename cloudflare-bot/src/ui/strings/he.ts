@@ -120,7 +120,6 @@ export const he: StringsMap = {
         btnPenDown: '✏️ הנח עט',
         btnImage: '🎨 תמונה',
         btnAi: '✨ AI',
-        exceeds280: 'חורג מ-280 תווים — ייחתך בפרסום',
         xImageLimit: '⚠️ 𝕏: {count}/4 — רק 4 הראשונות יפורסמו',
         igImageLimit: '⚠️ IG: <s>{count}/10</s> — רק 10 הראשונות יפורסמו',
 

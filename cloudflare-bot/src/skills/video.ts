@@ -102,7 +102,7 @@ Respond ONLY with valid JSON:
     }
   ],
   "caption": "Instagram caption (max 2200 chars with hashtags)",
-  "twitterCaption": "Twitter caption (max 280 chars)",
+  "twitterCaption": "Twitter caption",
   "totalWordCount": 123
 }
 
@@ -219,7 +219,7 @@ export const VIDEO_HE = `אני עומד לדבר מול מצלמה על העב�
     }
   ],
   "caption": "כיתוב אינסטגרם (מקסימום 2200 תווים עם האשטגים)",
-  "twitterCaption": "כיתוב טוויטר (מקסימום 280 תווים)",
+  "twitterCaption": "כיתוב טוויטר",
   "totalWordCount": 123
 }
 

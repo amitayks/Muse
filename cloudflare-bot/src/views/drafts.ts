@@ -235,7 +235,7 @@ ${t(lang, 'drafts.notFoundMsg')}`,
     const tweetPreview = content.tweets
         .map((tw, i) => {
             const mediaIndicator = tw.media?.length ? ' 📷' : '';
-            return `<b>${t(lang, 'drafts.tweetN').replace('{n}', String(i + 1))}</b>${mediaIndicator} ${escapeHtml(tw.text)} (${tw.text.length}/280)`;
+            return `<b>${t(lang, 'drafts.tweetN').replace('{n}', String(i + 1))}</b>${mediaIndicator} ${escapeHtml(tw.text)}`;
         })
         .join('\n\n');
 

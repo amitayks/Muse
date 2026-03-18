@@ -156,7 +156,7 @@ export async function publishVideoToTwitter(
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                text: caption.substring(0, 280),
+                text: caption,
                 media: { media_ids: [mediaId] },
             }),
         });

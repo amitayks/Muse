@@ -201,7 +201,7 @@ async function publishToX(
     if (draft.source === 'repost' && draft.original_tweet_id) {
         const firstTweetText = content.tweets[0]?.text || '';
         const mediaIds = mediaId ? [mediaId] : undefined;
-        const quoteTweetId = await postQuoteTweet(env, firstTweetText, draft.original_tweet_id, { mediaIds });
+        const quoteTweetId = await postQuoteTweet(env, firstTweetText, draft.original_tweet_id, { mediaIds, originalTweetUrl: draft.original_tweet_url || undefined });
         const url = `https://x.com/i/status/${quoteTweetId}`;
         return { tweet_ids: [quoteTweetId], url };
     }

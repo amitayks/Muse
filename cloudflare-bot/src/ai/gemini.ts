@@ -146,7 +146,8 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
     }
 
     const prompt = buildContentPrompt(source, overview, language, options);
-    const contentSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'work-progress', language || 'en');
+    const attachImageGen = options ? (options.generateImagePrompt !== false) : true;
+    const contentSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'work-progress', language || 'en', { attachImageGen });
 
     // Build multimodal prompt when user images are present
     let userPrompt: string | Array<{ text: string } | ImagePart>;
@@ -154,7 +155,7 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         userPrompt = [
             { text: prompt },
             ...options.userImageParts,
-            { text: '\nThe images above were attached by the author as context. Consider them when generating content.' },
+            { text: '\nI\'m attaching these images as context for my content.' },
         ];
     } else {
         userPrompt = prompt;
@@ -254,7 +255,7 @@ function parseContentResponse(content: string): ContentResponse {
         logError('No JSON found in response, first 200 chars:', content.substring(0, 200));
         const fallbackContent: DraftContent = {
             format: 'single',
-            tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim().substring(0, 280), index: 0 }],
+            tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],
         };
         fallbackContent.imagePrompt = buildImagePrompt(fallbackContent);
         return { content: fallbackContent, overviewUpdates: null };
@@ -270,7 +271,7 @@ function parseContentResponse(content: string): ContentResponse {
         const draftContent: DraftContent = {
             format: parsed.format,
             tweets: parsed.tweets.map((t: { text: string }, i: number) => ({
-                text: t.text.substring(0, 280),
+                text: t.text,
                 index: i,
             })),
         };
@@ -296,7 +297,7 @@ function parseContentResponse(content: string): ContentResponse {
         logError('JSON parse error:', parseError instanceof Error ? parseError.message : String(parseError));
         const fallbackContent: DraftContent = {
             format: 'single',
-            tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim().substring(0, 280), index: 0 }],
+            tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],
         };
         fallbackContent.imagePrompt = buildImagePrompt(fallbackContent);
         return { content: fallbackContent, overviewUpdates: null };
@@ -324,30 +325,20 @@ export async function refineContent(
     const lang = options.language || 'en';
     const cId = options.chatId || '';
     const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
-    const langInstruction = lang === 'he' ? ' Write all tweet text in Hebrew.' : '';
 
     // Build system instruction with identity + optional image-gen
-    let systemPrompt = await assembleSystemInstruction(env, cId, 'refine', lang, {
+    const systemPrompt = await assembleSystemInstruction(env, cId, 'refine', lang, {
         attachImageGen: options.generateImagePrompt,
     });
-
-    // Append runtime rules
-    const imagePromptRule = options.generateImagePrompt
-        ? '- The imagePrompt MUST be a structured JSON object'
-        : '- Do NOT include an imagePrompt field';
-    systemPrompt += `\n\nRULES:
-- Each tweet MUST be ≤ 280 characters
-${imagePromptRule}
-- Return valid JSON only`;
 
     // Build user prompt — instruction framed as self-directed if present
     let userPromptText: string;
     if (options.instruction && content.tweets.length === 0) {
-        userPromptText = `I want to create content like this: ${options.instruction}${langInstruction}`;
+        userPromptText = `I want to create content like this: ${options.instruction}`;
     } else if (options.instruction) {
-        userPromptText = `Here's a draft. I want to change it like this: ${options.instruction}${langInstruction}\n\n${tweetsText}`;
+        userPromptText = `Here's a draft. I want to change it like this: ${options.instruction}\n\n${tweetsText}`;
     } else {
-        userPromptText = `Here's a draft. I want to rewrite it in my own voice.${langInstruction}\n\n${tweetsText}`;
+        userPromptText = `Here's a draft. I want to rewrite it in my own voice.\n\n${tweetsText}`;
     }
 
     // If image parts provided, build multimodal prompt with tweet-image mapping
@@ -355,7 +346,7 @@ ${imagePromptRule}
     if (options.imageParts && options.imageParts.length > 0) {
         const mapping = buildImageMapping(content.tweets);
         if (mapping) userPromptText += `\n\n${mapping}`;
-        userPromptText += '\n\nAnalyze the attached images to inform your refinement.';
+        userPromptText += '\n\nI\'m attaching these images as reference for my refinement.';
         userPrompt = [{ text: userPromptText }, ...options.imageParts];
     } else {
         userPrompt = userPromptText;
@@ -536,26 +527,25 @@ export async function refineHandwrittenContent(
     chatId?: string,
 ): Promise<DraftContent> {
     if (!options.refineText && options.generateImagePrompt) {
-        // Image-only mode: use image-gen prompt directly (no identity, no refine skill)
+        // Image-only mode: image-gen skill + identity (no refine skill)
         const lang = language || 'en';
-        const systemPrompt = await getPrompt(env, chatId || '', 'image-gen', lang);
+        const systemPrompt = await assembleSystemInstruction(env, chatId || '', 'image-gen', lang);
         const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
         let userPromptText = options.instruction
-            ? `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt based on this instruction: ${options.instruction}\n\n${tweetsText}`
-            : `Keep these tweets EXACTLY as-is (do not change any text). Generate an imagePrompt that captures the theme of the content.\n\n${tweetsText}`;
+            ? `I don't want to change the tweet text. I want an image for this direction: ${options.instruction}\n\n${tweetsText}`
+            : `I don't want to change the tweet text. I want an image that captures the theme.\n\n${tweetsText}`;
 
-        // Include image analysis in image-only mode too
         let userPrompt: string | Array<{ text: string } | ImagePart>;
         if (options.imageParts && options.imageParts.length > 0) {
             const mapping = buildImageMapping(content.tweets);
             if (mapping) userPromptText += `\n\n${mapping}`;
-            userPromptText += '\n\nAnalyze the attached images to inform the imagePrompt.';
+            userPromptText += '\n\nI\'m attaching these images as reference.';
             userPrompt = [{ text: userPromptText }, ...options.imageParts];
         } else {
             userPrompt = userPromptText;
         }
 
-        const responseText = await callGeminiText(env, systemPrompt + '\n\n' + buildHandwriteRules(content, options), userPrompt);
+        const responseText = await callGeminiText(env, systemPrompt, userPrompt);
         return parseContentResponse(responseText).content;
     }
 
@@ -569,63 +559,11 @@ export async function refineHandwrittenContent(
 }
 
 /**
- * Build the runtime rules section for handwrite refinement.
- * This part is dynamic (tweet count, format, options) so it stays in code.
- */
-function buildHandwriteRules(
-    content: DraftContent,
-    options: { refineText: boolean; generateImagePrompt: boolean },
-): string {
-    const imagePromptRule = options.generateImagePrompt
-        ? '- The imagePrompt MUST be a structured JSON object'
-        : '- Do NOT include an imagePrompt field';
-
-    const imagePromptJson = options.generateImagePrompt ? `,
-  "imagePrompt": {
-    "concept": {
-      "main_subject": "The ONE specific visual metaphor for this post — concrete, vivid, not abstract",
-      "symbolic_elements": "Supporting visual details that reinforce the metaphor with sensory richness",
-      "mood": "The emotional atmosphere — described with feeling, not adjectives"
-    },
-    "composition": {
-      "style": "Specific art movement or technique",
-      "perspective": "Camera angle with technical precision",
-      "focal_point": "What the eye lands on first and what leads it through the composition"
-    },
-    "environment": {
-      "setting": "A fully realized world — not 'abstract space' but a specific place with texture, atmosphere, and story",
-      "lighting": "Named lighting technique with color temperature",
-      "color_palette": "3-4 precisely named colors with their emotional role"
-    },
-    "technical": {
-      "medium": "The specific artistic medium chosen for its qualities",
-      "quality": "The rendering intention",
-      "negative": "Avoid generic stock-photo aesthetics"
-    }
-  }` : '';
-
-    return `RULES:
-- Each tweet MUST be ≤ 280 characters
-- Preserve the author's personality, word choices, and intent
-- Only fix grammar issues, awkward phrasing, and improve clarity
-- Include relevant emojis — they increase engagement
-- Do NOT dramatically change the tone or meaning
-- This is PERSONAL content — keep it feeling like a real person, not a brand
-${imagePromptRule}
-
-Respond ONLY with valid JSON:
-{
-  "format": "${content.format}",
-  "tweets": [{ "text": "...", "index": 0 }, ...]${imagePromptJson}
-}`;
-}
-
-/**
  * Build the prompt for content generation
  * SECURITY: Sanitizes input content to prevent prompt injection and excessive size
  * Sends ONLY commit messages and file names — no title, body, author, or stats
  */
-function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string, options?: GenerateContentOptions): string {
+function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, _language?: string, options?: GenerateContentOptions): string {
     const { data } = source;
 
     // Sanitize commit messages
@@ -637,8 +575,6 @@ function buildContentPrompt(source: ContentSource, overview?: RepoOverview | nul
     const safeFileNames = data.fileNames
         .map(f => sanitizeContent(f, 200))
         .join('\n- ');
-
-    const isSimple = data.fileNames.length <= 3;
 
     // Build overview section if available
     let overviewSection = '';
@@ -660,24 +596,13 @@ function buildContentPrompt(source: ContentSource, overview?: RepoOverview | nul
         instruction: options.instruction,
     }) : '';
 
-    // Image prompt rule: only include when explicitly requested or by default (no options = legacy behavior)
-    const includeImagePrompt = options ? (options.generateImagePrompt !== false) : true;
-
-    return `${overviewSection}Create a social media package for this code change.
-
-**Commits:**
+    return `${overviewSection}**Commits:**
 - ${safeCommitMessages || 'No commit messages available'}
 
 **Changed Files:**
 - ${safeFileNames || 'No file names available'}
 
-${isSimple
-        ? 'This is a focused change — create a single impactful tweet.'
-        : 'This is a substantial change — create a thread (2-5 tweets). First tweet hooks, rest adds depth.'}
-
-${userSections}**Language:** Write all tweet text in ${language === 'he' ? 'Hebrew' : 'English'}.
-
-Remember: Valid JSON only. Each tweet ≤ 280 chars.${includeImagePrompt ? ' imagePrompt must be a structured JSON object.' : ''}`;
+${userSections}`;
 }
 
 // ==================== VIDEO SCRIPT GENERATION ====================
@@ -768,8 +693,7 @@ export async function generateVideoScript(
         promptParts.push('');
     }
 
-    promptParts.push(`Write a video script with ${calibration.minScenes}-${calibration.maxScenes} scenes, targeting ~${calibration.words} total spoken words. Each scene should have 50-120 words.`);
-    promptParts.push('Respond with valid JSON only.');
+    promptParts.push(`I want ${calibration.minScenes}-${calibration.maxScenes} scenes, targeting ~${calibration.words} total spoken words. Each scene should have 50-120 words.`);
 
     const userPrompt = promptParts.join('\n');
     const videoSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'video', language || 'en');
@@ -839,8 +763,7 @@ function parseAndValidateVideoScript(
     let caption = String(parsed.caption || '');
     if (caption.length > 2200) caption = caption.substring(0, 2200);
 
-    let twitterCaption = String(parsed.twitterCaption || '');
-    if (twitterCaption.length > 280) twitterCaption = twitterCaption.substring(0, 280);
+    const twitterCaption = String(parsed.twitterCaption || '');
 
     return {
         title: String(parsed.title || 'Untitled Video'),

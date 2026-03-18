@@ -91,10 +91,8 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
         });
     }
 
-    // Build tweet previews and character warnings
-    const charWarnings: number[] = [];
-    const composeTweets = compose.tweets.map((t, i) => {
-        if (t.text.length > 280) charWarnings.push(i + 1);
+    // Build tweet previews
+    const composeTweets = compose.tweets.map((t) => {
         return { text: t.text, mediaCount: t.media?.length || 0 };
     });
 
@@ -111,7 +109,7 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
     const statusMessageId = compose.statusMessageId || state.message_id;
 
     if (statusMessageId) {
-        const view = renderCompose(composeTweets, charWarnings, compose.imageGen, compose.aiRefine, lang, {
+        const view = renderCompose(composeTweets, [], compose.imageGen, compose.aiRefine, lang, {
             instruction: compose.instruction,
             awaitingInstruction: compose.awaitingInstruction,
             analyzeImages: compose.analyzeImages,
