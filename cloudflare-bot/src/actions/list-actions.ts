@@ -31,7 +31,7 @@ function parseListContext(extra?: string): { draftId: string; listType: DraftLis
 }
 
 async function countForListType(env: import('../types').Env, chatId: string, listType: DraftListType): Promise<number> {
-    if (listType === 'auto') return countDraftsBySource(env, chatId, 'auto', ['draft']);
+    if (listType === 'auto') return countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']);
     if (listType === 'handwrite') return countDraftsBySource(env, chatId, 'handwrite', ['draft']);
     if (listType === 'approved') return countDrafts(env, chatId, 'approved');
     if (listType === 'scheduled') return countDrafts(env, chatId, 'scheduled');

@@ -473,6 +473,19 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('Identity lang notified migration note:', String(identityLangError));
         }
 
+        // Migration: Add github_username column to users table (015)
+        try {
+            const usersInfo5 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasGithubUsername = usersInfo5.results?.some((col: any) => col.name === 'github_username');
+
+            if (!hasGithubUsername) {
+                await env.DB.prepare(`ALTER TABLE users ADD COLUMN github_username TEXT;`).run();
+                logInfo('Added github_username column to users table');
+            }
+        } catch (githubUsernameError) {
+            logInfo('github_username migration note:', String(githubUsernameError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

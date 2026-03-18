@@ -43,6 +43,7 @@ export async function updateUser(
         'instagram_token_enc' | 'instagram_account_id_enc' |
         'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' |
         'language' | 'default_publish_targets' |
+        'github_username' |
         'own_profile_image_url' | 'own_username_x' | 'own_display_name_x' |
         'daily_generates' | 'daily_reposts' | 'last_reset_date' | 'consecutive_failures' |
         'identity_lang_notified'

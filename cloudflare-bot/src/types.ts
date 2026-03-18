@@ -81,6 +81,9 @@ export interface User {
     video_settings: string | null;
     default_publish_targets: string; // JSON string of PublishTargets
 
+    // GitHub username (for scoped commit search)
+    github_username: string | null;
+
     // Own X profile data (for tweet card rendering)
     own_profile_image_url: string | null;
     own_username_x: string | null;

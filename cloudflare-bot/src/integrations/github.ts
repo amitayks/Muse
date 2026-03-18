@@ -119,10 +119,8 @@ async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; c
             }
         }
 
-        // No GITHUB_OWNER: search authenticated user's own repos only
-        // The GitHub Search API with just hash: scoped to authenticated user's visibility
-        // But this can still return public repos from others, so we don't use unscoped search.
-        // Instead, return null to signal "not found in your repos".
+        // No GITHUB_OWNER set — cannot scope search, return null rather than risk
+        // returning commits from other users' public repos.
         return null;
     } catch (error) {
         if (error instanceof GitHubTokenMissingError) throw error;

@@ -13,7 +13,6 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getDraft, getTimezone } from '../data/db';
 import { editMessage, sendPhoto, deleteMessage } from '../integrations/telegram';
-import { ensureImage } from '../data/storage';
 import { renderDraftDetail, renderError } from '../views';
 import { truncateHtml } from '../ui/utils';
 
@@ -41,16 +40,10 @@ export const tweetViewDraftAction: ActionHandler = async (ctx) => {
         return;
     }
 
-    // Try to generate/fetch image
+    // Use existing image if one was generated at creation time
     let imageUrl: string | null = null;
-    try {
-        const content = JSON.parse(draft.content) as DraftContent;
-        // Only generate image if it has an imagePrompt or is not handwritten
-        if (draft.source !== 'handwrite' || content.imagePrompt) {
-            imageUrl = await ensureImage(ctx.env, ctx.chatId, draft);
-        }
-    } catch (error) {
-        console.error('[tw_view] Image generation failed:', error);
+    if (draft.image_url && ctx.env.WORKER_URL) {
+        imageUrl = `/image/${draft.image_url}`;
     }
 
     const tz = await getTimezone(ctx.env, ctx.chatId);

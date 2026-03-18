@@ -122,16 +122,18 @@ export async function getDraftStatusCounts(env: Env, chatId: string): Promise<Re
 export async function getDraftsBySource(
     env: Env,
     chatId: string,
-    source: string,
+    source: string | string[],
     statuses: string[],
     limit = 5,
     offset = 0
 ): Promise<Draft[]> {
-    const placeholders = statuses.map(() => '?').join(', ');
+    const sources = Array.isArray(source) ? source : [source];
+    const statusPlaceholders = statuses.map(() => '?').join(', ');
+    const sourcePlaceholders = sources.map(() => '?').join(', ');
     const result = await env.DB.prepare(
-        `SELECT * FROM drafts WHERE chat_id = ? AND source = ? AND status IN (${placeholders}) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+        `SELECT * FROM drafts WHERE chat_id = ? AND source IN (${sourcePlaceholders}) AND status IN (${statusPlaceholders}) ORDER BY created_at DESC LIMIT ? OFFSET ?`
     )
-        .bind(chatId, source, ...statuses, limit, offset)
+        .bind(chatId, ...sources, ...statuses, limit, offset)
         .all<Draft>();
     return result.results || [];
 }
@@ -151,12 +153,14 @@ export async function getHandwriteDraftCount(env: Env, chatId: string): Promise<
 /**
  * Count drafts by source
  */
-export async function countDraftsBySource(env: Env, chatId: string, source: string, statuses: string[]): Promise<number> {
-    const placeholders = statuses.map(() => '?').join(', ');
+export async function countDraftsBySource(env: Env, chatId: string, source: string | string[], statuses: string[]): Promise<number> {
+    const sources = Array.isArray(source) ? source : [source];
+    const statusPlaceholders = statuses.map(() => '?').join(', ');
+    const sourcePlaceholders = sources.map(() => '?').join(', ');
     const result = await env.DB.prepare(
-        `SELECT COUNT(*) as count FROM drafts WHERE chat_id = ? AND source = ? AND status IN (${placeholders})`
+        `SELECT COUNT(*) as count FROM drafts WHERE chat_id = ? AND source IN (${sourcePlaceholders}) AND status IN (${statusPlaceholders})`
     )
-        .bind(chatId, source, ...statuses)
+        .bind(chatId, ...sources, ...statuses)
         .first<{ count: number }>();
     return result?.count || 0;
 }

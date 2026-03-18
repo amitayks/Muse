@@ -428,10 +428,13 @@ async function handleGitHubTokenInput(
             return;
         }
 
+        // Extract GitHub username from response
+        const userData = await response.json() as { login: string };
+
         // Encrypt and store
         const encrypted = await encrypt(env, token);
         await storeEncryptedKey(env, chatId, 'github_token_enc', encrypted);
-        await updateUser(env, chatId, { has_github: 1 });
+        await updateUser(env, chatId, { has_github: 1, github_username: userData.login });
     } catch (error) {
         const view = renderKeyError('GitHub', 'Could not validate token. Please try again.', lang);
         if (stepMessageId) {

@@ -58,7 +58,7 @@ export async function confirmDeleteDraftAction(
     if (listType) {
         const ps = await getPageSize(env, chatId);
         let total: number;
-        if (listType === 'auto') total = await countDraftsBySource(env, chatId, 'auto', ['draft']);
+        if (listType === 'auto') total = await countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']);
         else if (listType === 'handwrite') total = await countDraftsBySource(env, chatId, 'handwrite', ['draft']);
         else total = await countDrafts(env, chatId, listType as any);
         const totalPages = Math.ceil(total / ps);

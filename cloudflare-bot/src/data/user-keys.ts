@@ -4,7 +4,7 @@
 
 import type { Env } from '../types';
 import { decrypt } from '../infra/crypto';
-import { getUserEncryptedKeys } from './user-db';
+import { getUserEncryptedKeys, getUser } from './user-db';
 
 /**
  * Resolve a user's decrypted API keys from D1.
@@ -68,5 +68,13 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
  */
 export async function hydrateEnv(env: Env, chatId: string): Promise<Env> {
     const userKeys = await getUserKeys(env, chatId);
-    return { ...env, ...userKeys, ADMIN_CHAT_ID: env.TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ID: chatId } as Env;
+    const hydrated = { ...env, ...userKeys, ADMIN_CHAT_ID: env.TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ID: chatId } as Env;
+
+    // Populate GITHUB_OWNER from stored github_username
+    const user = await getUser(env, chatId);
+    if (user?.github_username) {
+        hydrated.GITHUB_OWNER = user.github_username;
+    }
+
+    return hydrated;
 }

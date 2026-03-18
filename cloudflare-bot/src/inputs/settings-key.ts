@@ -70,6 +70,7 @@ export async function settingsKeyInput(
         await storeEncryptedKey(env, chatId, 'x_access_secret_enc', await encrypt(env, accessSecret));
         await updateUser(env, chatId, { has_x: 1 });
     } else if (service === 'github') {
+        let githubUsername: string | undefined;
         try {
             const response = await fetch('https://api.github.com/user', {
                 headers: {
@@ -84,6 +85,8 @@ export async function settingsKeyInput(
                     keyboard: [[backButton]],
                 };
             }
+            const userData = await response.json() as { login: string };
+            githubUsername = userData.login;
         } catch {
             return {
                 text: t(lang, 'settingsKeys.githubValidationError'),
@@ -91,7 +94,7 @@ export async function settingsKeyInput(
             };
         }
         await storeEncryptedKey(env, chatId, 'github_token_enc', await encrypt(env, text));
-        await updateUser(env, chatId, { has_github: 1 });
+        await updateUser(env, chatId, { has_github: 1, github_username: githubUsername });
     } else if (service === 'instagram') {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length !== 2) {

@@ -27,7 +27,7 @@ const statusEmoji: Record<string, string> = {
 
 export async function renderDraftCategories(env: Env, chatId: string, lang: Lang = 'en'): Promise<ViewResult> {
     const [autoCount, handwriteCount, repostCount, approvedCount, scheduledCount, publishedCount] = await Promise.all([
-        countDraftsForType(env, chatId, 'auto'),
+        countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']),
         getHandwriteDraftCount(env, chatId),
         countDraftsBySource(env, chatId, 'repost', ['draft']),
         countDrafts(env, chatId, 'approved'),
@@ -68,7 +68,7 @@ ${t(lang, 'drafts.selectCategory')}`,
 
 async function countDraftsForType(env: Env, chatId: string, type: DraftListType): Promise<number> {
     if (type === 'auto') {
-        return countDraftsBySource(env, chatId, 'auto', ['draft']);
+        return countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']);
     }
     if (type === 'approved') return countDrafts(env, chatId, 'approved');
     if (type === 'scheduled') return countDrafts(env, chatId, 'scheduled');
@@ -84,8 +84,8 @@ export async function renderDraftsList(env: Env, chatId: string, page = 0, listT
 
     if (listType === 'auto') {
         [drafts, total] = await Promise.all([
-            getDraftsBySource(env, chatId, 'auto', ['draft'], limit, offset),
-            countDraftsBySource(env, chatId, 'auto', ['draft']),
+            getDraftsBySource(env, chatId, ['auto', 'commit'], ['draft'], limit, offset),
+            countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']),
         ]);
     } else if (listType === 'approved') {
         drafts = await getAllDrafts(env, chatId, 'approved', limit, offset);

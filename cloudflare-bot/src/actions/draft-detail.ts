@@ -2,7 +2,6 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent } from '../types';
 import type { Lang } from '../ui/strings';
 import { getDraft, getChatState, parseContext, updateChatState, getTimezone } from '../data/db';
-import { ensureImage } from '../data/storage';
 import { editMessage, editMessageCaption, deleteMessage, sendPhoto, sendMediaGroup } from '../integrations/telegram';
 import { renderDraftDetail, renderError } from '../views';
 import { truncateHtml } from '../ui/utils';
@@ -51,28 +50,9 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
     if (perTweetMediaUrls.length > 0) {
         // Per-tweet media takes priority — use first image as primary
         imageUrl = perTweetMediaUrls[0];
-    } else {
-        // Fall back to existing ensureImage behavior
-        const shouldEnsureImage = draft.source !== 'handwrite' || !!content.imagePrompt;
-        if (shouldEnsureImage) {
-            if (messageId && !draft.image_url) {
-                try {
-                    await editMessage(env, chatId, messageId, '⏳ <b>Retrieving your draft...</b>');
-                } catch {
-                    try {
-                        await editMessageCaption(env, chatId, messageId, '⏳ <b>Retrieving your draft...</b>');
-                    } catch { /* ignore — loading state is non-critical */ }
-                }
-            }
-            try {
-                const ensuredUrl = await ensureImage(env, chatId, draft);
-                if (ensuredUrl) {
-                    imageUrl = `${env.WORKER_URL}${ensuredUrl}`;
-                }
-            } catch (imgError) {
-                console.error('Image generation failed:', sanitizeError(imgError));
-            }
-        }
+    } else if (draft.image_url && env.WORKER_URL) {
+        // Use existing image if one was generated at creation time
+        imageUrl = `${env.WORKER_URL}/image/${draft.image_url}`;
     }
 
     // Capture origin list info before overwriting state
