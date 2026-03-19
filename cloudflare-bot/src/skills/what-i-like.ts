@@ -59,7 +59,7 @@ Respond ONLY with valid JSON:
 
 Constraints:
 - Score is an integer 1-10
-- Reason is one sentence, max 120 characters
+- Reason is one sentence
 - Reason must name which evaluation channel(s) activated and why, grounded in personal identity
 - Score every tweet in the batch — no skipping`;
 
@@ -124,36 +124,6 @@ export const WHAT_I_LIKE_HE = `אני עובר על באצ' של פוסטים ו
 
 אילוצים:
 - ציון הוא מספר שלם 1-10
-- סיבה היא משפט אחד, מקסימום 120 תווים
+- סיבה היא משפט אחד
 - הסיבה חייבת לציין אילו ערוצי הערכה הופעלו ולמה, מעוגנת בזהות אישית
 - לדרג כל ציוץ באצ' — בלי דילוגים`;
-
-// ============================================================
-// IMPLEMENTATION NOTES — adjustments needed in the bot
-// ============================================================
-// 1. REASON → QUOTE PIPELINE:
-//    The "reason" field now contains which psychological channels
-//    activated (e.g., "challenges my assumption about X"). This
-//    should be passed as context to the /quote skill when generating
-//    a quote tweet, so Gemini knows the emotional entry point and
-//    doesn't start from scratch analyzing why the user cares.
-//
-// 2. REASON CHAR LIMIT:
-//    Changed from 100 → 120 chars. If there's validation elsewhere
-//    in the codebase that enforces the old 100 limit, update it.
-//
-// 3. SCORE → ENGAGEMENT TYPE MAPPING:
-//    The scoring bands now map to predicted behavior (9-10 = immediate
-//    quote, 7-8 = likely quote, 5-6 = maybe like, 3-4 = scroll past,
-//    1-2 = noise). The notification/filtering logic could use these
-//    bands to decide what to surface to the user:
-//      - 9-10: auto-notify user, high priority
-//      - 7-8: notify user, normal priority
-//      - 5-6: queue silently, show if user checks
-//      - 1-4: don't surface
-//
-// 4. AUTHOR PERSONA INJECTION:
-//    The skill now explicitly uses persona context about the tweet
-//    author. Make sure the persona data (from /persona skill) is
-//    passed alongside the tweets in the scoring batch.
-// ============================================================

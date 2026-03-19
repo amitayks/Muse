@@ -768,6 +768,7 @@ export interface ComposeSourceTweet {
     isThread: boolean;
     metrics?: { likes: number; retweets: number; replies: number; quotes: number };
     tweetUrl: string;
+    relevanceReason?: string | null;
 }
 
 export interface ComposeSourceCommit {

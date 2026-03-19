@@ -21,12 +21,20 @@ export function buildRepostUserPrompt(params: {
     threadText?: string;
     userTweets?: string[];
     instruction?: string;
+    relevanceReason?: string | null;
 }): string {
     const parts: string[] = [];
 
     parts.push(`ORIGINAL TWEET by @${params.authorUsername}${params.isThread ? ' (Thread)' : ''}:`);
     parts.push(params.originalTweet);
     parts.push('');
+
+    // Scoring reason as emotional entry point context
+    if (params.relevanceReason) {
+        parts.push('WHAT CAUGHT MY ATTENTION:');
+        parts.push(params.relevanceReason);
+        parts.push('');
+    }
 
     // Full thread context (when available)
     if (params.threadText) {

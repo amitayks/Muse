@@ -40,7 +40,11 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
 
     // Generate content (with media if enabled) — use account's analyzeMedia setting
     const imageUrl = config.analyzeMedia ? tweet.media_url : null;
-    const content = await generateRepostContent(ctx.env, tweet, account.id, config, undefined, imageUrl, ctx.lang || 'en');
+    const content = await generateRepostContent(ctx.env, tweet, account.id, config, {
+        imageUrl,
+        language: ctx.lang || 'en',
+        relevanceReason: tweet.relevance_reason,
+    });
     if (!content) {
         return renderError('Failed to generate content. Please try again.', lang);
     }
@@ -128,9 +132,6 @@ export async function rebuildBatchMessage(env: import('../types').Env, chatId: s
             lines.push(`<a href="${tweet.tweet_url}">${previewText}</a>`);
         } else {
             lines.push(previewText);
-        }
-        if (tweet.relevance_reason) {
-            lines.push(`<i>${tweet.relevance_reason}</i>`);
         }
         lines.push('');
 

@@ -5,6 +5,28 @@
  * for tweets that score above the threshold on auto-approve accounts.
  */
 
+// ============================================================
+// TODO: SCORE-BAND AUTO-APPROVE
+// ============================================================
+// The what-i-like skill defines behavioral bands that predict
+// engagement type. Currently autoApprove is a boolean + threshold.
+// Future: use score bands to decide auto-approve behavior:
+//
+//   9-10: Auto-approve immediately (user would engage on sight)
+//   7-8:  Notify with high priority (user would likely quote)
+//   5-6:  Queue silently (user might like, unlikely to quote)
+//   1-4:  Don't surface (noise)
+//
+// This would replace the current binary autoApprove toggle with
+// a per-band action configuration. The threshold would become
+// the floor for "notify" rather than "auto-approve".
+//
+// Related files:
+//   - services/batch-notification.ts (notification priority tiers)
+//   - skills/what-i-like.ts (scoring calibration bands)
+//   - types.ts (TwitterAccountConfig.autoApprove, .relevanceThreshold)
+// ============================================================
+
 import type { Env, TwitterAccount, TwitterTweet } from '../types';
 import { parseTwitterAccountConfig, updateTwitterTweet, createDraft } from '../data/db';
 import { getUser } from '../data/user-db';
@@ -59,7 +81,10 @@ async function generateAndApproveDraft(
 
     const imageUrl = config.analyzeMedia ? tweet.media_url : null;
     // Pass undefined for personaOverride — lets repost-generate fetch from account overview
-    const content = await generateRepostContent(env, tweet, account.id, config, undefined, imageUrl);
+    const content = await generateRepostContent(env, tweet, account.id, config, {
+        imageUrl,
+        relevanceReason: tweet.relevance_reason,
+    });
     if (!content) {
         console.error(`[auto-approve] No content generated for tweet ${tweet.id}`);
         return;

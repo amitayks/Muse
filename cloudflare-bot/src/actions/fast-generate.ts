@@ -39,9 +39,11 @@ export async function fastGenerateAction(ctx: HandlerContext & { extra?: string 
     // Source image: use user's analyze_source_image setting
     const imageUrl = defaults.analyzeSourceImage ? tweet.media_url : null;
 
-    const content = await generateRepostContent(
-        ctx.env, tweet, account.id, config, undefined, imageUrl, lang,
-    );
+    const content = await generateRepostContent(ctx.env, tweet, account.id, config, {
+        imageUrl,
+        language: lang,
+        relevanceReason: tweet.relevance_reason,
+    });
     if (!content) {
         return renderError('Failed to generate content. Please try again.', lang);
     }

@@ -5,6 +5,28 @@
  * and stores the batch_message_id for later edit-in-place.
  */
 
+// ============================================================
+// TODO: NOTIFICATION PRIORITY TIERS
+// ============================================================
+// The what-i-like skill defines behavioral bands that predict
+// engagement type. Currently all tweets above threshold are
+// notified equally. Future: use score bands for priority tiers:
+//
+//   9-10: Immediate notification, high priority (separate message)
+//   7-8:  Normal batch notification
+//   5-6:  Queue silently, show only if user checks
+//   1-4:  Don't surface (filtered by threshold)
+//
+// High-priority tweets (9-10) could get their own notification
+// with a pre-generated draft, while normal-priority tweets
+// continue to use the current batch format.
+//
+// Related files:
+//   - services/auto-approve.ts (score-band auto-approve)
+//   - skills/what-i-like.ts (scoring calibration bands)
+//   - types.ts (TwitterAccountConfig.relevanceThreshold)
+// ============================================================
+
 import type { Env, TwitterAccount, TwitterTweet } from '../types';
 import { parseTwitterAccountConfig, updateTwitterTweet, getPageSize } from '../data/db';
 import { sendMessage } from '../integrations/telegram';
@@ -95,9 +117,6 @@ export function buildBatchPage(
             lines.push(`<a href="${tweet.tweet_url}">${previewText}</a>`);
         } else {
             lines.push(previewText);
-        }
-        if (tweet.relevance_reason) {
-            lines.push(`<i>${tweet.relevance_reason}</i>`);
         }
         lines.push('');
     }

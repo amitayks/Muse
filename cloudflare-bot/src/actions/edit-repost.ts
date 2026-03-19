@@ -58,6 +58,7 @@ export async function editRepostAction(ctx: HandlerContext & { extra?: string })
         isThread: tweet.is_thread === 1,
         metrics,
         tweetUrl,
+        relevanceReason: tweet.relevance_reason,
     };
 
     // Read user's repost defaults to initialize compose toggles

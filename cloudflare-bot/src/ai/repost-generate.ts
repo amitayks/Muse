@@ -12,28 +12,33 @@ import { assembleSystemInstruction } from './prompts';
 import { callGeminiText } from './gemini';
 import type { ImagePart } from './gemini';
 
+export interface RepostOptions {
+    personaOverride?: string | null;
+    imageUrl?: string | null;
+    language?: string;
+    userTweets?: string[];
+    instruction?: string;
+    threadText?: string;
+    userImageParts?: ImagePart[];
+    relevanceReason?: string | null;
+}
+
 /**
  * Generate repost content for a tweet
- *
- * Extended parameters (optional) support compose mode:
- * - userTweets: user-written "initial thoughts" from compose buffer
- * - instruction: user instruction for the AI
- * - threadText: full thread context (concatenated text of thread tweets)
- * - userImageParts: pre-built image parts from user-attached images
  */
 export async function generateRepostContent(
     env: Env,
     tweet: TwitterTweet,
     accountId: string,
     config: TwitterAccountConfig,
-    personaOverride?: string | null,
-    imageUrl?: string | null,
-    language?: string,
-    userTweets?: string[],
-    instruction?: string,
-    threadText?: string,
-    userImageParts?: ImagePart[],
+    options?: RepostOptions,
 ): Promise<DraftContent | null> {
+    const {
+        personaOverride, imageUrl, language,
+        userTweets, instruction, threadText,
+        userImageParts, relevanceReason,
+    } = options || {};
+
     // Load persona context — use override if provided, else fetch from followed account only
     let persona: string | undefined;
 
@@ -50,11 +55,12 @@ export async function generateRepostContent(
         isThread: tweet.is_thread === 1,
         language: language || 'en',
         persona,
-        recentTweets: [], // No tweet history — identity system replaces this context
+        recentTweets: [],
         hasImage: !!imageUrl,
         threadText,
         userTweets,
         instruction,
+        relevanceReason,
     });
 
     const repostSystemPrompt = await assembleSystemInstruction(env, tweet.chat_id, 'quote', language || 'en');

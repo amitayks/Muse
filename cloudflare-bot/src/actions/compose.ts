@@ -258,12 +258,15 @@ async function handleRepostPenDown(
 
             const userImageParts = await buildUserImageParts(env, compose, allOriginalMedia);
 
-            const generated = await generateRepostContent(
-                env, tweetData, compose.sourceAccountId || '', config,
-                undefined, sourceTweet.mediaUrl,
-                lang, userTweetTexts, compose.instruction, sourceTweet.threadText,
+            const generated = await generateRepostContent(env, tweetData, compose.sourceAccountId || '', config, {
+                imageUrl: sourceTweet.mediaUrl,
+                language: lang,
+                userTweets: userTweetTexts,
+                instruction: compose.instruction,
+                threadText: sourceTweet.threadText,
                 userImageParts,
-            );
+                relevanceReason: sourceTweet.relevanceReason,
+            });
 
             if (generated) {
                 content = generated;

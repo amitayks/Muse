@@ -97,9 +97,11 @@ export const rpGenAction: ActionHandler = async (ctx) => {
     };
 
     // Generate content (with image if available)
-    const content = await generateRepostContent(
-        ctx.env, tweetObj, followedAccount?.id || '', effectiveConfig, persona, preview.media_url, lang
-    );
+    const content = await generateRepostContent(ctx.env, tweetObj, followedAccount?.id || '', effectiveConfig, {
+        personaOverride: persona,
+        imageUrl: preview.media_url,
+        language: lang,
+    });
 
     if (!content) {
         if (ctx.messageId) {

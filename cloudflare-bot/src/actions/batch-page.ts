@@ -54,9 +54,6 @@ export const batchPageAction: ActionHandler = async (ctx) => {
 
         lines.push(`${scoreEmoji} <b>@${account.username}</b> (${score}/10)${threadLabel}`);
         lines.push(`${preview}${tweet.text.length > 80 ? '...' : ''}`);
-        if (tweet.relevance_reason) {
-            lines.push(`<i>${tweet.relevance_reason}</i>`);
-        }
         lines.push('');
     }
 
