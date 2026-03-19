@@ -83,8 +83,77 @@ export class GitHubTokenMissingError extends Error {
 }
 
 /**
+ * Search user's recent push events for a commit SHA.
+ * Works for any branch and fork — not subject to search indexing limitations.
+ * Note: only finds commits pushed by the user themselves (not by bots/apps).
+ */
+async function findCommitInEvents(env: Env, sha: string): Promise<string | null> {
+    if (!env.GITHUB_OWNER) return null;
+
+    try {
+        for (let page = 1; page <= 3; page++) {
+            const events = await githubFetch<Array<{
+                type: string;
+                repo: { name: string };
+                payload: { commits?: Array<{ sha: string }> };
+            }>>(env, `/users/${env.GITHUB_OWNER}/events?per_page=100&page=${page}`);
+
+            if (events.length === 0) break;
+
+            for (const event of events) {
+                if (event.type !== 'PushEvent' || !event.payload.commits) continue;
+                for (const commit of event.payload.commits) {
+                    if (commit.sha.startsWith(sha) || sha.startsWith(commit.sha)) {
+                        return event.repo.name;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Events API error:', error);
+    }
+
+    return null;
+}
+
+/**
+ * Search user's repos by trying direct commit lookup on each.
+ * Most reliable fallback — works for any branch, fork, and regardless of who pushed.
+ */
+async function findCommitInRepos(env: Env, sha: string): Promise<string | null> {
+    if (!env.GITHUB_OWNER) return null;
+
+    try {
+        const repos = await githubFetch<Array<{ full_name: string }>>(
+            env,
+            `/users/${env.GITHUB_OWNER}/repos?type=all&sort=pushed&per_page=30`
+        );
+        console.log(`[repoScan] checking ${repos.length} repos for ${sha.substring(0, 7)}`);
+
+        for (const repo of repos) {
+            const response = await fetch(`${GITHUB_API}/repos/${repo.full_name}/commits/${sha}`, {
+                headers: {
+                    Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+                    Accept: 'application/vnd.github.v3+json',
+                    'User-Agent': 'content-bot',
+                },
+            });
+
+            if (response.ok) {
+                console.log(`[repoScan] FOUND in ${repo.full_name}`);
+                return repo.full_name;
+            }
+        }
+    } catch (error) {
+        console.error('Repo scan error:', error);
+    }
+
+    return null;
+}
+
+/**
  * Search for a commit by SHA across the user's accessible repos.
- * Never falls back to unscoped search to prevent returning other users' commits.
+ * Strategy: Search API → Events API → Repo scan (direct commit lookup on each repo).
  */
 async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; commit: CommitSearchResult['items'][0] } | null> {
     if (!env.GITHUB_TOKEN) {
@@ -94,6 +163,7 @@ async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; c
     try {
         // If GITHUB_OWNER is set, search scoped to that owner
         if (env.GITHUB_OWNER) {
+            // Strategy 1: Search API (fast, works for default branch on non-fork repos)
             const searchResult = await githubFetch<CommitSearchResult>(
                 env,
                 `/search/commits?q=hash:${sha}+author:${env.GITHUB_OWNER}`
@@ -117,6 +187,21 @@ async function findCommitBysha(env: Env, sha: string): Promise<{ repo: string; c
                     commit: broaderSearch.items[0],
                 };
             }
+
+            // Strategy 2: Events API → Repo scan (forks + non-default branches)
+            const matchedRepo = await findCommitInEvents(env, sha) || await findCommitInRepos(env, sha);
+            if (matchedRepo) {
+                const commit = await getCommit(env, matchedRepo, sha);
+                return {
+                    repo: matchedRepo,
+                    commit: {
+                        sha: commit.sha,
+                        repository: { full_name: matchedRepo },
+                        commit: commit.commit,
+                        author: commit.author,
+                    },
+                };
+            }
         }
 
         // No GITHUB_OWNER set — cannot scope search, return null rather than risk
@@ -137,29 +222,18 @@ export async function getCommit(env: Env, repo: string, sha: string): Promise<Gi
 }
 
 /**
- * Find the PR that contains a specific commit
+ * Find the PR that contains a specific commit (repo must already be known)
  */
-export async function getPRForCommit(env: Env, sha: string): Promise<{ repo: string; pr: PRData } | null> {
-    // First find which repo has this commit
-    const found = await findCommitBysha(env, sha);
-    if (!found) {
-        return null;
-    }
-
-    const { repo } = found;
-
+async function findPRForCommit(env: Env, repo: string, sha: string): Promise<PRData | null> {
     try {
-        // Use the GitHub API to find PRs associated with this commit
         const prs = await githubFetch<{ number: number; merged_at: string | null }[]>(
             env,
             `/repos/${repo}/commits/${sha}/pulls`
         );
 
-        // Find merged PRs
         const mergedPRs = prs.filter(pr => pr.merged_at !== null);
 
         if (mergedPRs.length === 0) {
-            // Fallback: try search API
             const searchResult = await githubFetch<{ items: { number: number }[] }>(
                 env,
                 `/search/issues?q=repo:${repo}+is:pr+is:merged+${sha}`
@@ -169,13 +243,10 @@ export async function getPRForCommit(env: Env, sha: string): Promise<{ repo: str
                 return null;
             }
 
-            const pr = await getPR(env, repo, searchResult.items[0].number);
-            return { repo, pr };
+            return getPR(env, repo, searchResult.items[0].number);
         }
 
-        // Get full PR details
-        const pr = await getPR(env, repo, mergedPRs[0].number);
-        return { repo, pr };
+        return getPR(env, repo, mergedPRs[0].number);
     } catch (error) {
         console.error('PR lookup error:', error);
         return null;
@@ -216,21 +287,10 @@ export async function getPR(env: Env, repo: string, number: number): Promise<PRD
 }
 
 /**
- * Get commit data with stats (for direct commits)
+ * Get commit data with stats (repo must already be known)
  */
-export async function getCommitData(env: Env, sha: string): Promise<CommitData> {
-    // First find which repo has this commit
-    const found = await findCommitBysha(env, sha);
-    if (!found) {
-        throw new Error(`Commit ${sha} not found in any accessible repo`);
-    }
-
-    const { repo, commit: searchCommit } = found;
-
-    // Get full commit details from the repo
+async function buildCommitData(env: Env, repo: string, sha: string, searchAuthor?: string | null): Promise<CommitData> {
     const commit = await getCommit(env, repo, sha);
-
-    // Parse commit message: first line is title, rest is body
     const [title, ...bodyLines] = commit.commit.message.split('\n');
 
     return {
@@ -242,30 +302,34 @@ export async function getCommitData(env: Env, sha: string): Promise<CommitData> 
         files_changed: commit.files?.length || 0,
         additions: commit.stats?.additions || 0,
         deletions: commit.stats?.deletions || 0,
-        author: commit.author?.login || searchCommit.author?.login || commit.commit.author.name,
+        author: commit.author?.login || searchAuthor || commit.commit.author.name,
         date: commit.commit.author.date,
     };
 }
 
 /**
- * Get content source - tries PR first, falls back to direct commit
- * Returns a ContentSource that can be used for content generation
+ * Get content source - finds repo once, tries PR, falls back to direct commit.
  */
 export async function getContentSource(env: Env, sha: string): Promise<ContentSource> {
-    // First, try to find a PR for this commit
-    const result = await getPRForCommit(env, sha);
-
-    if (result) {
-        console.log(`Found PR #${result.pr.number} in repo ${result.repo}`);
-        return { type: 'pr', data: result.pr, repo: result.repo };
+    // Step 1: Find which repo has this commit (single lookup)
+    const found = await findCommitBysha(env, sha);
+    if (!found) {
+        throw new Error(`Commit ${sha} not found in any accessible repo`);
     }
 
-    // Fallback: use commit data directly
+    const { repo, commit: searchCommit } = found;
+
+    // Step 2: Try to find a PR for this commit
+    const pr = await findPRForCommit(env, repo, sha);
+    if (pr) {
+        console.log(`Found PR #${pr.number} in repo ${repo}`);
+        return { type: 'pr', data: pr, repo };
+    }
+
+    // Step 3: Fallback to direct commit data
     console.log('No PR found, using commit data directly');
-    // Try to find repo name for the commit
-    const found = await findCommitBysha(env, sha);
-    const commitData = await getCommitData(env, sha);
-    return { type: 'commit', data: commitData, repo: found?.repo };
+    const commitData = await buildCommitData(env, repo, sha, searchCommit.author?.login);
+    return { type: 'commit', data: commitData, repo };
 }
 
 // ==================== OVERVIEW BOOTSTRAP ====================
