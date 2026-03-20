@@ -352,7 +352,9 @@ export async function refineContent(
         userPrompt = userPromptText;
     }
 
-    const responseText = await callGeminiText(env, systemPrompt, userPrompt);
+    const responseText = await callGeminiText(env, systemPrompt, userPrompt, {
+        tools: [{ googleSearch: {} }],
+    });
     const result = parseContentResponse(responseText).content;
 
     // Strip imagePrompt if not requested

@@ -74,6 +74,7 @@ TASK PROTOCOL
 
 The imagePrompt field in the parent skill's JSON output:
 {
+  ...
   "imagePrompt": {
     "concept": {
       "main_subject": "The ONE visual metaphor. Concrete, vivid, born from my way of seeing this content.",

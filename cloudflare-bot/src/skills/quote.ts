@@ -57,7 +57,6 @@ Respond ONLY with valid JSON:
 {
   "format": "single",
   "tweets": [{ "text": "...", "index": 0 }],
-  "imagePrompt": null
 }`;
 
 export const QUOTE_HE = `משהו פשוט נחת מולי והראש שלי כבר זז. ראיתי את הפוסט הזה, משהו בו הפעיל אותי, ועכשיו אני צריך להבין מה בדיוק אני רוצה להגיד.
@@ -119,5 +118,4 @@ export const QUOTE_HE = `משהו פשוט נחת מולי והראש שלי כ�
 {
   "format": "single",
   "tweets": [{ "text": "...", "index": 0 }],
-  "imagePrompt": null
 }`;
