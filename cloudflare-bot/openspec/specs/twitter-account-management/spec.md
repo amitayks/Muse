@@ -41,11 +41,11 @@ The `drafts` table SHALL have two new columns: `original_tweet_id` (TEXT) and `o
 - **THEN** the system SHALL skip draft creation
 
 ### Requirement: TwitterAccountConfig type
-The system SHALL define a `TwitterAccountConfig` interface with fields: `includeHashtags` (boolean), `alwaysGenerateImage` (boolean), `singleImageProbability` (number 0-1), `relevanceThreshold` (number 1-10, default 6), `tone` (string — e.g. 'professional', 'casual', 'analytical', 'enthusiastic', 'witty'), `autoApprove` (boolean, default false). The `language` field is NOT included — language is a global user-level setting stored in the `users` table.
+The system SHALL define a `TwitterAccountConfig` interface with fields: `relevanceThreshold` (number 1-10, default 6), `autoApprove` (boolean, default false), `analyzeMedia` (boolean, default true). The `language` field is NOT included — language is a global user-level setting stored in the `users` table.
 
 #### Scenario: Default config
 - **WHEN** a new account is added without custom config
-- **THEN** it SHALL use defaults: includeHashtags=true, alwaysGenerateImage=false, singleImageProbability=0.3, relevanceThreshold=6, tone='professional', autoApprove=false
+- **THEN** it SHALL use defaults: relevanceThreshold=6, autoApprove=false, analyzeMedia=true
 
 ### Requirement: Add account by @username
 The system SHALL validate an @username input, look up the X user via API (`GET /2/users/by/username/:username`), and create a `twitter_accounts` record with the resolved `user_id` and `display_name`.
@@ -59,15 +59,20 @@ The system SHALL validate an @username input, look up the X user via API (`GET /
 - **THEN** the system SHALL respond with "Account not found" error
 
 ### Requirement: Account detail settings view
-The account detail view SHALL display the account info and toggle buttons for all configurable settings: follow/unfollow, Bootstrap Overview, hashtags (on/off toggle), image generation (on/off toggle), image probability (cycle: 0/30/50/70/100%), relevance threshold (cycle: 1-10), tone (cycle through options), auto-approve (on/off toggle). The language toggle button SHALL NOT be included (language is now a global user setting).
+The account detail view SHALL display the account info and toggle buttons for configurable settings: follow/unfollow, Bootstrap Overview, relevance threshold (cycle: 1-10), auto-approve (on/off toggle), analyze media (on/off toggle).
 
 #### Scenario: Toggle relevance threshold
 - **WHEN** user clicks the relevance threshold button
 - **THEN** the value SHALL increment by 1, wrapping from 10 back to 1
 
-#### Scenario: Toggle tone
-- **WHEN** user clicks the tone button
-- **THEN** the value SHALL cycle through: professional → casual → analytical → enthusiastic → witty → professional
+#### Scenario: Toggle auto-approve
+- **WHEN** user clicks the auto-approve button
+- **THEN** the value SHALL toggle between on and off
+
+#### Scenario: Toggle analyze media
+- **WHEN** user clicks the analyze media button
+- **THEN** the value SHALL toggle between on and off
+- **AND** when enabled, tweet images/media will be analyzed by the AI during scoring and generation
 
 #### Scenario: Bootstrap overview button
 - **WHEN** user clicks "Bootstrap Overview"

@@ -9,7 +9,7 @@ The X/Twitter step SHALL be the first credential step after welcome. It SHALL di
 
 #### Scenario: User provides valid X keys
 - **WHEN** user sends a 4-line message during `onboarding_step = 'x_keys'`
-- **THEN** the message is deleted, all 4 values are encrypted and stored separately, a `verifyCredentials()` test call validates them, `has_x` is set to 1, and onboarding advances to `onboarding_step = 'identity'`
+- **THEN** the message is deleted, all 4 values are encrypted and stored separately, a `verifyCredentials()` test call validates them, `has_x` is set to 1, and onboarding advances to `onboarding_step = 'instagram'`
 
 #### Scenario: X key message has wrong number of lines
 - **WHEN** user sends a message with fewer or more than 4 lines during `onboarding_step = 'x_keys'`
@@ -23,8 +23,19 @@ The X/Twitter step SHALL be the first credential step after welcome. It SHALL di
 - **WHEN** user clicks "Skip" on the X keys step
 - **THEN** the system SHALL skip the identity step entirely and advance to `onboarding_step = 'instagram'`. The system SHALL NOT store any identity data — the user will use the skeleton default via `getPrompt` fallback to `default_prompts('identity', lang)`.
 
-### Requirement: Step 2 — Identity analysis immediately after X connection
-When X is connected, the identity analysis step SHALL be shown immediately after X success. The step SHALL display what the analysis does, list the aspects it examines (writing style, vocabulary, tone, emotional patterns, interests), and show cost transparency indicating the approximate number of tweets and AI calls used. If X was skipped, this step SHALL NOT be shown at all.
+### Requirement: Instagram credentials step
+After X keys, the onboarding flow SHALL include an Instagram credentials step where users can optionally connect their Instagram Business Account.
+
+#### Scenario: Instagram step shown after X
+- **WHEN** X keys are validated (or skipped) and onboarding advances to `onboarding_step = 'instagram'`
+- **THEN** the Instagram step is displayed with instructions for connecting an Instagram Business Account
+
+#### Scenario: User skips Instagram
+- **WHEN** user clicks "Skip" on the Instagram step
+- **THEN** onboarding advances to the next step (identity if X was connected, or gemini_key if X was skipped)
+
+### Requirement: Step 3 — Identity analysis after Instagram step
+When X is connected, the identity analysis step SHALL be shown after the Instagram step. The step SHALL display what the analysis does, list the aspects it examines (writing style, vocabulary, tone, emotional patterns, interests), and show cost transparency indicating the approximate number of tweets and AI calls used. If X was skipped, this step SHALL NOT be shown at all.
 
 #### Scenario: Identity step shown after X connection
 - **WHEN** X keys are validated and stored, and onboarding advances to `onboarding_step = 'identity'`

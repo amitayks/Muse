@@ -78,10 +78,6 @@ The system SHALL send a multi-scene payload to the Avatar IV endpoint to create 
 - **AND** each scene MAY have different `voice.emotion` and `custom_motion_prompt` values
 - **AND** HeyGen supports up to 50 scenes per video
 
-#### Scenario: Avatar style options
-- **WHEN** creating a video with Avatar IV
-- **THEN** `character.avatar_style` MAY be set to "normal" (default), "closeUp", or "circle"
-
 #### Scenario: Background configuration
 - **WHEN** a background color is configured
 - **THEN** `video_inputs[].background.type` SHALL be "color" and `video_inputs[].background.value` SHALL be the hex color (e.g., "#FFFFFF")

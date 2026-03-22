@@ -35,11 +35,11 @@ The system SHALL fetch the user's last 100 tweets via the X API using the user's
 - **THEN** the system SHALL display an error message and offer to retry or use the default identity
 
 ### Requirement: Identity Document storage
-The Identity Document SHALL be stored in the `user_prompts` table with `prompt_type = 'who-am-i'`. The user can view and edit the Identity Document content (the INFO — who they are). The analysis skill itself (`/who-am-i` prompt instructions) SHALL be admin-only editable, stored in `default_prompts` with `prompt_type = 'who-am-i'`.
+The Identity Document SHALL be stored in the `user_prompts` table with `prompt_type = 'identity'`. The user can view and edit the Identity Document content (the INFO — who they are). The analysis skill itself (`/who-am-i` prompt instructions) SHALL be admin-only editable, stored in `default_prompts` with `prompt_type = 'who-am-i'`. Note: `'who-am-i'` is the analysis SKILL that produces identity documents; `'identity'` is the resulting document type stored per-user.
 
 #### Scenario: Identity saved after analysis
 - **WHEN** Gemini produces an Identity Document for a user
-- **THEN** the document SHALL be stored in `user_prompts` with `chat_id`, `prompt_type = 'who-am-i'`, and the user's language
+- **THEN** the document SHALL be stored in `user_prompts` with `chat_id`, `prompt_type = 'identity'`, and the user's language
 
 #### Scenario: User edits identity info
 - **WHEN** a user modifies their Identity Document via the WebApp
@@ -54,7 +54,7 @@ The system SHALL provide a minimal default Identity Document for users who skip 
 
 #### Scenario: User selects "Use default" during onboarding
 - **WHEN** the user clicks "Use default" instead of "Understand who I am"
-- **THEN** the default skeleton identity SHALL be stored in `user_prompts` with `prompt_type = 'who-am-i'`
+- **THEN** the system SHALL NOT store any identity data in `user_prompts` — the user will use the skeleton default via `getPrompt` fallback to `default_prompts('identity', lang)`
 
 #### Scenario: Default identity used in generation
 - **WHEN** a user with the default identity triggers content generation
@@ -79,8 +79,8 @@ Every identity-attached skill (`/work-progress`, `/refine`, `/quote`, `/video`, 
 - **THEN** the system instruction sent to Gemini SHALL contain: [skill prompt] + [identity document] + [task protocol]
 
 #### Scenario: Content generation without custom identity
-- **WHEN** `generateContent()` is called for a user who has no custom identity (no row in `user_prompts` for `identity`)
-- **THEN** the system instruction SHALL fall back to the default skeleton identity from `default_prompts` — identity is always present, never skipped
+- **WHEN** `generateContent()` is called for a user who has no custom identity (no row in `user_prompts` for `'identity'`)
+- **THEN** the system instruction SHALL fall back to the default skeleton identity from `default_prompts('identity', lang)` — identity is always present, never skipped
 
 #### Scenario: Utility skills without identity
 - **WHEN** `/persona` or `/image-gen` skill is invoked

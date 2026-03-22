@@ -34,12 +34,28 @@ While in compose mode (`awaiting_input === 'handwrite'`), each text message the 
 - **AND** a tweet SHALL be buffered with the caption as text (or empty string if no caption) and the R2 key in `media[]`
 - **AND** the status message counter SHALL update
 
-#### Scenario: Multi-photo message groups into single tweet
-- **WHEN** user sends a multi-photo message (Telegram delivers as separate updates sharing `media_group_id`)
-- **THEN** all photos in the group SHALL be stored in R2 individually
-- **AND** all photos SHALL be appended to the same tweet's `media[]` array
-- **AND** only one tweet SHALL be created for the entire group
-- **AND** the caption from the first photo SHALL be used as the tweet text
+#### Scenario: First photo in a media group creates new tweet
+- **WHEN** a photo message arrives with `media_group_id: "X1"` and caption "Check this out"
+- **THEN** a new `ComposeTweet` SHALL be created with `text: "Check this out"`, `media: [{key, type:'photo'}]`, and `mediaGroupId: "X1"`
+- **AND** the photo SHALL be stored in R2
+
+#### Scenario: Subsequent photo in same group appends to existing tweet
+- **WHEN** a photo message arrives with `media_group_id: "X1"` and the last tweet in the buffer has `mediaGroupId: "X1"`
+- **THEN** the photo SHALL be appended to the last tweet's `media[]` array
+- **AND** no new tweet SHALL be created
+- **AND** the tweet's text SHALL NOT be overwritten (caption only appears on first message)
+
+#### Scenario: Photo in different group creates new tweet
+- **WHEN** a photo message arrives with `media_group_id: "Y2"` and the last tweet has `mediaGroupId: "X1"`
+- **THEN** a new tweet SHALL be created with `mediaGroupId: "Y2"`
+
+#### Scenario: Text message after media group creates new tweet
+- **WHEN** a text message (no photo) arrives after a media group
+- **THEN** a new tweet SHALL be created with the text (existing behavior preserved)
+
+#### Scenario: Media group with no caption
+- **WHEN** the first photo in a media group arrives without a caption
+- **THEN** the tweet's `text` SHALL be an empty string
 
 ### Requirement: Native message editing updates buffer
 The system SHALL handle `edited_message` Telegram updates to update previously buffered tweets during compose mode.

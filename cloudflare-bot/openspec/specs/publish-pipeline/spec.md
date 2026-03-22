@@ -293,7 +293,7 @@ Repost draft publishing SHALL follow the same image handling as existing drafts:
 - **THEN** the image SHALL be uploaded to X and attached to the quote tweet
 
 #### Scenario: Repost without image
-- **WHEN** a repost draft has no image and account config has `alwaysGenerateImage=false`
+- **WHEN** a repost draft has no image and user's `fast_generate_image` setting is off
 - **THEN** the quote tweet SHALL be posted without media
 
 ### Requirement: Quote tweet fallback on 403

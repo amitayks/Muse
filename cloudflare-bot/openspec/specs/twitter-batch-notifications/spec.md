@@ -16,17 +16,17 @@ Each item in the batch message SHALL show: `@username (star score/10)`, tweet te
 - **WHEN** a tweet from @vercel scores 9/10
 - **THEN** the item SHALL display: score emoji, `@vercel (⭐ 9/10)`, and the tweet text as a hyperlink to the original tweet URL
 - **AND** the `relevance_reason` SHALL NOT appear in the message
-- **AND** button row SHALL be: `[⚡ Fast]` `[✏️ Edit]`
+- **AND** button row SHALL be: `[⚡ Generate @{username}]` `[🔗 Open]`
 
 #### Scenario: Auto-approved item
 - **WHEN** an account has auto-approve and the tweet scores above threshold
-- **THEN** the item SHALL display: `@anthropic (⭐ 9/10) ✅ Auto-approved`, tweet text as hyperlink
+- **THEN** the item SHALL display: `@anthropic (⭐ 9/10) ✅ Auto-approved`, tweet text preview
 - **AND** the `relevance_reason` SHALL NOT appear in the message
 - **AND** button row SHALL be: `[✅ Generated]` linking to the draft
 
 #### Scenario: Thread item
 - **WHEN** a scored item is a thread (multiple tweets)
-- **THEN** the display SHALL indicate it: `@vercel (⭐ 8/10) 🧵 Thread (4 tweets)`, tweet text as hyperlink
+- **THEN** the display SHALL indicate it: `@vercel (⭐ 8/10) 🧵 Thread (4 tweets)`, tweet text preview
 - **AND** the `relevance_reason` SHALL NOT appear in the message
 
 #### Scenario: Already drafted item
@@ -51,7 +51,7 @@ Each `twitter_tweets` row that appears in a batch notification SHALL store the T
 - **WHEN** a batch notification is sent and returns message_id 5432
 - **THEN** all tweet rows in that batch SHALL have `batch_message_id=5432`
 
-> **Note:** The separate [Open Tweet] URL button has been removed. Tweet text is now rendered as a clickable hyperlink in the batch notification message text, providing the same functionality inline.
+> **Note:** Tweet text is shown as a truncated preview (80 chars) with a separate `[🔗 Open]` URL button linking to the original tweet.
 
 ### Requirement: Edit Repost opens compose session
 When the user clicks [✏️ Edit] on a batch item, the system SHALL open a full compose session for that tweet using data already stored in `twitter_tweets`.

@@ -32,9 +32,8 @@ The script generation SHALL return a JSON object with per-scene structure that m
     {
       "scriptText": "The spoken text for this scene segment...",
       "emotion": "Friendly",
-      "avatarStyle": "normal",
-      "textOverlay": "Optional key point text shown on screen",
-      "direction": "Lean forward, gesture with hands"
+      "motionPrompt": "Avatar gestures enthusiastically, leaning forward with a warm smile",
+      "textOverlay": "Optional key point text shown on screen"
     }
   ],
   "caption": "Social media caption text (max 2200 chars for Instagram)",
@@ -62,12 +61,6 @@ The script generation SHALL return a JSON object with per-scene structure that m
 - **WHEN** the video configuration has a selected emotion
 - **THEN** Gemini SHALL use it as the default emotion for most scenes
 - **AND** MAY vary per-scene for natural delivery (e.g., start Friendly, shift to Excited for key features)
-
-#### Scenario: Avatar style per scene
-- **WHEN** the video uses Avatar IV engine
-- **THEN** Gemini MAY suggest `avatarStyle` values per scene: "normal", "closeUp" (for intimate/emphasis moments), or "circle" (for intros/outros)
-- **WHEN** the video uses Avatar III engine
-- **THEN** `avatarStyle` SHALL always be "normal"
 
 #### Scenario: Text overlay per scene (when enabled)
 - **WHEN** text overlays are enabled in video configuration

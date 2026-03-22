@@ -127,11 +127,6 @@ The video settings SHALL allow configuring defaults that pre-populate new video 
 - **WHEN** user selects a default character in video settings
 - **THEN** new video configurations SHALL pre-populate with this character and its default look
 
-#### Scenario: Set default engine
-- **WHEN** user selects a default engine (Avatar III or Avatar IV)
-- **THEN** new video configurations SHALL pre-populate with this engine
-- **AND** Avatar III (1 credit/min) SHALL be the system default if not set
-
 #### Scenario: Set default background
 - **WHEN** user configures a default background color or image
 - **THEN** new video configurations SHALL pre-populate with this background
@@ -156,8 +151,7 @@ The video settings SHALL show HeyGen account status and allow configuring the AP
 #### Scenario: Credit cost reference
 - **WHEN** user views HeyGen account settings
 - **THEN** the bot SHALL display credit cost reference:
-  - Avatar III: 1 credit per minute of video
-  - Avatar IV: 6 credits per minute of video
+  - Avatar IV: ~1 premium credit per 3 seconds of video
   - Photo Avatar training: 4 credits per look
 
 ### Requirement: Instagram credentials configuration

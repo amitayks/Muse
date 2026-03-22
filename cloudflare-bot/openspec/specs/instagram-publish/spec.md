@@ -6,7 +6,7 @@ The system SHALL provide a function `publishToInstagramPost(env, imageUrl, capti
 #### Scenario: Successful single image post
 - **WHEN** `publishToInstagramPost()` is called with a valid public image URL and caption
 - **THEN** the system SHALL create a media container via `POST /{account}/media` with `image_url` and `caption`
-- **AND** poll the container status every 10 seconds until `status_code` is `FINISHED` (max 5 minutes)
+- **AND** poll the container status every 5 seconds until `status_code` is `FINISHED` (max 5 minutes)
 - **AND** publish via `POST /{account}/media_publish` with `creation_id`
 - **AND** return `{ post_id: string, url: string }`
 

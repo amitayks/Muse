@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: AI directory for Gemini-powered services
-`src/ai/` SHALL contain all files that interact with the Gemini API or orchestrate AI-powered operations: `gemini.ts`, `identity.ts`, `prompts.ts`, `scoring.ts`, `scoring-prompt.ts`, `repost-generate.ts`, `repost-prompt.ts`, `persona-bootstrap.ts`, `persona-prompt.ts`.
+`src/ai/` SHALL contain all files that interact with the Gemini API or orchestrate AI-powered operations: `gemini.ts`, `identity.ts`, `prompts.ts`, `prompt-utils.ts`, `scoring.ts`, `scoring-prompt.ts`, `repost-generate.ts`, `repost-prompt.ts`, `persona-bootstrap.ts`, `persona-prompt.ts`.
 
 #### Scenario: AI files moved from services
 - **WHEN** listing files in `src/ai/`
-- **THEN** all 9 AI-related files are present
+- **THEN** all 10 AI-related files are present
 - **WHEN** checking `src/services/` for these files
 - **THEN** none of them remain in `src/services/`
 
@@ -17,11 +17,11 @@
 - **THEN** all 6 external API client files are present
 
 ### Requirement: Data directory for persistence layer
-`src/data/` SHALL contain all database and storage files: `db.ts`, `user-db.ts`, `user-keys.ts`, `storage.ts`, `r2.ts`.
+`src/data/` SHALL contain all database and storage files: `db.ts`, `user-db.ts`, `user-keys.ts`, `user-settings-db.ts`, `draft-db.ts`, `repo-db.ts`, `twitter-db.ts`, `persona-db.ts`, `video-db.ts`, `commit-events-db.ts`, `storage.ts`, `r2.ts`.
 
 #### Scenario: Data files moved from services
 - **WHEN** listing files in `src/data/`
-- **THEN** all 5 persistence files are present
+- **THEN** all persistence files are present (domain-split DB files + storage + R2)
 
 ### Requirement: Infra directory for cross-cutting utilities
 `src/infra/` SHALL contain infrastructure utilities: `security.ts`, `crypto.ts`, `timezone.ts`.
@@ -31,11 +31,11 @@
 - **THEN** all 3 infrastructure files are present
 
 ### Requirement: Services directory retains only feature orchestrators
-After reorganization, `src/services/` SHALL contain only feature orchestrator files: `auto-approve.ts`, `batch-notification.ts`, `poller.ts`, `video-publish.ts`.
+After reorganization, `src/services/` SHALL contain feature orchestrator files: `auto-approve.ts`, `batch-notification.ts`, `poller.ts`, `video-publish.ts`, `instagram-publish.ts`, `tweet-card.ts`.
 
 #### Scenario: Services folder is slim
 - **WHEN** listing files in `src/services/`
-- **THEN** exactly 4 feature orchestrator files remain
+- **THEN** only feature orchestrator files remain (no AI, integration, data, or infra files)
 
 ### Requirement: All import paths updated
 Every file in the codebase that imported from `services/` SHALL have its import paths updated to reference the new directory locations. The project SHALL compile cleanly with `tsc --noEmit`.

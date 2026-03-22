@@ -115,27 +115,6 @@ The video configuration SHALL include a voice emotion selector with HeyGen's sup
 - **THEN** the emotion selector SHALL pre-populate with the character's default
 - **AND** user can override for this specific video
 
-### Requirement: Engine selector (Avatar III / Avatar IV)
-The video configuration SHALL include an engine toggle between Avatar III and Avatar IV.
-
-#### Scenario: Engine selection
-- **WHEN** user selects "Avatar III"
-- **THEN** the config SHALL set engine to "avatar_iii"
-- **AND** display credit cost indicator: "~1 credit/min"
-- **WHEN** user selects "Avatar IV"
-- **THEN** the config SHALL set engine to "avatar_iv"
-- **AND** display credit cost indicator: "~6 credits/min"
-
-#### Scenario: Default engine from settings
-- **WHEN** a default engine is configured in video settings
-- **THEN** the engine selector SHALL pre-populate with the default
-
-#### Scenario: Avatar style options (Avatar IV only)
-- **WHEN** Avatar IV is selected
-- **THEN** an additional "Avatar Style" selector SHALL appear with options: "Normal", "Close Up", "Circle"
-- **WHEN** Avatar III is selected
-- **THEN** avatar style SHALL be locked to "Normal" (no selector shown)
-
 ### Requirement: Background configuration
 The video configuration SHALL include a background option with choices: "Default" (from settings), "Color", and "Image URL".
 
@@ -246,7 +225,6 @@ The video configuration view SHALL display a summary of all currently selected o
   - Character: name + look name
   - Tone: selected tone
   - Length: selected duration
-  - Engine: Avatar III/IV with credit indicator
   - Aspect Ratio: selected ratio
   - Emotion: selected emotion
   - Background: type and value

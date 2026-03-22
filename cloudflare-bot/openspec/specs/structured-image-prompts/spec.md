@@ -34,12 +34,13 @@ The system prompt for content generation SHALL instruct Gemini to return `imageP
 - **WHEN** Gemini generates content from commit messages and file names without a repo overview
 - **THEN** the returned `imagePrompt` object SHALL contain `concept`, `composition`, `environment`, and `technical` categories with meaningful values derived solely from the code change (current behavior preserved)
 
-### Requirement: JSON image prompt sent directly to image model
-The `generateImage()` function SHALL send structured `ImagePromptData` directly as `JSON.stringify(imagePrompt)` to the grok-2-image-1212 API. It SHALL NOT consolidate the JSON into a prose string.
+### Requirement: Image prompt consolidation to prose
+The `generateImage()` function SHALL convert structured `ImagePromptData` into a prose description via `consolidateImagePrompt()` before sending to the image API. This produces better results than raw JSON as the image model interprets descriptive text more effectively.
 
 #### Scenario: Image generation with structured prompt
 - **WHEN** `generateImage()` receives a `DraftContent` with an `ImagePromptData` object
-- **THEN** it sends `JSON.stringify(imagePrompt)` as the prompt to the image API
+- **THEN** it calls `consolidateImagePrompt(imagePrompt)` to convert the structured data to a descriptive prose string
+- **AND** sends the prose string as the prompt to the image API
 
 #### Scenario: Image generation with legacy string prompt
 - **WHEN** `generateImage()` receives a `DraftContent` with a string `imagePrompt`

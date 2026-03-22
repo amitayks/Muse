@@ -30,16 +30,16 @@ The system SHALL provide an `isAdmin(chatId, env)` function that returns `true` 
 - **WHEN** `isAdmin` is called with any other chat_id
 - **THEN** it returns `false`
 
-### Requirement: isAuthorized function checks users table
-The system SHALL provide an `isAuthorized(chatId, env)` function that queries the `users` table. It returns `true` only if a row exists with matching `chat_id` and `status = 'active'`.
+### Requirement: isAuthorizedUser function checks users table
+The system SHALL provide an `isAuthorizedUser(chatId, env)` function that queries the `users` table. It returns the user record if a row exists with matching `chat_id` and `status = 'active'`, or null otherwise.
 
 #### Scenario: User with active status
-- **WHEN** `isAuthorized` is called for a user with `status = 'active'`
-- **THEN** it returns `true`
+- **WHEN** `isAuthorizedUser` is called for a user with `status = 'active'`
+- **THEN** it returns the user record
 
 #### Scenario: User not in table
-- **WHEN** `isAuthorized` is called for a chat_id with no `users` row
-- **THEN** it returns `false`
+- **WHEN** `isAuthorizedUser` is called for a chat_id with no `users` row
+- **THEN** it returns `null`
 
 ### Requirement: Admin endpoints unchanged
 Admin endpoints (`/setup`, `/migrate`) SHALL continue to use the existing `ADMIN_SECRET` header verification. They are not affected by the new auth model.
