@@ -7,7 +7,6 @@
  */
 
 import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '../types';
-import { generateImage } from '../ai/gemini';
 import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
 import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption } from '../services/instagram-publish';
@@ -183,13 +182,8 @@ async function publishToX(
                 mediaId = await uploadMedia(env, draft.image_url);
             }
 
-            // Generate image if none exists
-            if (!mediaId && (draft.source !== 'handwrite' || content.imagePrompt)) {
-                const imageResult = await generateImage(env, content);
-                if (imageResult) {
-                    mediaId = await uploadMediaFromBuffer(env, imageResult.data);
-                }
-            }
+            // No forced image generation at publish time — if compose didn't
+            // generate an image, we publish without one.
         }
     } catch {
         // Continue without image

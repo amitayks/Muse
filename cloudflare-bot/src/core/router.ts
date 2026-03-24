@@ -83,7 +83,6 @@ import { videoConfigAction, videoCreateAction, videoGenerateAction, videoApprove
 import { videoSettingsAction } from '../actions/video-settings';
 import { batchPageAction } from '../actions/batch-page';
 import { tweetViewDraftAction } from '../actions/tweet-view-draft';
-import { rpGenAction, rpCancelAction } from '../actions/repost-preview';
 import { rpFollowAction, rpNoFollowAction } from '../actions/repost-follow';
 import { settingsKeysAction } from '../actions/settings-keys';
 import { platformToggleAction, platformShowAction, platformDoneAction } from '../actions/platform-toggle';
@@ -176,9 +175,6 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     // Settings key management
     settings: settingsKeysAction,
     // Repost actions
-    rp_gen: rpGenAction,
-    rp_gen_anyway: rpGenAction,
-    rp_cancel: rpCancelAction,
     rp_follow: rpFollowAction,
     rp_no_follow: rpNoFollowAction,
     // Identity language notification actions

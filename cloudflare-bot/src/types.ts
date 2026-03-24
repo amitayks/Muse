@@ -704,18 +704,6 @@ export interface ChatContext {
     selected_account_id?: string;
     schedule_date?: string; // YYYY-MM-DD for day picker flow
     schedule_return_view?: string; // Origin view for schedule flow back-navigation
-    repost_preview?: {
-        tweet_id: string;
-        username: string;
-        tweet_text: string;
-        thread_text?: string;
-        author_name: string | null;
-        author_bio: string | null;
-        is_followed: boolean;
-        user_id: string | null;
-        media_url?: string | null;
-        author_profile_image_url?: string | null;
-    };
     page?: number;
     selected_draft_id?: string;
     selected_repo_id?: string;
