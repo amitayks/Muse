@@ -161,7 +161,9 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         userPrompt = prompt;
     }
 
-    const responseText = await callGeminiText(env, contentSystemPrompt, userPrompt);
+    const responseText = await callGeminiText(env, contentSystemPrompt, userPrompt, {
+        tools: [{ googleSearch: {} }],
+    });
     const result = parseContentResponse(responseText);
 
     // Strip imagePrompt when generateImagePrompt is explicitly false

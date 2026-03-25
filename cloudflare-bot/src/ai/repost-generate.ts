@@ -95,7 +95,7 @@ export async function generateRepostContent(
             }
         }
 
-        const text = await callGeminiText(env, repostSystemPrompt, parts, { temperature: 0.8 });
+        const text = await callGeminiText(env, repostSystemPrompt, parts, { temperature: 0.8, tools: [{ googleSearch: {} }] });
         const content = JSON.parse(text) as DraftContent;
 
         if (!content.tweets || content.tweets.length === 0) {
