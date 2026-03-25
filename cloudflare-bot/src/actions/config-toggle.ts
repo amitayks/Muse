@@ -4,11 +4,10 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../data/db';
 import { getUser, updateUser } from '../data/user-db';
-import { getRepostDefaults, getCommitDefaults } from '../data/user-settings-db';
-import { renderRepoDetail, renderError, renderSettings, renderIdentityLangNotification } from '../views';
+import { renderRepoDetail, renderError } from '../views';
+import { renderSettingsGeneral, renderIdentityLangNotification } from '../views/settings';
 import { cancelRow } from '../ui/components';
 import { isValidTimezone } from '../infra/timezone';
-import { countStalePrompts } from '../ai/prompts';
 import { isAdmin } from '../infra/security';
 import { getIdentityStatus } from '../ai/identity';
 import { sendMessage } from '../integrations/telegram';
@@ -26,12 +25,7 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         }
         const tz = await getTimezone(env, chatId);
         const ps = await getPageSize(env, chatId);
-        const staleCount = await countStalePrompts(env, chatId);
-        const isAdminUser = isAdmin(chatId, env);
-        const user = await getUser(env, chatId);
-        const rpDefaults = await getRepostDefaults(env, chatId);
-        const cmDefaults = await getCommitDefaults(env, chatId);
-        return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
+        return renderSettingsGeneral(tz, ps, lang);
     }
 
     // Handle language toggle: config:language
@@ -46,10 +40,8 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
             const user = await getUser(env, chatId);
             const notified = (user?.identity_lang_notified || '').split(',').filter(Boolean);
             if (!notified.includes(newLang)) {
-                // Send one-time notification as separate message
                 const notifView = renderIdentityLangNotification(newLang);
                 await sendMessage(env, chatId, notifView.text, notifView.keyboard);
-                // Mark as notified
                 notified.push(newLang);
                 await updateUser(env, chatId, { identity_lang_notified: notified.join(',') });
             }
@@ -57,44 +49,28 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
 
         const tz = await getTimezone(env, chatId);
         const ps = await getPageSize(env, chatId);
-        const staleCount = await countStalePrompts(env, chatId);
-        const isAdminUser = isAdmin(chatId, env);
-        const user2 = await getUser(env, chatId);
-        const rpDefaults = await getRepostDefaults(env, chatId);
-        const cmDefaults = await getCommitDefaults(env, chatId);
-        return renderSettings(tz, ps, newLang, env.WORKER_URL, staleCount, isAdminUser, user2?.default_publish_targets, user2?.has_instagram === 1, rpDefaults, cmDefaults);
+        return renderSettingsGeneral(tz, ps, newLang);
     }
 
     // Handle timezone configuration: config:timezone:OFFSET
     if (setting === 'timezone') {
         if (extra === 'custom') {
-            // Prompt user to type a custom offset
             await updateChatState(env, chatId, {
                 current_view: 'timezone_input',
                 context: { awaiting_input: 'timezone' },
             });
             return {
                 text: `${t(lang, 'settings.timezoneInputTitle')}\n\n${t(lang, 'settings.timezoneInputDesc')}\n\n${t(lang, 'settings.timezoneInputExamples')}`,
-                keyboard: [cancelRow('view:settings', lang)],
+                keyboard: [cancelRow('settings:sub:general', lang)],
             };
         }
 
-        // Preset offset — extra is the offset value (e.g., 'UTC+2', 'UTC-5')
-        // Reconstruct full offset: for 'config:timezone:UTC+5:30', value='timezone', extra='UTC+5'
-        // But callback_data splits on ':', so 'config:timezone:UTC+5:30' → parts=['config','timezone','UTC+5','30']
-        // We need to handle this in the callback parser. For now, presets without ':' in the offset work fine.
-        // The extra already contains the offset like 'UTC+2' or 'UTC-5'
         const offset = extra || 'UTC';
         if (isValidTimezone(offset)) {
             await setTimezone(env, chatId, offset);
             const tz = await getTimezone(env, chatId);
             const ps = await getPageSize(env, chatId);
-            const staleCount = await countStalePrompts(env, chatId);
-            const isAdminUser = isAdmin(chatId, env);
-            const user = await getUser(env, chatId);
-            const rpDefaults = await getRepostDefaults(env, chatId);
-            const cmDefaults = await getCommitDefaults(env, chatId);
-            return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
+            return renderSettingsGeneral(tz, ps, lang);
         }
 
         return renderError(t(lang, 'error.invalidTimezone'), lang);
@@ -113,7 +89,6 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         if (!overview) {
             return renderError(t(lang, 'error.noOverview'), lang);
         }
-        // Short field codes to stay under Telegram's 64-byte callback_data limit
         return {
             text: `${t(lang, 'repos.editOverviewTitle')}\n\n${t(lang, 'repos.editOverviewDesc')}`,
             keyboard: [
@@ -128,25 +103,16 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         };
     }
 
-    // Handle overview field edit prompt: config:ov_edit:REPO_ID — extra contains "REPO_ID:field"
+    // Handle overview field edit prompt
     if (setting === 'ov_edit') {
-        // Callback data: config:ov_edit:REPO_ID:field
-        // After splitting on ':', value='ov_edit', extra='REPO_ID' (but field is lost in standard parsing)
-        // We need to handle this via the context approach
-        // Since callback_data has a max length, we'll store the edit context in chat state
         const repoId2 = extra;
         if (!repoId2) return renderError(t(lang, 'error.missingRepo'), lang);
 
-        // The field is passed in a different way — we'll use the remaining args
-        // Actually, callback_data format: config:ov_edit:REPO_ID:field
-        // The router splits as: prefix=config, value=ov_edit, extra=REPO_ID:field
-        // So extra contains "REPO_ID:field"
         const colonIdx = repoId2.indexOf(':');
         if (colonIdx === -1) return renderError(t(lang, 'error.missingField'), lang);
         const actualRepoId = repoId2.substring(0, colonIdx);
         const rawField = repoId2.substring(colonIdx + 1);
 
-        // Map short codes back to full field names
         const shortToField: Record<string, string> = { s: 'summary', ts: 'tech_stack', kf: 'key_features', ta: 'target_audience', bv: 'brand_voice', vt: 'visual_theme' };
         const field = shortToField[rawField] || rawField;
 

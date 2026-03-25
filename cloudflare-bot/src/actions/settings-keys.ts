@@ -1,5 +1,5 @@
 /**
- * Settings Key Management — show API keys status and prompt for updates
+ * Settings Key Management — sub-page routing, toggles, and API key updates
  */
 
 import type { HandlerContext } from '../core/router';
@@ -8,8 +8,8 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getUser, updateDefaultPublishTargets } from '../data/user-db';
 import { updateChatState, getTimezone, getPageSize } from '../data/db';
-import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault } from '../data/user-settings-db';
-import { renderApiKeys, renderSettings } from '../views/settings';
+import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault, getRepoDefaults, setRepoDefault } from '../data/user-settings-db';
+import { renderApiKeys, renderSettings, renderSettingsGeneral, renderSettingsSkills, renderSettingsPlatforms, renderSettingsRepost, renderSettingsCommits, renderSettingsRepos } from '../views/settings';
 import { analyzeIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
 import { renderPlatformBadges, parsePublishTargets } from '../views/platform-toggle';
@@ -23,6 +23,11 @@ export async function settingsKeysAction(
     const { env, chatId, value, extra } = ctx;
     const lang = (ctx.lang || 'en') as Lang;
 
+    // ==================== SUB-PAGE NAVIGATION ====================
+    if (value === 'sub') {
+        return handleSubPage(ctx, lang, extra);
+    }
+
     // ==================== REPOST DEFAULTS ====================
     if (value === 'rp') {
         return handleRepostDefaults(ctx, lang, extra);
@@ -31,6 +36,11 @@ export async function settingsKeysAction(
     // ==================== COMMIT DEFAULTS ====================
     if (value === 'commit') {
         return handleCommitDefaults(ctx, lang, extra);
+    }
+
+    // ==================== REPO DEFAULTS ====================
+    if (value === 'repo') {
+        return handleRepoDefaults(ctx, lang, extra);
     }
 
     // ==================== PLATFORM TOGGLE FOR DEFAULT TARGETS ====================
@@ -44,7 +54,7 @@ export async function settingsKeysAction(
             return {
                 text: t(lang, 'settings.identityNoXConnect'),
                 keyboard: [
-                    [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                    [{ text: t(lang, 'common.back'), callback_data: 'settings:sub:skills' }],
                 ],
             };
         }
@@ -57,14 +67,14 @@ export async function settingsKeysAction(
                 return {
                     text: t(lang, 'settings.identityReanalyzedWebApp'),
                     keyboard: [
-                        [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                        [{ text: t(lang, 'common.back'), callback_data: 'settings:sub:skills' }],
                     ],
                 };
             } else {
                 return {
                     text: t(lang, 'settings.identityAnalyzeFailedNoTweets'),
                     keyboard: [
-                        [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                        [{ text: t(lang, 'common.back'), callback_data: 'settings:sub:skills' }],
                     ],
                 };
             }
@@ -73,7 +83,7 @@ export async function settingsKeysAction(
             return {
                 text: t(lang, 'settings.identityAnalyzeFailedRetry'),
                 keyboard: [
-                    [{ text: t(lang, 'common.back'), callback_data: 'view:settings' }],
+                    [{ text: t(lang, 'common.back'), callback_data: 'settings:sub:skills' }],
                 ],
             };
         }
@@ -87,7 +97,7 @@ export async function settingsKeysAction(
             hasX: user?.has_x === 1,
             hasGitHub: user?.has_github === 1,
             hasInstagram: user?.has_instagram === 1,
-        });
+        }, lang);
     }
 
     if (value === 'update') {
@@ -151,6 +161,45 @@ export async function settingsKeysAction(
     }
 }
 
+// ==================== Sub-page Navigation ====================
+
+async function handleSubPage(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    category?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    switch (category) {
+        case 'general': {
+            const tz = await getTimezone(env, chatId);
+            const ps = await getPageSize(env, chatId);
+            return renderSettingsGeneral(tz, ps, lang);
+        }
+        case 'skills': {
+            const staleCount = await countStalePrompts(env, chatId);
+            const isAdminUser = isAdmin(chatId, env);
+            return renderSettingsSkills(lang, env.WORKER_URL, staleCount, isAdminUser);
+        }
+        case 'platforms': {
+            const user = await getUser(env, chatId);
+            return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1);
+        }
+        case 'repost': {
+            const rpDefaults = await getRepostDefaults(env, chatId);
+            return renderSettingsRepost(rpDefaults, lang);
+        }
+        case 'commits': {
+            const cmDefaults = await getCommitDefaults(env, chatId);
+            return renderSettingsCommits(cmDefaults, lang);
+        }
+        case 'repos': {
+            const repoDefaults = await getRepoDefaults(env, chatId);
+            return renderSettingsRepos(repoDefaults, lang);
+        }
+    }
+}
+
 // ==================== Repost Defaults Sub-handler ====================
 
 async function handleRepostDefaults(
@@ -160,8 +209,6 @@ async function handleRepostDefaults(
 ): Promise<ViewResult | void> {
     const { env, chatId } = ctx;
 
-    // settings:rp:fast_image → toggle fast_generate_image
-    // settings:rp:source_analysis → toggle analyze_source_image
     const fieldMap: Record<string, 'fast_generate_image' | 'analyze_source_image'> = {
         fast_image: 'fast_generate_image',
         source_analysis: 'analyze_source_image',
@@ -174,7 +221,9 @@ async function handleRepostDefaults(
     const currentValue = field === 'fast_generate_image' ? current.fastGenerateImage : current.analyzeSourceImage;
     await setRepostDefault(env, chatId, field, !currentValue);
 
-    return returnToSettings(ctx, lang);
+    // Return to repost sub-page
+    const updated = await getRepostDefaults(env, chatId);
+    return renderSettingsRepost(updated, lang);
 }
 
 // ==================== Commit Defaults Sub-handler ====================
@@ -186,8 +235,6 @@ async function handleCommitDefaults(
 ): Promise<ViewResult | void> {
     const { env, chatId } = ctx;
 
-    // settings:commit:fast_image → toggle commit_fast_image
-    // settings:commit:fast_ai → toggle commit_fast_ai
     const fieldMap: Record<string, 'commit_fast_image' | 'commit_fast_ai'> = {
         fast_image: 'commit_fast_image',
         fast_ai: 'commit_fast_ai',
@@ -200,7 +247,35 @@ async function handleCommitDefaults(
     const currentValue = field === 'commit_fast_image' ? current.commitFastImage : current.commitFastAi;
     await setCommitDefault(env, chatId, field, !currentValue);
 
-    return returnToSettings(ctx, lang);
+    // Return to commits sub-page
+    const updated = await getCommitDefaults(env, chatId);
+    return renderSettingsCommits(updated, lang);
+}
+
+// ==================== Repo Defaults Sub-handler ====================
+
+async function handleRepoDefaults(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    extra?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    const fieldMap: Record<string, 'repo_auto_overview' | 'repo_default_watch_pushes'> = {
+        auto_overview: 'repo_auto_overview',
+        watch_pushes: 'repo_default_watch_pushes',
+    };
+
+    const field = fieldMap[extra || ''];
+    if (!field) return;
+
+    const current = await getRepoDefaults(env, chatId);
+    const currentValue = field === 'repo_auto_overview' ? current.autoOverview : current.defaultWatchPushes;
+    await setRepoDefault(env, chatId, field, !currentValue);
+
+    // Return to repos sub-page
+    const updated = await getRepoDefaults(env, chatId);
+    return renderSettingsRepos(updated, lang);
 }
 
 // ==================== Settings Platform Toggle Sub-handler ====================
@@ -212,28 +287,25 @@ async function handleSettingsPlat(
 ): Promise<ViewResult | void> {
     const { env, chatId } = ctx;
 
-    // settings:plat:show → extra = 'show'
     if (extra === 'show') {
         const user = await getUser(env, chatId);
         const targets = parsePublishTargets(user?.default_publish_targets);
         const hasInstagram = user?.has_instagram === 1;
-
         return renderSettingsDefaultTargets(targets, hasInstagram, lang);
     }
 
-    // settings:plat:done → extra = 'done'
     if (extra === 'done') {
-        return returnToSettings(ctx, lang);
+        // Return to platforms sub-page
+        const user = await getUser(env, chatId);
+        return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1);
     }
 
-    // settings:plat:toggle:PLATFORM → extra = 'toggle:PLATFORM'
     if (extra?.startsWith('toggle:')) {
         const platform = extra.substring(7) as keyof PublishTargets;
         const user = await getUser(env, chatId);
         const targets = parsePublishTargets(user?.default_publish_targets);
         const hasInstagram = user?.has_instagram === 1;
 
-        // Toggle the platform
         const newValue = !targets[platform];
 
         // Mutual exclusivity: post ↔ reel
@@ -245,16 +317,14 @@ async function handleSettingsPlat(
         // Enforce at-least-one target
         const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel;
         if (!anyEnabled) {
-            targets[platform] = true; // Revert
+            targets[platform] = true;
             if (ctx.callbackId) {
                 await answerCallback(ctx.env, ctx.callbackId, t(lang, 'platforms.noTargetSelected'));
             }
         }
 
-        // Save
         await updateDefaultPublishTargets(env, chatId, targets);
 
-        // Re-render toggle view in-place
         const view = renderSettingsDefaultTargets(targets, hasInstagram, lang);
         if (ctx.messageId) {
             await editMessage(env, chatId, ctx.messageId, view.text, view.keyboard);
@@ -263,9 +333,6 @@ async function handleSettingsPlat(
     }
 }
 
-/**
- * Render the settings default platform targets toggle view.
- */
 function renderSettingsDefaultTargets(
     targets: PublishTargets,
     hasInstagram: boolean,
@@ -309,7 +376,7 @@ function renderSettingsDefaultTargets(
 /**
  * Return to the main settings view.
  */
-async function returnToSettings(
+export async function returnToSettings(
     ctx: HandlerContext & { value: string; extra?: string },
     lang: Lang
 ): Promise<ViewResult> {
@@ -317,9 +384,9 @@ async function returnToSettings(
     const tz = await getTimezone(env, chatId);
     const ps = await getPageSize(env, chatId);
     const staleCount = await countStalePrompts(env, chatId);
-    const isAdminUser = isAdmin(chatId, env);
     const user = await getUser(env, chatId);
     const rpDefaults = await getRepostDefaults(env, chatId);
     const cmDefaults = await getCommitDefaults(env, chatId);
-    return renderSettings(tz, ps, lang, env.WORKER_URL, staleCount, isAdminUser, user?.default_publish_targets, user?.has_instagram === 1, rpDefaults, cmDefaults);
+    const repoDefaults = await getRepoDefaults(env, chatId);
+    return renderSettings(tz, ps, lang, staleCount, rpDefaults, cmDefaults, repoDefaults, user?.default_publish_targets);
 }

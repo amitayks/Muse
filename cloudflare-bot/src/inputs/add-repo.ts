@@ -9,6 +9,7 @@ import { createWebhook } from '../integrations/webhook';
 import { sendMessage } from '../integrations/telegram';
 import { extractRepoOverview } from '../ai/gemini';
 import { renderRepoDetail, renderError } from '../views';
+import { getRepoDefaults } from '../data/user-settings-db';
 import { sanitizeError, logInfo, logError } from '../infra/security';
 
 export async function addRepoInput(ctx: HandlerContext & { text: string; context: ChatContext }) {
@@ -62,8 +63,23 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
         const canonicalOwner = canonical.owner;
         const canonicalRepo = canonical.name;
 
+        // Read user's repo defaults
+        const repoDefaults = await getRepoDefaults(env, chatId);
+
         const webhookSecret = crypto.randomUUID();
-        const repoId = await createRepo(env, chatId, { owner: canonicalOwner, repo: canonicalRepo, webhook_secret: webhookSecret });
+        const repoId = await createRepo(env, chatId, {
+            owner: canonicalOwner,
+            repo: canonicalRepo,
+            webhook_secret: webhookSecret,
+            config: {
+                watchPRs: true,
+                watchPushes: repoDefaults.defaultWatchPushes,
+                branches: ['main'],
+                platform: 'x',
+                minCommitsForThread: 3,
+                maxTweets: 10,
+            },
+        });
 
         const workerUrl = env.WORKER_URL;
         let webhookStatus = '';
@@ -93,28 +109,30 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
             context: { selected_repo_id: repoId },
         });
 
-        // Auto-generate overview in the background (non-blocking)
-        try {
-            await sendMessage(env, chatId,
-                t(lang, 'addRepo.bootstrapping').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`)
-            );
-            const [readmeText, prSummaries] = await Promise.all([
-                fetchRepoReadme(env, canonicalOwner, canonicalRepo),
-                fetchRecentMergedPRs(env, canonicalOwner, canonicalRepo, 10),
-            ]);
-            const overview = await extractRepoOverview(env, readmeText, prSummaries, chatId, lang);
-            await upsertRepoOverview(env, repoId, overview);
-            logInfo('Auto-generated overview for repo:', canonicalOwner + '/' + canonicalRepo);
-            await sendMessage(env, chatId,
-                t(lang, 'addRepo.overviewBootstrapped').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`),
-                [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
-            );
-        } catch (overviewError) {
-            logError('Auto-overview generation failed:', overviewError instanceof Error ? overviewError.message : String(overviewError));
-            await sendMessage(env, chatId,
-                t(lang, 'addRepo.overviewFailed').replace(/\{repo\}/g, `${canonicalOwner}/${canonicalRepo}`),
-                [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
-            );
+        // Auto-generate overview only if user has it enabled
+        if (repoDefaults.autoOverview) {
+            try {
+                await sendMessage(env, chatId,
+                    t(lang, 'addRepo.bootstrapping').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`)
+                );
+                const [readmeText, prSummaries] = await Promise.all([
+                    fetchRepoReadme(env, canonicalOwner, canonicalRepo),
+                    fetchRecentMergedPRs(env, canonicalOwner, canonicalRepo, 10),
+                ]);
+                const overview = await extractRepoOverview(env, readmeText, prSummaries, chatId, lang);
+                await upsertRepoOverview(env, repoId, overview);
+                logInfo('Auto-generated overview for repo:', canonicalOwner + '/' + canonicalRepo);
+                await sendMessage(env, chatId,
+                    t(lang, 'addRepo.overviewBootstrapped').replace('{repo}', `${canonicalOwner}/${canonicalRepo}`),
+                    [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
+                );
+            } catch (overviewError) {
+                logError('Auto-overview generation failed:', overviewError instanceof Error ? overviewError.message : String(overviewError));
+                await sendMessage(env, chatId,
+                    t(lang, 'addRepo.overviewFailed').replace(/\{repo\}/g, `${canonicalOwner}/${canonicalRepo}`),
+                    [[{ text: t(lang, 'addRepo.btnViewRepo'), callback_data: `repo:${repoId}` }]]
+                );
+            }
         }
     } catch (error) {
         console.error('Error adding repo:', sanitizeError(error));

@@ -188,6 +188,44 @@ export async function setRepostDefault(
         .run();
 }
 
+// ==================== REPO DEFAULTS ====================
+
+export interface RepoDefaults {
+    autoOverview: boolean;
+    defaultWatchPushes: boolean;
+}
+
+/**
+ * Get repo default settings for a chat
+ */
+export async function getRepoDefaults(env: Env, chatId: string): Promise<RepoDefaults> {
+    const result = await env.DB.prepare(
+        'SELECT repo_auto_overview, repo_default_watch_pushes FROM users WHERE chat_id = ?'
+    )
+        .bind(chatId)
+        .first<{ repo_auto_overview: number | null; repo_default_watch_pushes: number | null }>();
+    return {
+        autoOverview: result?.repo_auto_overview === 1,
+        defaultWatchPushes: result?.repo_default_watch_pushes !== 0, // default ON
+    };
+}
+
+/**
+ * Toggle a repo default setting for a chat
+ */
+export async function setRepoDefault(
+    env: Env,
+    chatId: string,
+    field: 'repo_auto_overview' | 'repo_default_watch_pushes',
+    value: boolean
+): Promise<void> {
+    await env.DB.prepare(
+        `UPDATE users SET ${field} = ?, updated_at = datetime('now') WHERE chat_id = ?`
+    )
+        .bind(value ? 1 : 0, chatId)
+        .run();
+}
+
 // ==================== COMMIT DEFAULTS ====================
 
 export interface CommitDefaults {

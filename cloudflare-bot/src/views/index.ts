@@ -6,7 +6,7 @@ export { renderHome, renderHelp, renderError, renderSuccess, renderGenerating, r
 export { renderDraftCategories, renderDraftsList, renderDraftDetail, renderDeleteDraftConfirm, renderGeneratePrompt, renderSchedulePrompt, renderDeletePrompt } from './drafts';
 export { renderReposList, renderRepoDetail, renderAddRepo, renderDeleteRepoConfirm } from './repos';
 export { renderAccountsList, renderAccountDetail, renderAddAccount, renderDeleteAccountConfirm } from './accounts';
-export { renderSettings, renderApiKeys, renderPageSizeSelect, renderTimezoneSelect, renderIdentityLangNotification } from './settings';
+export { renderSettings, renderApiKeys, renderPageSizeSelect, renderTimezoneSelect, renderIdentityLangNotification, renderSettingsGeneral, renderSettingsSkills, renderSettingsPlatforms, renderSettingsRepost, renderSettingsCommits, renderSettingsRepos } from './settings';
 export { renderVideoStudioHome, renderVideoRepoHome, renderVideoList, renderVideoDetail, renderVideoConfig, renderScriptPreview } from './video-studio';
 export { renderVideoSettingsHome, renderCharacterList, renderCharacterDetail, renderRemoveCharacterConfirm, renderVoiceSelect, renderEmotionSelect, renderDefaultSettings, renderHeyGenSettings, renderInstagramSettings } from './video-settings';
 export { renderEventSummary, renderEventButtons } from './commit-events';

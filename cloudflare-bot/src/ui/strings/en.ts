@@ -189,8 +189,45 @@ export const en = {
         btnCommitFastImage: '🎨 Auto Image',
         btnCommitFastAi: '🤖 Auto AI',
 
+        // Repo defaults
+        repoDefaults: '📦 <b>Repo Defaults</b>',
+        btnAutoOverview: '🔍 Auto Overview',
+        btnWatchPushes: '📤 Watch Pushes',
+
         languageEn: '🇺🇸 English',
         languageHe: '🇮🇱 עברית',
+
+        // Category buttons
+        btnCatGeneral: '⚙️ General',
+        btnCatSkills: '🧠 Skills',
+        btnCatPlatforms: '📱 Platforms',
+        btnCatRepost: '🔄 Repost',
+        btnCatCommits: '📝 Commits',
+        btnCatRepos: '📦 Repos',
+
+        // Sub-page titles
+        subGeneralTitle: '⚙️ <b>General Settings</b>',
+        subSkillsTitle: '🧠 <b>Skills & Identity</b>',
+        subPlatformsTitle: '📱 <b>Platforms</b>',
+        subRepostTitle: '🔄 <b>Repost Settings</b>',
+        subCommitsTitle: '📝 <b>Commit Settings</b>',
+        subReposTitle: '📦 <b>Repo Defaults</b>',
+
+        // Sub-page descriptions
+        descTimezone: 'Controls scheduled post times and time display.',
+        descLanguage: 'Controls bot interface language.',
+        descPageSize: 'Number of items shown per page in lists.',
+        descSystemPrompts: 'Customize AI writing style and tone.',
+        descAnalyzeIdentity: 'Re-scan your X profile to update AI persona.',
+        descDefaultPlatforms: 'Which platforms new drafts target by default.',
+        descApiKeys: 'Manage connected service credentials.',
+        descFastImage: 'Generate an AI image when creating repost drafts via Fast Generate.',
+        descSourceAnalysis: 'Send the original tweet\'s image to AI for context during repost generation.',
+        descCommitFastImage: 'Generate an AI image when creating drafts from GitHub commits.',
+        descCommitFastAi: 'Automatically refine commit content with AI before creating the draft.',
+        descAutoOverview: 'Automatically bootstrap project overview when adding a new repo.',
+        descWatchPushes: 'Watch push events by default on newly added repos.',
+        subReposNote: 'These settings apply to newly added repos only.',
 
         // Timezone select
         timezoneTitle: '🕐 <b>Select Timezone</b>',

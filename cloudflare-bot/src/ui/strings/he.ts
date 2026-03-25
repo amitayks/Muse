@@ -192,8 +192,45 @@ export const he: StringsMap = {
         btnCommitFastImage: '🎨 תמונה אוטומטית',
         btnCommitFastAi: '🤖 AI אוטומטי',
 
+        // Repo defaults
+        repoDefaults: '📦 <b>ברירות מחדל ריפו</b>',
+        btnAutoOverview: '🔍 סקירה אוטומטית',
+        btnWatchPushes: '📤 מעקב פושים',
+
         languageEn: '🇺🇸 English',
         languageHe: '🇮🇱 עברית',
+
+        // Category buttons
+        btnCatGeneral: '⚙️ כללי',
+        btnCatSkills: '🧠 כישורים',
+        btnCatPlatforms: '📱 פלטפורמות',
+        btnCatRepost: '🔄 ריפוסט',
+        btnCatCommits: '📝 קומיטים',
+        btnCatRepos: '📦 ריפו',
+
+        // Sub-page titles
+        subGeneralTitle: '⚙️ <b>הגדרות כלליות</b>',
+        subSkillsTitle: '🧠 <b>כישורים וזהות</b>',
+        subPlatformsTitle: '📱 <b>פלטפורמות</b>',
+        subRepostTitle: '🔄 <b>הגדרות ריפוסט</b>',
+        subCommitsTitle: '📝 <b>הגדרות קומיטים</b>',
+        subReposTitle: '📦 <b>ברירות מחדל ריפו</b>',
+
+        // Sub-page descriptions
+        descTimezone: 'שולט בזמני פרסום מתוזמנים ותצוגת זמן.',
+        descLanguage: 'שולט בשפת ממשק הבוט.',
+        descPageSize: 'מספר פריטים בכל עמוד ברשימות.',
+        descSystemPrompts: 'התאם אישית סגנון וטון כתיבת AI.',
+        descAnalyzeIdentity: 'סרוק מחדש את פרופיל X שלך לעדכון פרסונת AI.',
+        descDefaultPlatforms: 'לאילו פלטפורמות טיוטות חדשות מכוונות כברירת מחדל.',
+        descApiKeys: 'ניהול פרטי התחברות לשירותים.',
+        descFastImage: 'יצירת תמונת AI בעת יצירת טיוטות ריפוסט דרך יצירה מהירה.',
+        descSourceAnalysis: 'שליחת תמונת הציוץ המקורי ל-AI כהקשר בעת יצירת ריפוסט.',
+        descCommitFastImage: 'יצירת תמונת AI בעת יצירת טיוטות מקומיטים של GitHub.',
+        descCommitFastAi: 'שכלול אוטומטי של תוכן קומיט עם AI לפני יצירת הטיוטה.',
+        descAutoOverview: 'יצירת סקירת פרויקט אוטומטית בעת הוספת ריפו חדש.',
+        descWatchPushes: 'מעקב אחר אירועי פוש כברירת מחדל בריפו חדשים.',
+        subReposNote: 'הגדרות אלה חלות על ריפו שנוספים מעכשיו בלבד.',
 
         timezoneTitle: '🕐 <b>בחר אזור זמן</b>',
         timezoneDesc: 'בחר היסט UTC או הקלד מותאם אישית:',

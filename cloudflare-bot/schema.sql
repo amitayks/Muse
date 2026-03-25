@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS users (
   video_settings TEXT,
   -- Multi-platform publish defaults
   default_publish_targets TEXT DEFAULT '{"x":true}',
+  -- Repo defaults (for newly added repos)
+  repo_auto_overview INTEGER DEFAULT 0,
+  repo_default_watch_pushes INTEGER DEFAULT 1,
   -- Own X profile data (for tweet card rendering)
   own_profile_image_url TEXT,
   own_username_x TEXT,
