@@ -420,18 +420,44 @@ async function generateTweetCardImages(
     if (!workerUrl) return [];
 
     const { renderTweetCard, renderThreadCards, renderQuoteTweetCard, storeTweetCard, getTweetCard } = await getTweetCardModule();
-    const user = await getUser(env, chatId);
+    let user = await getUser(env, chatId);
     const urls: string[] = [];
+
+    // Lazy refresh: if X profile data is missing, fetch it now (one-time, cached in DB)
+    if (user && !user.own_display_name_x) {
+        try {
+            const { getMyProfile } = await import('../integrations/x');
+            const { updateOwnProfileData } = await import('../data/user-db');
+            const profile = await getMyProfile(env);
+            if (profile?.username) {
+                await updateOwnProfileData(env, chatId, {
+                    profileImageUrl: profile.profile_image_url || '',
+                    username: profile.username,
+                    displayName: profile.name,
+                });
+                user = await getUser(env, chatId);
+            }
+        } catch {
+            // Non-fatal — continue with whatever name we have
+        }
+    }
+
+    // Format timestamp for card display
+    const ts = draft.created_at ? new Date(draft.created_at) : new Date();
+    const timestamp = ts.toLocaleString('en-US', {
+        hour: 'numeric', minute: '2-digit', hour12: true,
+        month: 'short', day: 'numeric', year: 'numeric',
+    }).replace(',', ' ·');
 
     if (draft.source === 'repost' && draft.original_tweet_id) {
         // Quote-tweet card: user's commentary + original tweet
-        const repostPreviewStr = draft.content;
         let originalUsername = '';
         let originalDisplayName = '';
         let originalText = '';
         let originalProfileImageUrl: string | null = null;
+        let originalVerifiedType: string | undefined;
 
-        // Try to get original tweet data from twitter_tweets table
+        // Try DB first, then fall back to X API
         try {
             const { getTwitterTweet } = await import('../data/db');
             const originalTweet = await getTwitterTweet(env, chatId, draft.original_tweet_id);
@@ -441,8 +467,21 @@ async function generateTweetCardImages(
                 originalText = originalTweet.text;
                 originalProfileImageUrl = originalTweet.author_profile_image_url;
             }
-        } catch {
-            // Continue with defaults
+        } catch { /* continue */ }
+
+        // Fallback: fetch from X API if DB didn't have the data
+        if (!originalText) {
+            try {
+                const { getTweetById } = await import('../integrations/x');
+                const fetched = await getTweetById(env, draft.original_tweet_id);
+                if (fetched) {
+                    originalText = fetched.tweet.text;
+                    originalUsername = fetched.author?.username || '';
+                    originalDisplayName = fetched.author?.name || fetched.author?.username || '';
+                    originalProfileImageUrl = fetched.author?.profile_image_url || null;
+                    originalVerifiedType = fetched.author?.verified_type;
+                }
+            } catch { /* continue with defaults */ }
         }
 
         const cardPng = await renderQuoteTweetCard(env, {
@@ -454,6 +493,8 @@ async function generateTweetCardImages(
             originalDisplayName: originalDisplayName || originalUsername,
             originalUsername,
             originalProfileImageUrl,
+            originalVerifiedType,
+            timestamp,
         });
 
         const key = await storeTweetCard(env, draft.id, 0, cardPng);
@@ -465,6 +506,7 @@ async function generateTweetCardImages(
             username: user?.own_username_x || user?.username || 'user',
             text: tweet.text,
             profileImageUrl: user?.own_profile_image_url,
+            timestamp,
         }));
 
         // Check if first card already exists (implies all were rendered)
@@ -492,6 +534,7 @@ async function generateTweetCardImages(
                 username: user?.own_username_x || user?.username || 'user',
                 text: tweet.text,
                 profileImageUrl: user?.own_profile_image_url,
+                timestamp,
             });
 
             const key = await storeTweetCard(env, draft.id, 0, cardPng);

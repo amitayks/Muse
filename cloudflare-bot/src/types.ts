@@ -105,7 +105,7 @@ export interface User {
 }
 
 // Draft status
-export type DraftStatus = 'draft' | 'approved' | 'published' | 'scheduled';
+export type DraftStatus = 'draft' | 'approved' | 'publishing' | 'published' | 'scheduled';
 
 // Draft format
 export type DraftFormat = 'single' | 'thread';

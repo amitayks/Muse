@@ -42,6 +42,45 @@ import { handwriteCommand } from '../commands/handwrite';
 import { overviewCommand } from '../commands/overview';
 import { repostCommand } from '../commands/repost';
 
+// Dev-only: test tweet card rendering via /testcard <text>
+const testCardCommand: CommandHandler = async (ctx) => {
+    const text = ctx.args || 'אני מסרב להאמין לטענות של אבא שלי שלישון עם הטלפון ליד הראש מזיק.';
+    const { renderTweetCard, storeTweetCard } = await import('../services/tweet-card');
+    const { getUser, updateOwnProfileData } = await import('../data/user-db');
+    let user = await getUser(ctx.env, ctx.chatId);
+
+    // Lazy refresh X profile if missing
+    if (user && !user.own_display_name_x) {
+        try {
+            const { getMyProfile } = await import('../integrations/x');
+            const profile = await getMyProfile(ctx.env);
+            if (profile?.username) {
+                await updateOwnProfileData(ctx.env, ctx.chatId, {
+                    profileImageUrl: profile.profile_image_url || '',
+                    username: profile.username,
+                    displayName: profile.name,
+                });
+                user = await getUser(ctx.env, ctx.chatId);
+            }
+        } catch { /* continue with fallback */ }
+    }
+
+    const png = await renderTweetCard(ctx.env, {
+        displayName: user?.own_display_name_x || user?.display_name || 'User',
+        username: user?.own_username_x || user?.username || 'user',
+        text,
+        profileImageUrl: user?.own_profile_image_url,
+        timestamp: new Date().toLocaleString('en-US', {
+            hour: 'numeric', minute: '2-digit', hour12: true,
+            month: 'short', day: 'numeric', year: 'numeric',
+        }).replace(',', ' ·'),
+    });
+    const draftId = `test-${Date.now()}`;
+    const key = await storeTweetCard(ctx.env, draftId, 0, png);
+    const { sendPhoto } = await import('../integrations/telegram');
+    await sendPhoto(ctx.env, ctx.chatId, `${ctx.env.WORKER_URL}/media/${key}`, '🖼 Test card');
+};
+
 export const commandHandlers: Record<string, CommandHandler> = {
     '/start': startCommand,
     '/generate': generateCommand,
@@ -55,6 +94,7 @@ export const commandHandlers: Record<string, CommandHandler> = {
     '/handwrite': handwriteCommand,
     '/overview': overviewCommand,
     '/repost': repostCommand,
+    '/testcard': testCardCommand,
 };
 
 // ==================== ACTION DISPATCH ====================
@@ -254,11 +294,13 @@ export const callbackHandlers: Record<string, ActionHandler> = {
                 if (colonIdx === -1) return;
                 return repostToggleAction({ ...ctx, value: rest.substring(0, colonIdx), extra: rest.substring(colonIdx + 1) });
             }
-            if (extra?.startsWith('publish:')) {
-                return repostPublishAction({ ...ctx, value: extra.substring(8) });
+            if (extra?.startsWith('publish:') || extra?.startsWith('pub:')) {
+                const idx = extra.indexOf(':');
+                return repostPublishAction({ ...ctx, value: extra.substring(idx + 1) });
             }
-            if (extra?.startsWith('cancel:')) {
-                return repostCancelAction({ ...ctx, value: extra.substring(7) });
+            if (extra?.startsWith('cancel:') || extra?.startsWith('no:')) {
+                const idx = extra.indexOf(':');
+                return repostCancelAction({ ...ctx, value: extra.substring(idx + 1) });
             }
         }
     },

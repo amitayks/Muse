@@ -46,11 +46,18 @@ export async function repostShowAction(
 /**
  * Toggle a platform in the repost picker.
  */
+// Map short callback keys to full platform names
+const PLATFORM_KEY_MAP: Record<string, keyof PublishTargets> = {
+    x: 'x', ip: 'instagram_post', is: 'instagram_story', ir: 'instagram_reel',
+    // Also accept full names for backward compat
+    instagram_post: 'instagram_post', instagram_story: 'instagram_story', instagram_reel: 'instagram_reel',
+};
+
 export async function repostToggleAction(
     ctx: HandlerContext & { value: string; extra?: string }
 ): Promise<ViewResult | void> {
     const lang = (ctx.lang || 'en') as Lang;
-    const platform = ctx.value as keyof PublishTargets;
+    const platform = PLATFORM_KEY_MAP[ctx.value] || ctx.value as keyof PublishTargets;
     const draftId = ctx.extra;
     if (!draftId) return;
 
@@ -80,7 +87,7 @@ export async function repostToggleAction(
 }
 
 /**
- * Execute re-publish to selected platforms.
+ * Execute re-publish to selected platforms (background).
  */
 export async function repostPublishAction(
     ctx: HandlerContext & { value: string }
@@ -104,33 +111,76 @@ export async function repostPublishAction(
         existingResults = draft.publish_results ? JSON.parse(draft.publish_results) : {};
     } catch { /* ignore */ }
 
-    // Publish to selected platforms
-    const { publishDraft } = await import('../core/publish');
-
-    // Temporarily set the draft's publish targets to the repost selection
-    const { updateDraftPublishTargets } = await import('../data/db');
-    await updateDraftPublishTargets(ctx.env, draftId, ctx.chatId, selection);
-
-    const result = await publishDraft(ctx.env, ctx.chatId, { ...draft, publish_targets: JSON.stringify(selection), status: 'approved' });
-
-    // Merge results (whether success or failure, publishDraft always returns results)
-    const mergedResults: PublishResults = { ...existingResults };
-    if (result.results.x) mergedResults.x = result.results.x;
-    if (result.results.instagram_post) mergedResults.instagram_post = result.results.instagram_post;
-    if (result.results.instagram_story) mergedResults.instagram_story = result.results.instagram_story;
-    if (result.results.instagram_reel) mergedResults.instagram_reel = result.results.instagram_reel;
-    if (result.results.errors) {
-        mergedResults.errors = { ...(mergedResults.errors || {}), ...result.results.errors };
-    }
-
-    await updateDraftPublishResults(ctx.env, draftId, ctx.chatId, mergedResults);
-
-    // Clean up
+    // Clean up selection immediately
     repostSelections.delete(key);
 
-    // Return to draft detail
-    const tz = await getTimezone(ctx.env, ctx.chatId);
-    return renderDraftDetail(ctx.env, ctx.chatId, draftId, tz, lang);
+    // Capture context for background task
+    const env = ctx.env;
+    const chatId = ctx.chatId;
+    const messageId = ctx.messageId!;
+
+    const { updateDraftPublishTargets } = await import('../data/db');
+    await updateDraftPublishTargets(env, draftId, chatId, selection);
+
+    const repostTask = (async () => {
+        try {
+            const { publishDraft } = await import('../core/publish');
+            const result = await publishDraft(env, chatId, { ...draft, publish_targets: JSON.stringify(selection), status: 'approved' });
+
+            // Merge results
+            const mergedResults: PublishResults = { ...existingResults };
+            if (result.results.x) mergedResults.x = result.results.x;
+            if (result.results.instagram_post) mergedResults.instagram_post = result.results.instagram_post;
+            if (result.results.instagram_story) mergedResults.instagram_story = result.results.instagram_story;
+            if (result.results.instagram_reel) mergedResults.instagram_reel = result.results.instagram_reel;
+            if (result.results.errors) {
+                mergedResults.errors = { ...(mergedResults.errors || {}), ...result.results.errors };
+            }
+
+            await updateDraftPublishResults(env, draftId, chatId, mergedResults);
+
+            // Update the "Publishing..." message with result
+            const tz = await getTimezone(env, chatId);
+            const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
+
+            const hasErrors = result.results.errors && Object.keys(result.results.errors).length > 0;
+            if (hasErrors && !result.success) {
+                const { escapeHtml } = await import('../ui/utils');
+                const { platformEmoji, platformLabel } = await import('../views/platform-toggle');
+                const errorMessages = Object.entries(result.results.errors || {})
+                    .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${escapeHtml(msg)}`)
+                    .join('\n');
+                await editMessage(env, chatId, messageId,
+                    `❌ <b>Repost failed</b>\n\n<code>${errorMessages}</code>`,
+                ).catch(() => {});
+            } else {
+                const { truncateHtml } = await import('../ui/utils');
+                view.text = `✅ <b>Reposted!</b>\n\n${view.text}`;
+                await editMessage(env, chatId, messageId,
+                    truncateHtml(view.text, 4096),
+                    view.keyboard,
+                ).catch(() => {});
+            }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error('[repost-bg] Background repost failed:', msg);
+            const { escapeHtml } = await import('../ui/utils');
+            await editMessage(env, chatId, messageId,
+                `❌ <b>Repost failed</b>\n\n<code>${escapeHtml(msg)}</code>`,
+            ).catch(() => {});
+        }
+    })();
+
+    if (ctx.executionCtx) {
+        ctx.executionCtx.waitUntil(repostTask);
+    } else {
+        await repostTask;
+    }
+
+    return {
+        text: `⏳ <b>Publishing...</b>\n\nYou'll be notified when it's done.`,
+        keyboard: [],
+    };
 }
 
 /**
@@ -159,6 +209,7 @@ function renderRepostPicker(
 
     const rows: Array<Array<{ text: string; callback_data: string }>> = [];
 
+    // Short platform keys for callback_data (Telegram 64-byte limit)
     rows.push([{
         text: `${check(selection.x)} 🐦 X`,
         callback_data: `plat:repost:toggle:x:${draftId}`,
@@ -167,23 +218,23 @@ function renderRepostPicker(
     if (hasInstagram) {
         rows.push([{
             text: `${check(selection.instagram_post)} 📸 ${t(lang, 'platforms.post')}`,
-            callback_data: `plat:repost:toggle:instagram_post:${draftId}`,
+            callback_data: `plat:repost:toggle:ip:${draftId}`,
         }]);
         rows.push([{
             text: `${check(selection.instagram_story)} 📖 ${t(lang, 'platforms.story')}`,
-            callback_data: `plat:repost:toggle:instagram_story:${draftId}`,
+            callback_data: `plat:repost:toggle:is:${draftId}`,
         }]);
         if (hasVideo) {
             rows.push([{
                 text: `${check(selection.instagram_reel)} 🎬 ${t(lang, 'platforms.reel')}`,
-                callback_data: `plat:repost:toggle:instagram_reel:${draftId}`,
+                callback_data: `plat:repost:toggle:ir:${draftId}`,
             }]);
         }
     }
 
     rows.push([
-        { text: `📤 ${t(lang, 'platforms.btnPublish')}`, callback_data: `plat:repost:publish:${draftId}` },
-        { text: t(lang, 'common.cancel'), callback_data: `plat:repost:cancel:${draftId}` },
+        { text: `📤 ${t(lang, 'platforms.btnPublish')}`, callback_data: `plat:repost:pub:${draftId}` },
+        { text: t(lang, 'common.cancel'), callback_data: `plat:repost:no:${draftId}` },
     ]);
 
     const badges = renderPlatformBadges(selection);

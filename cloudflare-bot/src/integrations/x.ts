@@ -492,6 +492,7 @@ export interface TweetWithAuthor {
         username: string;
         description?: string;
         profile_image_url?: string;
+        verified_type?: 'blue' | 'business' | 'government' | 'none';
         public_metrics?: {
             followers_count: number;
             following_count: number;
@@ -506,7 +507,7 @@ export async function getTweetById(env: Env, tweetId: string): Promise<TweetWith
     const queryParams: Record<string, string> = {
         'tweet.fields': 'text,author_id,conversation_id,in_reply_to_user_id,created_at,referenced_tweets,public_metrics,attachments',
         'expansions': 'author_id,attachments.media_keys',
-        'user.fields': 'id,name,username,description,profile_image_url,public_metrics',
+        'user.fields': 'id,name,username,description,profile_image_url,public_metrics,verified_type',
         'media.fields': 'media_key,type,url,preview_image_url,alt_text',
     };
 

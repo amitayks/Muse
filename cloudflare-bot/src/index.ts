@@ -105,6 +105,23 @@ export default {
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.image.maxRequests);
             }
 
+            if (url.pathname === '/test-card' && request.method === 'GET') {
+                const { renderTweetCard } = await import('./services/tweet-card');
+                const text = url.searchParams.get('text') || 'אני מסרב להאמין לטענות של אבא שלי שלישון עם הטלפון ליד הראש מזיק. אבל אני מתחיל לחשוב שלא לזה הוא התכוון באמת.\n\nזה פשוט נורא לקום כשהטלפון בהשג יד. אני שונא את זה.';
+                const name = url.searchParams.get('name') || 'Amitay Keisar';
+                const handle = url.searchParams.get('handle') || 'AmKeisar';
+                const png = await renderTweetCard(env, {
+                    displayName: name,
+                    username: handle,
+                    text,
+                    timestamp: new Date().toLocaleString('en-US', {
+                        hour: 'numeric', minute: '2-digit', hour12: true,
+                        month: 'short', day: 'numeric', year: 'numeric',
+                    }).replace(',', ' ·'),
+                });
+                return new Response(png, { headers: { 'Content-Type': 'image/png' } });
+            }
+
             if (url.pathname === '/test-generate' && request.method === 'GET') {
                 const response = await handleTestGenerate(request, url, env);
                 return response;
