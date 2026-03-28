@@ -9,8 +9,11 @@ import { t } from '../ui/strings';
 import { deleteMessage } from '../integrations/telegram';
 import { encrypt } from '../infra/crypto';
 import { storeEncryptedKey, updateUser, getUser } from '../data/user-db';
+import { updateChatState } from '../data/user-settings-db';
 import { renderApiKeys } from '../views/settings';
 import { validateGeminiKey } from '../ai/gemini';
+import { validateClaudeKey } from '../ai/claude';
+import { setAiProvider } from '../data/user-settings-db';
 
 export async function settingsKeyInput(
     ctx: HandlerContext & { text: string; context: ChatContext }
@@ -27,30 +30,33 @@ export async function settingsKeyInput(
 
     const backButton = { text: t(lang, 'common.back'), callback_data: 'settings:keys' };
 
+    // On validation failure, preserve the awaiting_input context so the user can retry
+    // (respond() will clear context to null, so we re-set it before returning)
+    async function failWithRetry(message: string): Promise<ViewResult> {
+        await updateChatState(env, chatId, {
+            context: { awaiting_input: 'update_key', key_service: service as any },
+        });
+        return {
+            text: `${message}\n\n<i>${t(lang, 'settingsKeys.retryHint')}</i>`,
+            keyboard: [[backButton]],
+        };
+    }
+
     if (service === 'gemini') {
         try {
             const valid = await validateGeminiKey(text);
             if (!valid) {
-                return {
-                    text: t(lang, 'settingsKeys.geminiValidationFailed').replace('{status}', 'invalid'),
-                    keyboard: [[backButton]],
-                };
+                return failWithRetry(t(lang, 'settingsKeys.geminiValidationFailed').replace('{status}', 'invalid'));
             }
         } catch {
-            return {
-                text: t(lang, 'settingsKeys.geminiValidationError'),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.geminiValidationError'));
         }
         await storeEncryptedKey(env, chatId, 'gemini_key_enc', await encrypt(env, text));
         await updateUser(env, chatId, { has_gemini: 1 });
     } else if (service === 'x') {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length !== 4) {
-            return {
-                text: t(lang, 'settingsKeys.xExpectedLines').replace('{count}', String(lines.length)),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.xExpectedLines').replace('{count}', String(lines.length)));
         }
         const [apiKey, apiSecret, accessToken, accessSecret] = lines;
 
@@ -58,10 +64,7 @@ export async function settingsKeyInput(
         const { verifyXCredentials } = await import('../commands/onboarding');
         const result = await verifyXCredentials(apiKey, apiSecret, accessToken, accessSecret);
         if (!result.ok) {
-            return {
-                text: t(lang, 'settingsKeys.xValidationFailed').replace('{error}', result.error || 'Unknown error'),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.xValidationFailed').replace('{error}', result.error || 'Unknown error'));
         }
 
         await storeEncryptedKey(env, chatId, 'x_api_key_enc', await encrypt(env, apiKey));
@@ -80,28 +83,31 @@ export async function settingsKeyInput(
                 },
             });
             if (!response.ok) {
-                return {
-                    text: t(lang, 'settingsKeys.githubValidationFailed').replace('{status}', String(response.status)),
-                    keyboard: [[backButton]],
-                };
+                return failWithRetry(t(lang, 'settingsKeys.githubValidationFailed').replace('{status}', String(response.status)));
             }
             const userData = await response.json() as { login: string };
             githubUsername = userData.login;
         } catch {
-            return {
-                text: t(lang, 'settingsKeys.githubValidationError'),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.githubValidationError'));
         }
         await storeEncryptedKey(env, chatId, 'github_token_enc', await encrypt(env, text));
         await updateUser(env, chatId, { has_github: 1, github_username: githubUsername });
+    } else if (service === 'claude') {
+        try {
+            const valid = await validateClaudeKey(text);
+            if (!valid) {
+                return failWithRetry(t(lang, 'settingsKeys.claudeValidationFailed'));
+            }
+        } catch {
+            return failWithRetry(t(lang, 'settingsKeys.claudeValidationError'));
+        }
+        await storeEncryptedKey(env, chatId, 'claude_key_enc', await encrypt(env, text));
+        await updateUser(env, chatId, { has_claude: 1 });
+        await setAiProvider(env, chatId, 'claude');
     } else if (service === 'instagram') {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length !== 2) {
-            return {
-                text: t(lang, 'settingsKeys.instagramExpectedLines').replace('{count}', String(lines.length)),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.instagramExpectedLines').replace('{count}', String(lines.length)));
         }
         const [accessToken, businessAccountId] = lines;
 
@@ -109,16 +115,10 @@ export async function settingsKeyInput(
         try {
             const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
             if (!response.ok) {
-                return {
-                    text: t(lang, 'settingsKeys.instagramValidationFailed').replace('{status}', String(response.status)),
-                    keyboard: [[backButton]],
-                };
+                return failWithRetry(t(lang, 'settingsKeys.instagramValidationFailed').replace('{status}', String(response.status)));
             }
         } catch {
-            return {
-                text: t(lang, 'settingsKeys.instagramValidationError'),
-                keyboard: [[backButton]],
-            };
+            return failWithRetry(t(lang, 'settingsKeys.instagramValidationError'));
         }
 
         await storeEncryptedKey(env, chatId, 'instagram_token_enc', await encrypt(env, accessToken));
@@ -130,6 +130,7 @@ export async function settingsKeyInput(
     const user = await getUser(env, chatId);
     return renderApiKeys({
         hasGemini: user?.has_gemini === 1,
+        hasClaude: user?.has_claude === 1,
         hasX: user?.has_x === 1,
         hasGitHub: user?.has_github === 1,
         hasInstagram: user?.has_instagram === 1,

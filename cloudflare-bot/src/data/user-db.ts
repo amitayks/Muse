@@ -41,7 +41,9 @@ export async function updateUser(
         'x_access_token_enc' | 'x_access_secret_enc' |
         'github_token_enc' | 'heygen_api_key_enc' |
         'instagram_token_enc' | 'instagram_account_id_enc' |
-        'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' |
+        'claude_key_enc' |
+        'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' | 'has_claude' |
+        'ai_provider' |
         'language' | 'default_publish_targets' |
         'github_username' |
         'own_profile_image_url' | 'own_username_x' | 'own_display_name_x' |
@@ -88,7 +90,8 @@ export async function storeEncryptedKey(
         'gemini_key_enc', 'x_api_key_enc', 'x_api_secret_enc',
         'x_access_token_enc', 'x_access_secret_enc',
         'github_token_enc', 'heygen_api_key_enc',
-        'instagram_token_enc', 'instagram_account_id_enc'
+        'instagram_token_enc', 'instagram_account_id_enc',
+        'claude_key_enc'
     ];
     if (!allowedFields.includes(keyField)) {
         throw new Error(`Invalid key field: ${keyField}`);
@@ -111,12 +114,14 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
     heygen_api_key_enc: string | null;
     instagram_token_enc: string | null;
     instagram_account_id_enc: string | null;
+    claude_key_enc: string | null;
 } | null> {
     return env.DB.prepare(`
         SELECT gemini_key_enc, x_api_key_enc, x_api_secret_enc,
                x_access_token_enc, x_access_secret_enc,
                github_token_enc, heygen_api_key_enc,
-               instagram_token_enc, instagram_account_id_enc
+               instagram_token_enc, instagram_account_id_enc,
+               claude_key_enc
         FROM users WHERE chat_id = ?
     `).bind(chatId).first();
 }

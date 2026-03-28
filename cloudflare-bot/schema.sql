@@ -42,18 +42,21 @@ CREATE TABLE IF NOT EXISTS users (
   heygen_api_key_enc TEXT,
   instagram_token_enc TEXT,
   instagram_account_id_enc TEXT,
+  claude_key_enc TEXT,
   -- Feature flags
   has_gemini INTEGER DEFAULT 0,
   has_x INTEGER DEFAULT 0,
   has_github INTEGER DEFAULT 0,
   has_heygen INTEGER DEFAULT 0,
   has_instagram INTEGER DEFAULT 0,
+  has_claude INTEGER DEFAULT 0,
   -- UI state (merged from former chat_state)
   message_id INTEGER,
   onboarding_message_id INTEGER,
   current_view TEXT DEFAULT 'home',
   context TEXT,
   -- Settings
+  ai_provider TEXT DEFAULT 'gemini',
   timezone TEXT DEFAULT 'UTC',
   page_size INTEGER DEFAULT 5,
   video_settings TEXT,

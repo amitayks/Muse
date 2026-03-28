@@ -7,7 +7,7 @@ import type { ClassifiedTweet } from '../integrations/x';
 import { fetchUserTweets, getMyProfile } from '../integrations/x';
 import { updateOwnProfileData } from '../data/user-db';
 import { getDefaultPromptText, saveUserPrompt } from './prompts';
-import { callGeminiText } from './gemini';
+import { callLLMText } from './gemini';
 
 /**
  * Run the full identity analysis flow:
@@ -58,7 +58,7 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
 
     // 3. Call Gemini with the /who-am-i analysis skill (from default_prompts)
     const analysisSkill = await getDefaultPromptText(env, 'who-am-i', lang);
-    const identityDocument = await callGeminiText(env, analysisSkill, userPrompt, { jsonMode: false });
+    const identityDocument = await callLLMText(env, analysisSkill, userPrompt, { jsonMode: false });
 
     // 4. Store in user_prompts as 'identity' (not 'who-am-i' which is the analysis skill)
     await saveUserPrompt(env, chatId, 'identity', lang, identityDocument);

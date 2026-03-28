@@ -92,13 +92,8 @@ export async function handleTelegramWebhook(request: Request, env: Env, ctx?: Ex
             hydratedEnv = await hydrateEnv(env, chatId);
         } catch (keyError) {
             logError('Key hydration failed for user:', chatId, sanitizeError(keyError));
-            const targetChatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
-            if (targetChatId) {
-                try {
-                    await sendMessage(env, targetChatId, 'Error loading your API keys. Please update them in Settings > API Keys.');
-                } catch { }
-            }
-            return addSecurityHeaders(new Response('OK', { status: 200 }));
+            // Fallback: allow navigation (settings, home) without API keys
+            hydratedEnv = { ...env, ADMIN_CHAT_ID: env.TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ID: chatId } as Env;
         }
 
         if (update.callback_query) {

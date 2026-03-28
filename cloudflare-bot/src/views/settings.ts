@@ -19,6 +19,7 @@ export function renderSettings(
     commitDefaults: { commitFastImage: boolean; commitFastAi: boolean },
     repoDefaults: { autoOverview: boolean; defaultWatchPushes: boolean },
     defaultTargets?: string,
+    aiProvider: 'gemini' | 'claude' = 'gemini',
 ): ViewResult {
     const displayTz = timezone === 'UTC' ? t(lang, 'settings.utcDefault') : timezone;
     const onOff = (v: boolean) => v ? '✅' : '⬜';
@@ -49,6 +50,7 @@ export function renderSettings(
 ${t(lang, 'settings.timezone')} ${t(lang, 'common.arrow')} <code>${displayTz}</code>
 ${t(lang, 'settings.pageSize')} ${t(lang, 'common.arrow')} <code>${pageSize} ${t(lang, 'settings.items')}</code>
 ${t(lang, 'settings.language')} ${t(lang, 'common.arrow')} <code>${lang === 'en' ? 'English' : 'עברית'}</code>
+🧠 ${t(lang, 'common.arrow')} ${aiProvider === 'claude' ? 'Claude' : 'Gemini'}
 🎯 ${t(lang, 'common.arrow')} ${badges}
 
 ${t(lang, 'settings.repostDefaults')}
@@ -128,11 +130,17 @@ export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount 
 
 // ==================== PLATFORMS SUB-PAGE ====================
 
-export function renderSettingsPlatforms(lang: Lang, defaultTargets?: string, hasInstagram = false): ViewResult {
+export function renderSettingsPlatforms(lang: Lang, defaultTargets?: string, hasInstagram = false, aiProvider: 'gemini' | 'claude' = 'gemini'): ViewResult {
     const targets = parsePublishTargets(defaultTargets);
     const badges = renderPlatformBadges(targets);
+    const providerLabel = aiProvider === 'claude' ? 'Claude' : 'Gemini';
+    const switchTo = aiProvider === 'claude' ? 'gemini' : 'claude';
+    const switchLabel = aiProvider === 'claude' ? t(lang, 'settings.switchToGemini') : t(lang, 'settings.switchToClaude');
 
     const text = `${t(lang, 'settings.subPlatformsTitle')}
+
+🧠 <b>${t(lang, 'settings.aiProvider')}</b> ${t(lang, 'common.arrow')} ${providerLabel}
+<i>${t(lang, 'settings.descAiProvider')}</i>
 
 🎯 <b>${t(lang, 'platforms.defaultPlatforms')}</b> ${badges}
 <i>${t(lang, 'settings.descDefaultPlatforms')}</i>
@@ -143,6 +151,7 @@ export function renderSettingsPlatforms(lang: Lang, defaultTargets?: string, has
     return {
         text,
         keyboard: [
+            [{ text: `🧠 ${t(lang, 'settings.aiProvider')}: ${providerLabel} ${t(lang, 'common.arrow')} ${switchLabel}`, callback_data: `settings:ai_provider:${switchTo}` }],
             [{ text: `🎯 ${t(lang, 'platforms.defaultPlatforms')} ${badges}`, callback_data: 'settings:plat:show' }],
             [{ text: t(lang, 'settings.btnApiKeys'), callback_data: 'settings:keys' }],
             [backButton('view:settings', lang)],
@@ -251,11 +260,13 @@ ${t(lang, 'settings.pageSizeCurrent')} ${t(lang, 'common.arrow')} <code>${curren
 
 export function renderApiKeys(services: {
     hasGemini: boolean;
+    hasClaude: boolean;
     hasX: boolean;
     hasGitHub: boolean;
     hasInstagram: boolean;
 }, lang: Lang = 'en'): ViewResult {
     const g = services.hasGemini;
+    const cl = services.hasClaude;
     const x = services.hasX;
     const gh = services.hasGitHub;
     const ig = services.hasInstagram;
@@ -264,11 +275,13 @@ export function renderApiKeys(services: {
         text: `${t(lang, 'settings.apiKeysTitle')}
 
 ${g ? '✅' : '⬜'} ${t(lang, 'settings.geminiAi')} ${t(lang, 'common.arrow')} <code>${g ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
+${cl ? '✅' : '⬜'} ${t(lang, 'settings.claudeAi')} ${t(lang, 'common.arrow')} <code>${cl ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
 ${x ? '✅' : '⬜'} ${t(lang, 'settings.xTwitter')} ${t(lang, 'common.arrow')} <code>${x ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
 ${gh ? '✅' : '⬜'} ${t(lang, 'settings.github')} ${t(lang, 'common.arrow')} <code>${gh ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
 ${ig ? '✅' : '⬜'} ${t(lang, 'settings.instagram')} ${t(lang, 'common.arrow')} <code>${ig ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>`,
         keyboard: [
             [{ text: `${t(lang, 'settings.geminiAi')} \u2014 ${g ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:gemini', ...(g ? { style: 'success' as const } : {}) }],
+            [{ text: `${t(lang, 'settings.claudeAi')} \u2014 ${cl ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:claude', ...(cl ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.xTwitter')} \u2014 ${x ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:x', ...(x ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.github')} \u2014 ${gh ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:github', ...(gh ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.instagram')} \u2014 ${ig ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:instagram', ...(ig ? { style: 'success' as const } : {}) }],

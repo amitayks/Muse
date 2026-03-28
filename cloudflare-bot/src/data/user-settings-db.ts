@@ -150,6 +150,34 @@ export async function setPageSize(env: Env, chatId: string, size: number): Promi
         .run();
 }
 
+// ==================== AI PROVIDER ====================
+
+/**
+ * Get AI provider for a chat (defaults to 'gemini')
+ * Gracefully handles missing column (pre-migration).
+ */
+export async function getAiProvider(env: Env, chatId: string): Promise<'gemini' | 'claude'> {
+    try {
+        const result = await env.DB.prepare('SELECT ai_provider FROM users WHERE chat_id = ?')
+            .bind(chatId)
+            .first<{ ai_provider: string | null }>();
+        return result?.ai_provider === 'claude' ? 'claude' : 'gemini';
+    } catch {
+        return 'gemini';
+    }
+}
+
+/**
+ * Set AI provider for a chat
+ */
+export async function setAiProvider(env: Env, chatId: string, provider: 'gemini' | 'claude'): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET ai_provider = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    )
+        .bind(provider, chatId)
+        .run();
+}
+
 // ==================== REPOST DEFAULTS ====================
 
 export interface RepostDefaults {

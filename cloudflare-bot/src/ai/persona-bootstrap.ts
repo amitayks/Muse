@@ -9,7 +9,7 @@ import type { Env } from '../types';
 import { getTwitterAccount, getRecentTweetsByAccount, upsertTwitterAccountOverview } from '../data/db';
 import { buildPersonaUserPrompt } from './persona-prompt';
 import { getPrompt } from './prompts';
-import { callGeminiText } from './gemini';
+import { callLLMText } from './gemini';
 
 interface PersonaResult {
     persona: string;
@@ -41,7 +41,7 @@ export async function bootstrapPersona(env: Env, accountId: string, chatId: stri
     const personaSystemPrompt = await getPrompt(env, chatId, 'persona', 'en'); // persona name unchanged
 
     try {
-        const responseText = await callGeminiText(env, personaSystemPrompt, userPrompt, {
+        const responseText = await callLLMText(env, personaSystemPrompt, userPrompt, {
             temperature: 0.5,
             jsonMode: false,
             tools: [{ googleSearch: {} }],

@@ -242,9 +242,17 @@ export const en = {
         pageSizeDesc: 'Choose how many items to show per page:',
         pageSizeCurrent: 'Current:',
 
+        // AI Provider
+        aiProvider: 'AI Provider',
+        descAiProvider: 'Choose which AI model generates your text content.',
+        switchToClaude: 'Switch to Claude',
+        switchToGemini: 'Switch to Gemini',
+        claudeKeyRequired: '❌ You need to add a Claude API key first. Go to API Keys below to connect it.',
+
         // API Keys
         apiKeysTitle: '🔑 <b>API Keys</b>',
         geminiAi: 'Gemini AI',
+        claudeAi: 'Claude AI',
         xTwitter: 'X/Twitter',
         github: 'GitHub',
         instagram: 'Instagram',
@@ -898,6 +906,10 @@ export const en = {
         updateGeminiDesc: 'Send your new Gemini API key.\n\nGet one free at:',
         geminiLink: '📖 Get key',
 
+        updateClaudeTitle: '🔑 <b>Update Claude API Key</b>',
+        updateClaudeDesc: 'Send your Claude API key.\n\nGet one at:',
+        claudeConsole: '📖 Get key',
+
         updateXTitle: '🔑 <b>Update X/Twitter Keys</b>',
         updateXDesc: 'Send all 4 values in this exact format (one per line):',
         xDevPortal: '📖 Developer portal',
@@ -923,6 +935,9 @@ export const en = {
     settingsKeys: {
         geminiValidationFailed: '❌ Gemini key validation failed (status {status}). Please check and try again.',
         geminiValidationError: '❌ Could not validate Gemini key. Please try again.',
+        claudeValidationFailed: '❌ Claude key validation failed. Please check your key and try again.',
+        claudeValidationError: '❌ Could not validate Claude key. Please try again.',
+        retryHint: 'Send your key again to retry, or tap Back to cancel.',
         xExpectedLines: '❌ Expected 4 lines (API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET), got {count}.',
         xValidationFailed: '❌ X credential validation failed: {error}',
         githubValidationFailed: '❌ GitHub token validation failed (status {status}). Please check and try again.',

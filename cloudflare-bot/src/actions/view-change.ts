@@ -82,11 +82,12 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             const staleCount = await countStalePrompts(env, chatId);
             const { getUser } = await import('../data/user-db');
             const settingsUser = await getUser(env, chatId);
-            const { getRepostDefaults, getCommitDefaults, getRepoDefaults } = await import('../data/user-settings-db');
+            const { getRepostDefaults, getCommitDefaults, getRepoDefaults, getAiProvider } = await import('../data/user-settings-db');
             const rpDefaults = await getRepostDefaults(env, chatId);
             const cmDefaults = await getCommitDefaults(env, chatId);
             const repoDefaults = await getRepoDefaults(env, chatId);
-            return renderSettings(tz, ps, lang, staleCount, rpDefaults, cmDefaults, repoDefaults, settingsUser?.default_publish_targets);
+            const aiProvider = await getAiProvider(env, chatId);
+            return renderSettings(tz, ps, lang, staleCount, rpDefaults, cmDefaults, repoDefaults, settingsUser?.default_publish_targets, aiProvider);
         }
         case 'page_size_select': {
             await updateChatState(env, chatId, { current_view: 'page_size_select', context: null });

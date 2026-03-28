@@ -1,5 +1,5 @@
 /**
- * AI Service - Content and image generation via Gemini
+ * AI Service - Content and image generation via Gemini + multi-provider routing
  *
  * SECURITY: Uses secure logging and sanitizes API error responses
  */
@@ -9,6 +9,7 @@ import { logInfo, logError, sanitizeContent } from '../infra/security';
 import { getRepoOverview } from '../data/db';
 import { getPrompt, assembleSystemInstruction } from './prompts';
 import { buildPromptSections } from './prompt-utils';
+import { callClaudeText } from './claude';
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_TEXT_MODEL = 'gemini-3.1-pro-preview';
@@ -45,7 +46,7 @@ export async function extractRepoOverview(
     const userPrompt = `${readmeSection}\n\n${prSection}`;
 
     const overviewPrompt = await assembleSystemInstruction(env, chatId || '', 'know-my-project', language || 'en');
-    const responseText = await callGeminiText(env, overviewPrompt, userPrompt);
+    const responseText = await callLLMText(env, overviewPrompt, userPrompt);
 
     try {
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -161,7 +162,7 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         userPrompt = prompt;
     }
 
-    const responseText = await callGeminiText(env, contentSystemPrompt, userPrompt, {
+    const responseText = await callLLMText(env, contentSystemPrompt, userPrompt, {
         tools: [{ googleSearch: {} }],
     });
     const result = parseContentResponse(responseText);
@@ -232,6 +233,43 @@ export async function callGeminiText(
     }
 
     return text;
+}
+
+/**
+ * Multi-provider LLM text router.
+ * Reads env.AI_PROVIDER and dispatches to the correct provider.
+ * Translates tool specs between provider formats.
+ */
+export async function callLLMText(
+    env: Env,
+    systemPrompt: string,
+    userPrompt: string | Array<{ text: string } | { inline_data: { mime_type: string; data: string } }>,
+    options?: GeminiOptions,
+): Promise<string> {
+    const provider = env.AI_PROVIDER || 'gemini';
+
+    if (provider === 'claude') {
+        if (!env.CLAUDE_API_KEY) {
+            throw new Error('Claude API key not configured. Please add your Claude API key in Settings → Platforms → API Keys.');
+        }
+
+        // Translate tools: googleSearch → web_search for Claude
+        let translatedOptions = options;
+        if (options?.tools) {
+            const translatedTools = options.tools.map(tool => {
+                if ('googleSearch' in tool) {
+                    return { type: 'web_search_20250305', name: 'web_search' };
+                }
+                return tool;
+            });
+            translatedOptions = { ...options, tools: translatedTools };
+        }
+
+        return callClaudeText(env, systemPrompt, userPrompt, translatedOptions);
+    }
+
+    // Default: Gemini
+    return callGeminiText(env, systemPrompt, userPrompt, options);
 }
 
 /**
@@ -354,7 +392,7 @@ export async function refineContent(
         userPrompt = userPromptText;
     }
 
-    const responseText = await callGeminiText(env, systemPrompt, userPrompt, {
+    const responseText = await callLLMText(env, systemPrompt, userPrompt, {
         tools: [{ googleSearch: {} }],
     });
     const result = parseContentResponse(responseText).content;
@@ -549,7 +587,7 @@ export async function refineHandwrittenContent(
             userPrompt = userPromptText;
         }
 
-        const responseText = await callGeminiText(env, systemPrompt, userPrompt);
+        const responseText = await callLLMText(env, systemPrompt, userPrompt);
         return parseContentResponse(responseText).content;
     }
 
@@ -701,7 +739,7 @@ export async function generateVideoScript(
 
     const userPrompt = promptParts.join('\n');
     const videoSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'video', language || 'en');
-    const responseText = await callGeminiText(env, videoSystemPrompt, userPrompt);
+    const responseText = await callLLMText(env, videoSystemPrompt, userPrompt);
 
     return parseAndValidateVideoScript(responseText, options, calibration);
 }

@@ -29,6 +29,7 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
         HEYGEN_API_KEY: undefined,
         INSTAGRAM_ACCESS_TOKEN: undefined,
         INSTAGRAM_BUSINESS_ACCOUNT_ID: undefined,
+        CLAUDE_API_KEY: undefined,
     };
 
     if (keys.gemini_key_enc) {
@@ -58,6 +59,9 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
     if (keys.instagram_account_id_enc) {
         result.INSTAGRAM_BUSINESS_ACCOUNT_ID = await decrypt(env, keys.instagram_account_id_enc);
     }
+    if (keys.claude_key_enc) {
+        result.CLAUDE_API_KEY = await decrypt(env, keys.claude_key_enc);
+    }
 
     return result;
 }
@@ -70,11 +74,12 @@ export async function hydrateEnv(env: Env, chatId: string): Promise<Env> {
     const userKeys = await getUserKeys(env, chatId);
     const hydrated = { ...env, ...userKeys, ADMIN_CHAT_ID: env.TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ID: chatId } as Env;
 
-    // Populate GITHUB_OWNER from stored github_username
+    // Populate GITHUB_OWNER and AI_PROVIDER from user record
     const user = await getUser(env, chatId);
     if (user?.github_username) {
         hydrated.GITHUB_OWNER = user.github_username;
     }
+    hydrated.AI_PROVIDER = (user as any)?.ai_provider || 'gemini';
 
     return hydrated;
 }

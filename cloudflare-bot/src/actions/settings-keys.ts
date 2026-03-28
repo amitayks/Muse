@@ -8,7 +8,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getUser, updateDefaultPublishTargets } from '../data/user-db';
 import { updateChatState, getTimezone, getPageSize } from '../data/db';
-import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault, getRepoDefaults, setRepoDefault } from '../data/user-settings-db';
+import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault, getRepoDefaults, setRepoDefault, getAiProvider, setAiProvider } from '../data/user-settings-db';
 import { renderApiKeys, renderSettings, renderSettingsGeneral, renderSettingsSkills, renderSettingsPlatforms, renderSettingsRepost, renderSettingsCommits, renderSettingsRepos } from '../views/settings';
 import { analyzeIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
@@ -41,6 +41,11 @@ export async function settingsKeysAction(
     // ==================== REPO DEFAULTS ====================
     if (value === 'repo') {
         return handleRepoDefaults(ctx, lang, extra);
+    }
+
+    // ==================== AI PROVIDER TOGGLE ====================
+    if (value === 'ai_provider') {
+        return handleAiProviderToggle(ctx, lang, extra);
     }
 
     // ==================== PLATFORM TOGGLE FOR DEFAULT TARGETS ====================
@@ -94,6 +99,7 @@ export async function settingsKeysAction(
         await updateChatState(env, chatId, { current_view: 'api_keys', context: null });
         return renderApiKeys({
             hasGemini: user?.has_gemini === 1,
+            hasClaude: user?.has_claude === 1,
             hasX: user?.has_x === 1,
             hasGitHub: user?.has_github === 1,
             hasInstagram: user?.has_instagram === 1,
@@ -145,6 +151,20 @@ export async function settingsKeysAction(
             };
         }
 
+        if (service === 'claude') {
+            await updateChatState(env, chatId, {
+                current_view: 'api_keys',
+                context: { awaiting_input: 'update_key', key_service: 'claude' },
+            });
+            return {
+                text: `${t(lang, 'apiKeys.updateClaudeTitle')}\n\n${t(lang, 'apiKeys.updateClaudeDesc')}\n\n<i>(Message will be deleted after saving)</i>`,
+                keyboard: [
+                    [{ text: t(lang, 'apiKeys.claudeConsole'), url: 'https://console.anthropic.com/settings/keys' }],
+                    [{ text: t(lang, 'common.back'), callback_data: 'settings:keys' }],
+                ],
+            };
+        }
+
         if (service === 'instagram') {
             await updateChatState(env, chatId, {
                 current_view: 'api_keys',
@@ -183,7 +203,8 @@ async function handleSubPage(
         }
         case 'platforms': {
             const user = await getUser(env, chatId);
-            return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1);
+            const provider = await getAiProvider(env, chatId);
+            return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1, provider);
         }
         case 'repost': {
             const rpDefaults = await getRepostDefaults(env, chatId);
@@ -297,7 +318,8 @@ async function handleSettingsPlat(
     if (extra === 'done') {
         // Return to platforms sub-page
         const user = await getUser(env, chatId);
-        return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1);
+        const provider = await getAiProvider(env, chatId);
+        return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1, provider);
     }
 
     if (extra?.startsWith('toggle:')) {
@@ -388,5 +410,43 @@ export async function returnToSettings(
     const rpDefaults = await getRepostDefaults(env, chatId);
     const cmDefaults = await getCommitDefaults(env, chatId);
     const repoDefaults = await getRepoDefaults(env, chatId);
-    return renderSettings(tz, ps, lang, staleCount, rpDefaults, cmDefaults, repoDefaults, user?.default_publish_targets);
+    const aiProvider = await getAiProvider(env, chatId);
+    return renderSettings(tz, ps, lang, staleCount, rpDefaults, cmDefaults, repoDefaults, user?.default_publish_targets, aiProvider);
+}
+
+// ==================== AI Provider Toggle Sub-handler ====================
+
+async function handleAiProviderToggle(
+    ctx: HandlerContext & { value: string; extra?: string },
+    lang: Lang,
+    targetProvider?: string
+): Promise<ViewResult | void> {
+    const { env, chatId } = ctx;
+
+    if (targetProvider === 'claude') {
+        // Check if user has a Claude key before switching
+        const user = await getUser(env, chatId);
+        if (user?.has_claude !== 1) {
+            // Prompt for Claude key directly (same flow as settings:update:claude)
+            await updateChatState(env, chatId, {
+                current_view: 'api_keys',
+                context: { awaiting_input: 'update_key', key_service: 'claude' },
+            });
+            return {
+                text: `${t(lang, 'apiKeys.updateClaudeTitle')}\n\n${t(lang, 'apiKeys.updateClaudeDesc')}\n\n<i>(Message will be deleted after saving)</i>`,
+                keyboard: [
+                    [{ text: t(lang, 'apiKeys.claudeConsole'), url: 'https://console.anthropic.com/settings/keys' }],
+                    [{ text: t(lang, 'common.back'), callback_data: 'settings:sub:platforms' }],
+                ],
+            };
+        }
+        await setAiProvider(env, chatId, 'claude');
+    } else if (targetProvider === 'gemini') {
+        await setAiProvider(env, chatId, 'gemini');
+    }
+
+    // Return to platforms sub-page with updated provider
+    const user = await getUser(env, chatId);
+    const provider = await getAiProvider(env, chatId);
+    return renderSettingsPlatforms(lang, user?.default_publish_targets, user?.has_instagram === 1, provider);
 }

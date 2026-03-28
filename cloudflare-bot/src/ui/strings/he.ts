@@ -243,8 +243,16 @@ export const he: StringsMap = {
         pageSizeDesc: 'בחר כמה פריטים להציג בכל עמוד:',
         pageSizeCurrent: 'נוכחי:',
 
+        // AI Provider
+        aiProvider: 'ספק AI',
+        descAiProvider: 'בחר איזה מודל AI יוצר את התוכן שלך.',
+        switchToClaude: 'עבור ל-Claude',
+        switchToGemini: 'עבור ל-Gemini',
+        claudeKeyRequired: '❌ צריך להוסיף מפתח Claude API קודם. עבור למפתחות API למטה כדי לחבר.',
+
         apiKeysTitle: '🔑 <b>מפתחות API</b>',
         geminiAi: 'Gemini AI',
+        claudeAi: 'Claude AI',
         xTwitter: 'X/Twitter',
         github: 'GitHub',
         instagram: 'Instagram',
@@ -838,6 +846,10 @@ export const he: StringsMap = {
         updateGeminiDesc: 'שלח את מפתח ה-Gemini API החדש שלך.\n\nקבל אחד בחינם ב:',
         geminiLink: '📖 קבל מפתח',
 
+        updateClaudeTitle: '🔑 <b>עדכן מפתח API של Claude</b>',
+        updateClaudeDesc: 'שלח את מפתח ה-Claude API שלך.\n\nקבל אחד ב:',
+        claudeConsole: '📖 קבל מפתח',
+
         updateXTitle: '🔑 <b>עדכן מפתחות X/Twitter</b>',
         updateXDesc: 'שלח את כל 4 הערכים בפורמט המדויק הזה (אחד בכל שורה):',
         xDevPortal: '📖 פורטל מפתחים',
@@ -862,6 +874,9 @@ export const he: StringsMap = {
     settingsKeys: {
         geminiValidationFailed: '❌ אימות מפתח Gemini נכשל (סטטוס {status}). אנא בדוק ונסה שוב.',
         geminiValidationError: '❌ לא הצלחתי לאמת מפתח Gemini. נסה שוב.',
+        claudeValidationFailed: '❌ אימות מפתח Claude נכשל. אנא בדוק את המפתח ונסה שוב.',
+        claudeValidationError: '❌ לא הצלחתי לאמת מפתח Claude. נסה שוב.',
+        retryHint: 'שלח את המפתח שוב לנסות שנית, או לחץ חזרה לביטול.',
         xExpectedLines: '❌ צפויות 4 שורות (API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET), התקבלו {count}.',
         xValidationFailed: '❌ אימות פרטי X נכשל: {error}',
         githubValidationFailed: '❌ אימות טוקן GitHub נכשל (סטטוס {status}). אנא בדוק ונסה שוב.',

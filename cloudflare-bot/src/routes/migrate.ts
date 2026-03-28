@@ -486,6 +486,23 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('github_username migration note:', String(githubUsernameError));
         }
 
+        // Migration: Add Claude AI provider columns to users table (016)
+        try {
+            const usersInfo6 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasAiProvider = usersInfo6.results?.some((col: any) => col.name === 'ai_provider');
+
+            if (!hasAiProvider) {
+                await execStatements(env.DB, [
+                    `ALTER TABLE users ADD COLUMN ai_provider TEXT DEFAULT 'gemini';`,
+                    `ALTER TABLE users ADD COLUMN claude_key_enc TEXT;`,
+                    `ALTER TABLE users ADD COLUMN has_claude INTEGER DEFAULT 0;`,
+                ]);
+                logInfo('Added Claude provider columns to users table');
+            }
+        } catch (claudeProviderError) {
+            logInfo('Claude provider migration note:', String(claudeProviderError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

@@ -6,7 +6,7 @@ import type { Env, TwitterTweet } from '../types';
 import { updateTwitterTweet, getTwitterAccountOverview } from '../data/db';
 import { buildScoringUserPrompt } from './scoring-prompt';
 import { assembleSystemInstruction } from './prompts';
-import { callGeminiText } from './gemini';
+import { callLLMText } from './gemini';
 
 interface ScoringResult {
     scores: Array<{
@@ -49,7 +49,7 @@ export async function scoreTweetBatch(env: Env, tweets: TwitterTweet[]): Promise
     const scoringSystemPrompt = await assembleSystemInstruction(env, chatId, 'what-i-like', 'en');
 
     try {
-        const text = await callGeminiText(env, scoringSystemPrompt, userPrompt, { temperature: 0.3 });
+        const text = await callLLMText(env, scoringSystemPrompt, userPrompt, { temperature: 0.3 });
         const result = JSON.parse(text) as ScoringResult;
 
         // Update each tweet with its score

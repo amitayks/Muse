@@ -9,7 +9,7 @@ import type { Env, DraftContent, TwitterTweet, TwitterAccountConfig } from '../t
 import { getTwitterAccountOverview } from '../data/db';
 import { buildRepostUserPrompt } from './repost-prompt';
 import { assembleSystemInstruction } from './prompts';
-import { callGeminiText } from './gemini';
+import { callLLMText } from './gemini';
 import type { ImagePart } from './gemini';
 
 export interface RepostOptions {
@@ -95,7 +95,7 @@ export async function generateRepostContent(
             }
         }
 
-        const text = await callGeminiText(env, repostSystemPrompt, parts, { temperature: 0.8, tools: [{ googleSearch: {} }] });
+        const text = await callLLMText(env, repostSystemPrompt, parts, { temperature: 0.8, tools: [{ googleSearch: {} }] });
         const content = JSON.parse(text) as DraftContent;
 
         if (!content.tweets || content.tweets.length === 0) {

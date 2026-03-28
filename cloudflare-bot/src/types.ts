@@ -17,6 +17,10 @@ export interface Env {
     X_ACCESS_SECRET: string;
     // Google API key for Gemini image generation
     GOOGLE_API_KEY: string;
+    // Claude API key for Claude text generation
+    CLAUDE_API_KEY?: string;
+    // AI provider preference (gemini | claude)
+    AI_PROVIDER?: string;
     // Security: Admin secret for protected endpoints
     ADMIN_SECRET?: string;
     // HeyGen API key for video generation
@@ -60,6 +64,7 @@ export interface User {
     heygen_api_key_enc: string | null;
     instagram_token_enc: string | null;
     instagram_account_id_enc: string | null;
+    claude_key_enc: string | null;
 
     // Feature flags
     has_gemini: number;
@@ -67,6 +72,7 @@ export interface User {
     has_github: number;
     has_heygen: number;
     has_instagram: number;
+    has_claude: number;
 
     // UI state (from former chat_state)
     message_id: number | null;
@@ -75,6 +81,7 @@ export interface User {
     context: string | null;
 
     // Settings
+    ai_provider: string; // 'gemini' | 'claude'
     language: string; // 'en' | 'he'
     timezone: string;
     page_size: number;
@@ -694,7 +701,7 @@ export interface TelegramUpdate {
 // Context for stateful operations
 export interface ChatContext {
     awaiting_input?: 'commit_sha' | 'schedule' | 'schedule_time' | 'delete' | 'add_repo' | 'add_account' | 'edit_draft' | 'handwrite' | 'timezone' | 'edit_overview' | 'video_preset_name' | 'edit_character' | 'repost_url' | 'update_key';
-    key_service?: 'gemini' | 'x' | 'github' | 'instagram';
+    key_service?: 'gemini' | 'x' | 'github' | 'instagram' | 'claude';
     compose?: ComposeState;
     videoCompose?: VideoComposeState;
     characterCreate?: CharacterCreateState;
