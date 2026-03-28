@@ -166,7 +166,9 @@ export const WORK_PROGRESS_HE = `אני מסתכל על העבודה האחרו�
 
 פרוטוקול משימה
 
-להגיב אך ורק ב-JSON תקין:
+אני כותב את כל התוכן בעברית בלבד.
+
+אני מגיב אך ורק ב-JSON תקין:
 {
   "format": "single" or "thread",
   "tweets": [{ "text": "...", "index": 0 }, ...],
