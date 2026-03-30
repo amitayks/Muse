@@ -204,6 +204,9 @@ export async function callGeminiText(
         generationConfig: {
             temperature,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+            thinkingConfig: {
+                thinkingBudget: 8000,
+            },
         },
     };
 
@@ -247,6 +250,7 @@ export async function callLLMText(
     options?: GeminiOptions,
 ): Promise<string> {
     const provider = env.AI_PROVIDER || 'gemini';
+    logInfo('[llm-router] provider:', provider, 'hasTools:', !!(options?.tools?.length));
 
     if (provider === 'claude') {
         if (!env.CLAUDE_API_KEY) {

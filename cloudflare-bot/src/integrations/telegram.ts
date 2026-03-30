@@ -188,6 +188,39 @@ export async function sendPhoto(
 }
 
 /**
+ * Send a document (file) with optional caption — preserves original resolution
+ */
+export async function sendDocument(
+    env: Env,
+    chatId: string | number,
+    documentUrl: string,
+    caption?: string,
+    keyboard?: InlineButton[][]
+): Promise<number> {
+    const response = await fetch(`${TELEGRAM_API}${env.TELEGRAM_BOT_TOKEN}/sendDocument`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: chatId,
+            document: documentUrl,
+            caption,
+            parse_mode: 'HTML',
+            reply_markup: keyboard ? { inline_keyboard: toTelegramKeyboard(keyboard) } : undefined,
+        }),
+    });
+
+    const data = await response.json() as { ok: boolean; result?: { message_id: number }; description?: string };
+
+    if (!data.ok || !data.result) {
+        console.error('sendDocument failed:', data.description);
+        throw new Error(`Failed to send document: ${data.description}`);
+    }
+
+    console.log('Sent document:', data.result.message_id);
+    return data.result.message_id;
+}
+
+/**
  * Send a group of photos as an album (2–10 photos)
  */
 export async function sendMediaGroup(

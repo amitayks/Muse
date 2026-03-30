@@ -37,10 +37,10 @@ export async function fastGenerateAction(ctx: HandlerContext & { extra?: string 
     const defaults = await getRepostDefaults(ctx.env, ctx.chatId);
 
     // Source image: use user's analyze_source_image setting
-    const imageUrl = defaults.analyzeSourceImage ? tweet.media_url : null;
+    const imageUrls = defaults.analyzeSourceImage && tweet.media_url ? [tweet.media_url] : [];
 
     const content = await generateRepostContent(ctx.env, tweet, account.id, config, {
-        imageUrl,
+        imageUrls,
         language: lang,
         relevanceReason: tweet.relevance_reason,
     });

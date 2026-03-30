@@ -360,7 +360,7 @@ async function completeStaleThreads(
 
         try {
             // Fetch full thread
-            const threadTweets = await searchConversation(env, conversationId, account.username);
+            const { tweets: threadTweets } = await searchConversation(env, conversationId, account.username);
 
             if (threadTweets.length > 0) {
                 // Sort by created_at to get correct order

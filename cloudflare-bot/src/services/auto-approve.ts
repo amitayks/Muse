@@ -79,10 +79,10 @@ async function generateAndApproveDraft(
 ): Promise<void> {
     const { generateRepostContent } = await import('../ai/repost-generate');
 
-    const imageUrl = config.analyzeMedia ? tweet.media_url : null;
+    const imageUrls = config.analyzeMedia && tweet.media_url ? [tweet.media_url] : [];
     // Pass undefined for personaOverride — lets repost-generate fetch from account overview
     const content = await generateRepostContent(env, tweet, account.id, config, {
-        imageUrl,
+        imageUrls,
         relevanceReason: tweet.relevance_reason,
     });
     if (!content) {

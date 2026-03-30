@@ -49,7 +49,9 @@ export const he: StringsMap = {
         btnRepost: '🔄 ריפוסט',
         btnRepos: '📦 ריפוז',
         btnAccounts: '👤 חשבונות',
+        btnThumbs: '🖼 תמונות ממוזערות',
         btnVideoStudio: '🎬 סטודיו וידאו',
+        btnOpenApp: 'פתח אפליקציה',
         btnSettings: '⚙️ הגדרות',
         btnHelp: '❓ עזרה',
     },
@@ -126,6 +128,7 @@ export const he: StringsMap = {
         // Compose buttons
         btnInstruct: '📝 הוראה',
         btnAnalyze: '📷 ניתוח',
+        btnThread: '🧵 שרשור',
 
         // Instruction UX
         instructToast: 'הקלד את ההוראה שלך עכשיו',
@@ -943,6 +946,8 @@ export const he: StringsMap = {
         invalidTweetUrlMsg: 'לא הצלחתי לפענח כתובת ציוץ.',
         tweetNotFound: '❌ <b>ציוץ לא נמצא</b>',
         tweetNotFoundMsg: 'לא הצלחתי להביא ציוץ <code>{tweetId}</code> מ-@{username}.\n\nהציוץ עשוי להיות מחוק, מחשבון פרטי, או שהכתובת שגויה.\n\nנסה כתובת אחרת:',
+        rateLimited: 'הגעת למגבלת קריאות ה-API של X. המתן מספר דקות ונסה שוב.',
+        creditsDepleted: 'קרדיטים של X API נגמרו. טען את חשבון המפתח של X כדי להמשיך.',
     },
 
     platforms: {
@@ -971,5 +976,26 @@ export const he: StringsMap = {
 
         // שגיאות
         noTargetSelected: 'אנא בחר לפחות פלטפורמה אחת.',
+    },
+
+    thumb: {
+        composeTitle: '🖼 <b>יצירת תמונה ממוזערת</b>',
+        labelTitle: 'כותרת',
+        labelColor: 'צבע',
+        labelIcons: 'אייקונים',
+        labelImage: 'תמונה',
+        labelAspect: 'יחס',
+        instructions: 'שלח לי את הבחירות שלך:\n1. "כותרת"\n2. "צבע"\n3. "אייקונים"\nצרף את התמונה (תמונה או קובץ)',
+        btnPenDown: '✏️ סיום',
+        missing: 'חסר',
+        generating: '🖼 מייצר תמונה ממוזערת...',
+        generationFailed: '❌ יצירת התמונה הממוזערת נכשלה. נסה שוב.',
+        imageNotFound: '❌ התמונה לא נמצאה.',
+        notFound: '❌ תמונה ממוזערת לא נמצאה.',
+        draftsTitle: 'תמונות ממוזערות',
+        draftsCategory: '🖼 תמונות ממוזערות',
+        noDrafts: 'אין עדיין תמונות ממוזערות.',
+        btnFullRes: 'רזולוציה מלאה',
+        deleteConfirm: '🗑 למחוק תמונה ממוזערת זו?',
     },
 };

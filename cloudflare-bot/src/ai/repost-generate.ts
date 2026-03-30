@@ -14,7 +14,7 @@ import type { ImagePart } from './gemini';
 
 export interface RepostOptions {
     personaOverride?: string | null;
-    imageUrl?: string | null;
+    imageUrls?: string[];
     language?: string;
     userTweets?: string[];
     instruction?: string;
@@ -34,7 +34,7 @@ export async function generateRepostContent(
     options?: RepostOptions,
 ): Promise<DraftContent | null> {
     const {
-        personaOverride, imageUrl, language,
+        personaOverride, imageUrls, language,
         userTweets, instruction, threadText,
         userImageParts, relevanceReason,
     } = options || {};
@@ -56,7 +56,7 @@ export async function generateRepostContent(
         language: language || 'en',
         persona,
         recentTweets: [],
-        hasImage: !!imageUrl,
+        hasImage: !!(imageUrls && imageUrls.length > 0),
         threadText,
         userTweets,
         instruction,
@@ -71,20 +71,22 @@ export async function generateRepostContent(
             { text: userPrompt },
         ];
 
-        // Fetch and attach source tweet image if available
-        if (imageUrl) {
-            try {
-                const imgResponse = await fetch(imageUrl);
-                if (imgResponse.ok) {
-                    const imgBuffer = await imgResponse.arrayBuffer();
-                    const base64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
-                    const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
-                    parts.push({
-                        inline_data: { mime_type: contentType, data: base64 },
-                    });
+        // Fetch and attach source tweet images if available
+        if (imageUrls && imageUrls.length > 0) {
+            for (const url of imageUrls) {
+                try {
+                    const imgResponse = await fetch(url);
+                    if (imgResponse.ok) {
+                        const imgBuffer = await imgResponse.arrayBuffer();
+                        const base64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+                        const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+                        parts.push({
+                            inline_data: { mime_type: contentType, data: base64 },
+                        });
+                    }
+                } catch (error) {
+                    console.error('[repost-gen] Failed to fetch tweet image:', url, error);
                 }
-            } catch (error) {
-                console.error('[repost-gen] Failed to fetch tweet image:', error);
             }
         }
 
@@ -95,8 +97,17 @@ export async function generateRepostContent(
             }
         }
 
+        console.log('[repost-gen] calling LLM, system prompt length:', repostSystemPrompt.length, 'parts count:', parts.length);
         const text = await callLLMText(env, repostSystemPrompt, parts, { temperature: 0.8, tools: [{ googleSearch: {} }] });
-        const content = JSON.parse(text) as DraftContent;
+        console.log('[repost-gen] LLM response length:', text.length, 'first 300 chars:', text.substring(0, 300));
+
+        // Extract JSON robustly — LLM may wrap in markdown fences or add preamble
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            console.error('[repost-gen] No JSON found in response, first 200 chars:', text.substring(0, 200));
+            return null;
+        }
+        const content = JSON.parse(jsonMatch[0]) as DraftContent;
 
         if (!content.tweets || content.tweets.length === 0) {
             console.error('[repost-gen] Invalid content: no tweets');

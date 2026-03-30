@@ -8,6 +8,7 @@ export { PERSONA_EN, PERSONA_HE } from './persona';
 export { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
 export { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
 export { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
+export { THUMBNAIL_EN } from './thumbnail';
 
 import { WHO_AM_I_EN, WHO_AM_I_HE } from './who-am-i';
 import { WORK_PROGRESS_EN, WORK_PROGRESS_HE } from './work-progress';
@@ -19,8 +20,9 @@ import { PERSONA_EN, PERSONA_HE } from './persona';
 import { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
 import { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
 import { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
+import { THUMBNAIL_EN } from './thumbnail';
 
-type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen';
+type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen' | 'thumbnail';
 
 export function getDefaultPromptTexts(): Array<{ type: PromptType; language: string; content: string }> {
     return [
@@ -44,5 +46,6 @@ export function getDefaultPromptTexts(): Array<{ type: PromptType; language: str
         { type: 'what-i-like', language: 'he', content: WHAT_I_LIKE_HE },
         { type: 'image-gen', language: 'he', content: IMAGE_GEN_HE },
         { type: 'identity', language: 'he', content: IDENTITY_DEFAULT_HE },
+        { type: 'thumbnail', language: 'en', content: THUMBNAIL_EN },
     ];
 }

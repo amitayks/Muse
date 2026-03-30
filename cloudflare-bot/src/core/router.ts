@@ -128,6 +128,7 @@ import { settingsKeysAction } from '../actions/settings-keys';
 import { platformToggleAction, platformShowAction, platformDoneAction } from '../actions/platform-toggle';
 import { editComposeAction } from '../actions/edit-compose';
 import { fastCommitAction } from '../actions/fast-commit';
+import { thumbAction } from '../actions/thumb';
 
 /** Action handlers keyed by the `action` part of `action:ACTION:ID` */
 const actionSubHandlers: Record<string, ActionHandler> = {
@@ -207,6 +208,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     account: accountDetailAction as ActionHandler,
     tw_config: accountConfigToggleAction,
     compose: composeAction,
+    thumb: thumbAction,
     tw_batch: batchPageAction,
     tw_view: tweetViewDraftAction,
     vconfig: videoConfigAction,

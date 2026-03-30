@@ -111,6 +111,26 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             return renderDraftsList(env, chatId, 0, 'repost', ps6, lang);
         }
 
+        // ==================== THUMBNAIL VIEWS ====================
+        case 'thumbs': {
+            const { renderThumbCompose } = await import('../views/thumb');
+            const thumbState = {
+                active: true as const,
+                ratio: '16:9' as const,
+                statusMessageId: ctx.messageId || 0,
+            };
+            await updateChatState(env, chatId, {
+                current_view: 'thumb_compose',
+                context: { thumbCompose: thumbState },
+            });
+            return renderThumbCompose(thumbState, lang);
+        }
+        case 'drafts_thumbs': {
+            const { renderThumbDraftsList } = await import('../views/thumb-drafts');
+            await updateChatState(env, chatId, { current_view: 'drafts_thumbs', context: { page: 0 } });
+            return renderThumbDraftsList(env, chatId, 0, lang);
+        }
+
         // ==================== REPOST VIEW ====================
         case 'repost': {
             const { renderRepostPrompt } = await import('../views/repost');

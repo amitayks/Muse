@@ -141,6 +141,7 @@ export function handlePromptEditorPage(): Response {
       <button class="tab" data-type="refine">/refine</button>
       <button class="tab" data-type="quote">/quote</button>
       <button class="tab" data-type="identity">My Identity</button>
+      <button class="tab" data-type="thumbnail">/thumbnail</button>
     </div>
     <div id="promptMeta"><span class="badge default" id="badge">Default</span></div>
     <div class="identity-hint" id="identityHint" style="display:none;">

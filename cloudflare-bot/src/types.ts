@@ -36,6 +36,8 @@ export interface Env {
     ADMIN_CHAT_ID?: string;
     // Worker URL for cron fan-out self-fetch
     WORKER_URL?: string;
+    // Webapp URL (Cloudflare Pages) — enables "Open App" button and webapp-based editing
+    WEBAPP_URL?: string;
 }
 
 // ==================== MULTI-TENANT USER ====================
@@ -677,6 +679,7 @@ export interface TelegramMessage {
     text?: string;
     caption?: string;
     photo?: Array<{ file_id: string; file_size?: number; width?: number; height?: number }>;
+    document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
     media_group_id?: string;
     from?: { id: number; first_name: string };
     web_app_data?: { data: string; button_text: string };
@@ -706,6 +709,7 @@ export interface ChatContext {
     videoCompose?: VideoComposeState;
     characterCreate?: CharacterCreateState;
     lookCreate?: LookCreateState;
+    thumbCompose?: ThumbComposeState;
     voiceSelect?: { groupId: string; voiceIds: string[] };
     selectedCharGroupId?: string;
     selected_account_id?: string;
@@ -745,6 +749,31 @@ export interface LookCreateState {
     imageKey?: string;
 }
 
+// Thumbnail compose mode
+export interface ThumbComposeState {
+    active: boolean;
+    title?: string;
+    color?: string;
+    icons?: string;
+    imageKey?: string;
+    ratio: '16:9' | '9:16';
+    statusMessageId: number;
+}
+
+// Thumbnail draft record from D1
+export interface ThumbDraft {
+    id: string;
+    chat_id: string;
+    title: string;
+    color: string;
+    icons: string;
+    ratio: string;
+    source_image_key: string | null;
+    result_image_key: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
 // Compose mode types (unified for handwrite and repost)
 export interface ComposeTweet {
     messageId: number;
@@ -760,6 +789,7 @@ export interface ComposeSourceTweet {
     text: string;
     threadText?: string;
     mediaUrl?: string;
+    mediaUrls?: string[];
     isThread: boolean;
     metrics?: { likes: number; retweets: number; replies: number; quotes: number };
     tweetUrl: string;
@@ -796,6 +826,7 @@ export interface ComposeState {
     sourceTweet?: ComposeSourceTweet;
     sourceAccountId?: string;
     batchTweetId?: string;
+    fetchThread?: boolean;
     // Commit-specific (only when mode === 'commit')
     sourceCommit?: ComposeSourceCommit;
     eventId?: string; // commit_events.id for draft linkage

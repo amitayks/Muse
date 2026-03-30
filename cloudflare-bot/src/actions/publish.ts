@@ -2,12 +2,12 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getDraft, getTimezone, updateDraftStatus } from '../data/db';
+import { getDraft, getTimezone, updateDraftStatus, getTwitterAccounts } from '../data/db';
 import { publishDraft } from '../core/publish';
 import { renderDraftDetail, renderError } from '../views';
 import { platformEmoji, platformLabel, formatPlatformSummary } from '../views/platform-toggle';
 import { escapeHtml } from '../ui/utils';
-import { editMessage } from '../integrations/telegram';
+import { editMessage, sendMessage } from '../integrations/telegram';
 import { truncateHtml } from '../ui/utils';
 
 export async function publishAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
@@ -68,6 +68,27 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
                 await editMessage(env, chatId, messageId,
                     `✅ <b>Published!</b>\n\n${result.url ? `<a href="${result.url}">View post</a>` : 'Post is live.'}`,
                 ).catch(() => {});
+            }
+
+            // Follow prompt: offer to follow the reposted account if not already followed
+            if (draft.source === 'repost' && draft.original_tweet_url) {
+                try {
+                    const urlMatch = draft.original_tweet_url.match(/(?:x\.com|twitter\.com)\/([a-zA-Z0-9_]+)\/status\//);
+                    const username = urlMatch?.[1];
+                    if (username) {
+                        const accounts = await getTwitterAccounts(env, chatId);
+                        const alreadyFollowed = accounts.some(
+                            a => a.username.toLowerCase() === username.toLowerCase()
+                        );
+                        if (!alreadyFollowed) {
+                            const followText = t(lang, 'actions.followPrompt').replace('{username}', username);
+                            await sendMessage(env, chatId, followText, [[
+                                { text: t(lang, 'actions.btnFollow'), callback_data: `rp_follow:${username}` },
+                                { text: t(lang, 'actions.btnNoThanks'), callback_data: `rp_no_follow:dismiss` },
+                            ]]);
+                        }
+                    }
+                } catch { /* non-critical */ }
             }
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);

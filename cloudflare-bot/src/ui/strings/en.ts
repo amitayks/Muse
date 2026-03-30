@@ -46,7 +46,9 @@ export const en = {
         btnRepost: '🔄 RePost',
         btnRepos: '📦 Repos',
         btnAccounts: '👤 Accounts',
+        btnThumbs: '🖼 Thumbs',
         btnVideoStudio: '🎬 Video Studio',
+        btnOpenApp: 'Open App',
         btnSettings: '⚙️ Settings',
         btnHelp: '❓ Help',
     },
@@ -123,6 +125,7 @@ export const en = {
         // Compose buttons
         btnInstruct: '📝 Instruct',
         btnAnalyze: '📷 Analyze',
+        btnThread: '🧵 Thread',
 
         // Instruction UX
         instructToast: 'Type your instruction next',
@@ -1005,6 +1008,8 @@ export const en = {
         invalidTweetUrlMsg: "Couldn't parse a tweet URL from that.",
         tweetNotFound: '❌ <b>Tweet not found</b>',
         tweetNotFoundMsg: "Couldn't fetch tweet <code>{tweetId}</code> from @{username}.\n\nThe tweet may be deleted, from a private account, or the URL may be incorrect.\n\nTry another URL:",
+        rateLimited: "X API rate limit reached. Please wait a few minutes and try again.",
+        creditsDepleted: "X API credits depleted. Top up your X developer account to continue.",
     },
 
     platforms: {
@@ -1033,6 +1038,27 @@ export const en = {
 
         // Errors
         noTargetSelected: 'Please select at least one platform.',
+    },
+
+    thumb: {
+        composeTitle: '🖼 <b>Thumbnail Compose</b>',
+        labelTitle: 'Title',
+        labelColor: 'Color',
+        labelIcons: 'Icons',
+        labelImage: 'Image',
+        labelAspect: 'Aspect',
+        instructions: 'Send me your choices:\n1. "title"\n2. "color"\n3. "icons"\nAttach the image (photo or file)',
+        btnPenDown: '✏️ Pen Down',
+        missing: 'Missing',
+        generating: '🖼 Generating thumbnail...',
+        generationFailed: '❌ Thumbnail generation failed. Please try again.',
+        imageNotFound: '❌ Image not found.',
+        notFound: '❌ Thumbnail not found.',
+        draftsTitle: 'Thumbnails',
+        draftsCategory: '🖼 Thumbs',
+        noDrafts: 'No thumbnails yet.',
+        btnFullRes: 'Full Res',
+        deleteConfirm: '🗑 Delete this thumbnail?',
     },
 };
 

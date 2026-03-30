@@ -30,6 +30,7 @@ import { handleMediaRequest } from './routes/media';
 import { handlePromptEditorPage } from './routes/app';
 import { handleAdminPromptEditorPage } from './routes/app-admin';
 import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi, handleIdentityApi } from './routes/api-prompt';
+import { handleApiV1 } from './routes/api-v1';
 
 
 export default {
@@ -95,6 +96,15 @@ export default {
                 const rateLimit = checkRateLimit(`media:${clientIP}`, RATE_LIMITS.image);
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.image.maxRequests);
                 const response = await handleMediaRequest(url, env);
+                // Add CORS for webapp
+                if (env.WEBAPP_URL) {
+                    const headers = new Headers(response.headers);
+                    headers.set('Access-Control-Allow-Origin', env.WEBAPP_URL);
+                    return addRateLimitHeaders(
+                        new Response(response.body, { status: response.status, headers }),
+                        rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.image.maxRequests,
+                    );
+                }
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.image.maxRequests);
             }
 
@@ -125,6 +135,14 @@ export default {
             if (url.pathname === '/test-generate' && request.method === 'GET') {
                 const response = await handleTestGenerate(request, url, env);
                 return response;
+            }
+
+            // Webapp API v1 routes
+            if (url.pathname.startsWith('/api/v1/')) {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleApiV1(request, url, env, ctx);
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
             }
 
             // WebApp routes — no X-Frame-Options (loaded in Telegram iframe)

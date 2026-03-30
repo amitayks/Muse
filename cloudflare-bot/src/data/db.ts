@@ -11,3 +11,4 @@ export * from './repo-db';
 export * from './video-db';
 export * from './twitter-db';
 export * from './persona-db';
+export * from './thumb-db';

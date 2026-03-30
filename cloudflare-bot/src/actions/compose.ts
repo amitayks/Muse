@@ -119,6 +119,8 @@ export async function composeAction(
         }
         case 'toggle_instruct':
             return handleInstruct(env, chatId, context, compose, lang);
+        case 'toggle_thread':
+            return handleToggle(env, chatId, context, compose, 'fetchThread', lang);
         case 'cancel':
             await handleCancel(env, chatId, ctx.messageId, compose, lang);
             return; // void — handled sending ourselves
@@ -229,6 +231,46 @@ async function handleRepostPenDown(
 
     const statusMsgId = await sendPenDownStatus(env, chatId, compose, lang);
 
+    // Fetch thread context on-demand when thread toggle is ON
+    if (compose.fetchThread && sourceTweet && !sourceTweet.threadText) {
+        try {
+            const { searchConversation, getMediaUrl: getMediaUrlFromExpansion } = await import('../integrations/x');
+            const { getTweetById } = await import('../integrations/x');
+
+            // Get conversation_id from the source tweet (need to re-fetch if not available)
+            const tweetResult = await getTweetById(env, sourceTweet.tweetId);
+            const conversationId = tweetResult?.tweet.conversation_id;
+
+            if (conversationId) {
+                const { tweets: threadTweets, media: threadMedia } = await searchConversation(
+                    env, conversationId, sourceTweet.username
+                );
+                if (threadTweets.length > 1) {
+                    const sorted = threadTweets
+                        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+                        .slice(0, 10);
+                    sourceTweet.threadText = sorted.map(t => t.text).join('\n\n---\n\n');
+                    sourceTweet.text = sourceTweet.threadText;
+                    sourceTweet.isThread = true;
+
+                    // Collect thread media
+                    if (threadMedia) {
+                        const threadMediaUrls: string[] = sourceTweet.mediaUrls ? [...sourceTweet.mediaUrls] : [];
+                        for (const t of sorted) {
+                            const url = getMediaUrlFromExpansion(threadMedia, t);
+                            if (url && !threadMediaUrls.includes(url)) {
+                                threadMediaUrls.push(url);
+                            }
+                        }
+                        if (threadMediaUrls.length > 0) sourceTweet.mediaUrls = threadMediaUrls;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[compose] Thread fetch failed, proceeding without thread:', err);
+        }
+    }
+
     let content: DraftContent;
 
     if (compose.aiRefine && sourceTweet) {
@@ -259,7 +301,7 @@ async function handleRepostPenDown(
             const userImageParts = await buildUserImageParts(env, compose, allOriginalMedia);
 
             const generated = await generateRepostContent(env, tweetData, compose.sourceAccountId || '', config, {
-                imageUrl: sourceTweet.mediaUrl,
+                imageUrls: sourceTweet.mediaUrls || (sourceTweet.mediaUrl ? [sourceTweet.mediaUrl] : []),
                 language: lang,
                 userTweets: userTweetTexts,
                 instruction: compose.instruction,
@@ -297,17 +339,7 @@ async function handleRepostPenDown(
 
     await navigateToDraft(env, chatId, draftId);
 
-    // Follow prompt: if source account is not followed, offer to follow
-    if (sourceTweet && !compose.sourceAccountId) {
-        try {
-            const { sendMessage: send } = await import('../integrations/telegram');
-            const followText = t(lang, 'actions.followPrompt').replace('{username}', sourceTweet.username);
-            await send(env, chatId, followText, [[
-                { text: t(lang, 'actions.btnFollow'), callback_data: `rp_follow:${sourceTweet.username}` },
-                { text: t(lang, 'actions.btnNoThanks'), callback_data: 'rp_follow:dismiss' },
-            ]]);
-        } catch { /* non-critical */ }
-    }
+    // Follow prompt moved to publish action — only shown after draft is actually posted
 }
 
 /** Commit mode pen down — uses work-progress skill for AI, supports user tweets as "initial thoughts" */
@@ -542,7 +574,7 @@ async function handleToggle(
     chatId: string,
     context: import('../types').ChatContext,
     compose: ComposeState | undefined,
-    field: 'imageGen' | 'aiRefine' | 'analyzeImages',
+    field: 'imageGen' | 'aiRefine' | 'analyzeImages' | 'fetchThread',
     lang: Lang = 'en'
 ): Promise<ViewResult> {
     if (!compose) {
@@ -596,6 +628,7 @@ function buildComposeView(compose: ComposeState, lang: Lang): ViewResult {
         instruction: compose.instruction,
         awaitingInstruction: compose.awaitingInstruction,
         analyzeImages: compose.analyzeImages,
+        fetchThread: compose.fetchThread,
         sourceTweet: compose.sourceTweet,
         sourceCommit: compose.sourceCommit,
     });

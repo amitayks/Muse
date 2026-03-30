@@ -5,17 +5,17 @@
  */
 
 import type { Env } from '../types';
-import { logError } from '../infra/security';
+import { logError, logInfo } from '../infra/security';
 
 const CLAUDE_API = 'https://api.anthropic.com/v1';
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 const CLAUDE_API_VERSION = '2023-06-01';
-const CLAUDE_MAX_TOKENS = 8192;
+const CLAUDE_MAX_TOKENS = 16000;
+const CLAUDE_THINKING_BUDGET = 8000;
 
 /** Options for Claude text calls (same shape as GeminiOptions) */
 export interface ClaudeOptions {
     temperature?: number;
-    jsonMode?: boolean;
     tools?: Array<Record<string, unknown>>;
 }
 
@@ -53,6 +53,10 @@ function translateParts(
 /**
  * Call Claude Messages API with system instruction and user prompt.
  * Accepts the same input format as callGeminiText (Gemini-style parts).
+ *
+ * Note: Claude does not support responseMimeType like Gemini. JSON output is enforced
+ * via the skill's TASK PROTOCOL instructions. Callers should use robust JSON extraction
+ * (regex match) on the response rather than raw JSON.parse.
  */
 export async function callClaudeText(
     env: Env,
@@ -60,25 +64,37 @@ export async function callClaudeText(
     userPrompt: string | Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>,
     options?: ClaudeOptions,
 ): Promise<string> {
-    const temperature = options?.temperature ?? 0.7;
+    logInfo('[claude] callClaudeText called — model:', CLAUDE_MODEL, 'hasTools:', !!(options?.tools?.length), 'systemPrompt length:', systemPrompt.length, 'userPrompt type:', typeof userPrompt === 'string' ? 'string' : 'parts[]');
 
     // Build user content
     const content: ClaudeContentBlock[] = typeof userPrompt === 'string'
         ? [{ type: 'text', text: userPrompt }]
         : translateParts(userPrompt);
 
+    logInfo('[claude] user content blocks:', content.length, 'types:', content.map(c => c.type).join(','));
+
+    const messages: Array<Record<string, unknown>> = [{ role: 'user', content }];
+
+    // Extended thinking: temperature must be 1, budget controls thinking depth
     const body: Record<string, unknown> = {
         model: CLAUDE_MODEL,
         max_tokens: CLAUDE_MAX_TOKENS,
         system: systemPrompt,
-        messages: [{ role: 'user', content }],
-        temperature,
+        messages,
+        temperature: 1,
+        thinking: {
+            type: 'enabled',
+            budget_tokens: CLAUDE_THINKING_BUDGET,
+        },
     };
 
     // Add tools if specified (already translated by the router)
     if (options?.tools && options.tools.length > 0) {
         body.tools = options.tools;
+        logInfo('[claude] tools attached:', JSON.stringify(options.tools).substring(0, 200));
     }
+
+    logInfo('[claude] sending request to Claude API...');
 
     const response = await fetch(`${CLAUDE_API}/messages`, {
         method: 'POST',
@@ -90,20 +106,29 @@ export async function callClaudeText(
         body: JSON.stringify(body),
     });
 
+    logInfo('[claude] response status:', response.status);
+
     if (!response.ok) {
         const errText = await response.text();
-        logError('Claude API failed:', response.status, errText.substring(0, 200));
+        logError('[claude] API failed:', response.status, errText.substring(0, 500));
         throw new Error('Content generation failed. Please try again.');
     }
 
     const data = await response.json() as {
         content?: Array<{ type: string; text?: string }>;
+        stop_reason?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
     };
+
+    logInfo('[claude] stop_reason:', data.stop_reason, 'usage:', JSON.stringify(data.usage), 'content blocks:', data.content?.length, 'block types:', data.content?.map(c => c.type).join(','));
 
     const text = data.content?.find(c => c.type === 'text')?.text;
     if (!text) {
+        logError('[claude] No text block found in response. Full content:', JSON.stringify(data.content).substring(0, 500));
         throw new Error('No content generated');
     }
+
+    logInfo('[claude] text response length:', text.length, 'first 200 chars:', text.substring(0, 200));
 
     return text;
 }

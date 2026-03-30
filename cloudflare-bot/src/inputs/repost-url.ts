@@ -10,7 +10,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getExistingRepostDraft, getTwitterAccounts } from '../data/db';
 import { getRepostDefaults } from '../data/user-settings-db';
-import { getTweetById, searchConversation } from '../integrations/x';
+import { getTweetById } from '../integrations/x';
 import { cancelRow } from '../ui/components';
 import { sendMessage } from '../integrations/telegram';
 import { enterComposeMode } from '../actions/compose-init';
@@ -45,7 +45,29 @@ export const repostUrlInput: InputHandler = async (
     const { username, tweetId } = parsed;
 
     // Fetch the tweet
-    const result = await getTweetById(env, tweetId);
+    let result;
+    try {
+        result = await getTweetById(env, tweetId);
+    } catch (fetchError) {
+        const msg = fetchError instanceof Error ? fetchError.message : '';
+        if (msg === 'rate_limit') {
+            await sendMessage(env, chatId,
+                `${t(lang, 'repostInput.tweetNotFound')}\n\n${t(lang, 'repostInput.rateLimited')}`,
+                [cancelRow('view:home', lang)]
+            );
+        } else if (msg === 'credits_depleted') {
+            await sendMessage(env, chatId,
+                `${t(lang, 'repostInput.tweetNotFound')}\n\n${t(lang, 'repostInput.creditsDepleted')}`,
+                [cancelRow('view:home', lang)]
+            );
+        } else {
+            await sendMessage(env, chatId,
+                `${t(lang, 'repostInput.tweetNotFound')}\n\n${t(lang, 'repostInput.tweetNotFoundMsg').replace('{tweetId}', tweetId).replace('{username}', username)}`,
+                [cancelRow('view:home', lang)]
+            );
+        }
+        return;
+    }
     if (!result) {
         await sendMessage(env, chatId,
             `${t(lang, 'repostInput.tweetNotFound')}\n\n${t(lang, 'repostInput.tweetNotFoundMsg').replace('{tweetId}', tweetId).replace('{username}', username)}`,
@@ -60,10 +82,14 @@ export const repostUrlInput: InputHandler = async (
     const photoMedia = media?.find(m => m.type === 'photo');
     const mediaUrl = photoMedia?.url || undefined;
 
-    // Check for thread
-    const isThread = !!(tweet.conversation_id && tweet.referenced_tweets?.some(
-        r => r.type === 'replied_to'
-    ) && tweet.in_reply_to_user_id === tweet.author_id);
+    // Collect all media URLs from the initial tweet
+    const allMediaUrls: string[] = [];
+    if (media) {
+        for (const m of media) {
+            const url = m.type === 'photo' ? m.url : m.preview_image_url;
+            if (url) allMediaUrls.push(url);
+        }
+    }
 
     // Check for duplicates
     const existingDraft = await getExistingRepostDraft(env, chatId, tweetId);
@@ -82,36 +108,17 @@ export const repostUrlInput: InputHandler = async (
         replies: tweet.public_metrics.reply_count,
     } : undefined;
 
-    // Fetch thread context if this tweet is part of a conversation
-    let threadText: string | undefined;
-    if (isThread && tweet.conversation_id && tweet.conversation_id !== tweetId) {
-        try {
-            const threadTweets = await searchConversation(env, tweet.conversation_id, author?.username || username);
-            if (threadTweets.length > 0) {
-                // Sort by created_at and concatenate (limit to 10 tweets)
-                const sorted = threadTweets
-                    .filter(t => t.id !== tweetId)
-                    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
-                    .slice(0, 10);
-                if (sorted.length > 0) {
-                    threadText = sorted.map(t => t.text).join('\n\n');
-                }
-            }
-        } catch (err) {
-            console.warn('[repost] Thread fetch failed, proceeding with single tweet:', err);
-        }
-    }
-
     // Build source tweet for compose mode
+    // Thread fetch is deferred — user can toggle it ON in compose mode
     const tweetUrl = `https://x.com/${author?.username || username}/status/${tweetId}`;
     const sourceTweet: ComposeSourceTweet = {
         tweetId,
         username: author?.username || username,
         displayName: author?.name,
         text: tweet.text,
-        threadText,
         mediaUrl,
-        isThread,
+        mediaUrls: allMediaUrls.length > 0 ? allMediaUrls : undefined,
+        isThread: false,
         metrics,
         tweetUrl,
     };

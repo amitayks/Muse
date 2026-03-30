@@ -3,7 +3,7 @@
  */
 
 import type { Env, ViewResult, Draft, DraftContent, InlineButton, PublishResults } from '../types';
-import { getAllDrafts, countDrafts, getDraft, getPublishedByDraft, getHandwriteDraftCount, getDraftsBySource, countDraftsBySource } from '../data/db';
+import { getAllDrafts, countDrafts, getDraft, getPublishedByDraft, getHandwriteDraftCount, getDraftsBySource, countDraftsBySource, countThumbDrafts } from '../data/db';
 import { getUser } from '../data/user-db';
 import { formatLocalTime } from '../infra/timezone';
 import { escapeHtml, truncateHtml } from '../ui/utils';
@@ -27,16 +27,17 @@ const statusEmoji: Record<string, string> = {
 };
 
 export async function renderDraftCategories(env: Env, chatId: string, lang: Lang = 'en'): Promise<ViewResult> {
-    const [autoCount, handwriteCount, repostCount, approvedCount, scheduledCount, publishedCount] = await Promise.all([
+    const [autoCount, handwriteCount, repostCount, approvedCount, scheduledCount, publishedCount, thumbCount] = await Promise.all([
         countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']),
         getHandwriteDraftCount(env, chatId),
         countDraftsBySource(env, chatId, 'repost', ['draft']),
         countDrafts(env, chatId, 'approved'),
         countDrafts(env, chatId, 'scheduled'),
         countDrafts(env, chatId, 'published'),
+        countThumbDrafts(env, chatId),
     ]);
 
-    const total = autoCount + handwriteCount + repostCount + approvedCount + scheduledCount + publishedCount;
+    const total = autoCount + handwriteCount + repostCount + approvedCount + scheduledCount + publishedCount + thumbCount;
 
     if (total === 0) {
         return {
@@ -62,6 +63,7 @@ ${t(lang, 'drafts.selectCategory')}`,
             [{ text: `${t(lang, 'drafts.approvedLabel')} (${approvedCount})`, callback_data: 'view:drafts_approved', style: 'success' }],
             [{ text: `${t(lang, 'drafts.scheduledLabel')} (${scheduledCount})`, callback_data: 'view:drafts_scheduled' }],
             [{ text: `${t(lang, 'drafts.publishedLabel')} (${publishedCount})`, callback_data: 'view:drafts_published' }],
+            [{ text: `${t(lang, 'thumb.draftsCategory')} (${thumbCount})`, callback_data: 'view:drafts_thumbs' }],
             [homeButton(lang)],
         ],
     };
@@ -227,7 +229,7 @@ export async function renderDraftDetail(env: Env, chatId: string, draftId: strin
             text: `${t(lang, 'drafts.notFoundTitle')}
 
 ${t(lang, 'drafts.notFoundMsg')}`,
-            keyboard: [[backButton('view:drafts', lang)]],
+            keyboard: [backHomeRow('view:drafts', lang)],
         };
     }
 
@@ -303,7 +305,9 @@ ${t(lang, 'drafts.notFoundMsg')}`,
                     { text: t(lang, 'common.delete'), callback_data: `action:delete_draft:${draft.id}`, style: 'danger' },
                 ],
                 [
-                    { text: draft.source === 'handwrite' ? t(lang, 'drafts.aiRefine') : t(lang, 'drafts.edit'), callback_data: `action:edit:${draft.id}`, style: 'primary' as const },
+                    env.WEBAPP_URL
+                        ? { text: `✏️ ${t(lang, 'drafts.edit')}`, web_app: { url: `${env.WEBAPP_URL}/#/draft/${draft.id}` }, style: 'primary' as const }
+                        : { text: draft.source === 'handwrite' ? t(lang, 'drafts.aiRefine') : t(lang, 'drafts.edit'), callback_data: `action:edit:${draft.id}`, style: 'primary' as const },
                     { text: t(lang, 'drafts.schedule'), callback_data: `action:schedule:${draft.id}`, style: 'primary' as const },
                 ],
                 ...platformButtonRow(),
@@ -388,10 +392,14 @@ ${t(lang, 'drafts.notFoundMsg')}`,
         ? `\n🔗 <a href="${draft.original_tweet_url}">${t(lang, 'drafts.originalTweet')}</a>`
         : '';
 
-    return {
-        text: `${headerLabel}
+    // Repost drafts: show only the link to original tweet + draft content
+    // Other drafts: show pr_title as header
+    const titleSection = draft.source === 'repost'
+        ? originalLink
+        : `\n<b>${escapeHtml(draft.pr_title)}</b>`;
 
-<b>${escapeHtml(draft.pr_title)}</b>${originalLink}
+    return {
+        text: `${headerLabel}${titleSection}
 
 ${statusLine}
 ${t(lang, 'drafts.format')} ${t(lang, 'common.arrow')} <code>${content.format === 'single' ? t(lang, 'drafts.singleTweet') : `Thread (${content.tweets.length} tweets)`}</code>
@@ -399,7 +407,7 @@ ${t(lang, 'drafts.format')} ${t(lang, 'common.arrow')} <code>${content.format ==
 ${tweetPreview}`,
         keyboard: [
             ...actionButtons,
-            [backButton(showPlatformToggles ? `plat:done:${draftId}` : 'view:drafts', lang)],
+            backHomeRow(showPlatformToggles ? `plat:done:${draftId}` : 'view:drafts', lang),
         ],
     };
 }

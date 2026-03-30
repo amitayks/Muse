@@ -64,11 +64,18 @@ ${t(lang, 'home.allClear')}
         { text: t(lang, 'home.btnRepost'), callback_data: 'view:repost', style: 'primary' },
     ]);
     keyboard.push([
+        { text: t(lang, 'home.btnThumbs'), callback_data: 'view:thumbs' },
+    ]);
+    keyboard.push([
         { text: t(lang, 'home.btnRepos'), callback_data: 'view:repos' },
         { text: t(lang, 'home.btnAccounts'), callback_data: 'view:accounts' },
     ]);
     if (isAdmin(chatId, env)) {
         keyboard.push([{ text: t(lang, 'home.btnVideoStudio'), callback_data: 'view:video_studio' }]);
+    }
+    // Open App button (webapp) — only when WEBAPP_URL is configured
+    if (env.WEBAPP_URL) {
+        keyboard.push([{ text: `${t(lang, 'home.btnOpenApp')}`, web_app: { url: `${env.WEBAPP_URL}/#/` } }]);
     }
     keyboard.push([
         { text: t(lang, 'home.btnSettings'), callback_data: 'view:settings' },
@@ -152,6 +159,7 @@ export interface ComposeOptions {
     instruction?: string;
     awaitingInstruction?: boolean;
     analyzeImages?: boolean;
+    fetchThread?: boolean;
     sourceTweet?: import('../types').ComposeSourceTweet;
     sourceCommit?: import('../types').ComposeSourceCommit;
     existingDraftId?: string;
@@ -182,11 +190,6 @@ export function renderCompose(
     if (sourceCommit) {
         text += renderSourceCommitHeader(sourceCommit, lang);
         text += '\n\n';
-    }
-
-    // Duplicate warning
-    if (options?.existingDraftId) {
-        text += `${t(lang, 'repost.duplicateWarning')}\n\n`;
     }
 
     const isEmpty = count === 0 && !options?.instruction && !options?.awaitingInstruction;
@@ -284,6 +287,11 @@ ${t(lang, 'compose.analyzeHint')}`;
 
     const keyboard: import('../types').InlineButton[][] = [toggleRow];
 
+    // Thread fetch toggle — repost mode only, on its own row
+    if (sourceTweet) {
+        keyboard.push([{ text: `${t(lang, 'compose.btnThread')}: ${options?.fetchThread ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_thread' }]);
+    }
+
     // Duplicate warning: add View Existing button
     if (options?.existingDraftId) {
         keyboard.push([{ text: t(lang, 'repost.viewExisting'), callback_data: `draft:${options.existingDraftId}` }]);
@@ -299,30 +307,7 @@ function renderSourceTweetHeader(
     sourceTweet: import('../types').ComposeSourceTweet,
     lang: Lang,
 ): string {
-    const header = t(lang, 'compose.repostHeader').replace('{username}', sourceTweet.username);
-    const tweetPreview = sourceTweet.text.length > 120
-        ? sourceTweet.text.substring(0, 117) + '...'
-        : sourceTweet.text;
-
-    let lines = `${header}\n<a href="${sourceTweet.tweetUrl}">${escapeHtml(tweetPreview)}</a>`;
-
-    // Metrics
-    if (sourceTweet.metrics) {
-        const m = sourceTweet.metrics;
-        lines += `\n❤️ ${m.likes} · 🔁 ${m.retweets} · 💬 ${m.replies}`;
-    }
-
-    // Indicators
-    const indicators: string[] = [];
-    if (sourceTweet.isThread) indicators.push(t(lang, 'compose.repostThreadIndicator'));
-    if (sourceTweet.mediaUrl) indicators.push(t(lang, 'compose.repostImageIndicator'));
-    if (indicators.length > 0) {
-        lines += `\n${indicators.join(' · ')}`;
-    }
-
-    lines += '\n─────────────────';
-
-    return lines;
+    return t(lang, 'compose.repostHeader').replace('{username}', sourceTweet.username);
 }
 
 /** Render source commit pinned header for commit compose mode */

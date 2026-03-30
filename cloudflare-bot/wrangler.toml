@@ -42,6 +42,11 @@ crons = ["*/15 * * * *"]  # Every 15 minutes
 #   - GITHUB_OWNER (was: GitHub org/user for commit search)
 #   - GITHUB_WEBHOOK_SECRET (was: shared webhook signing secret)
 #
+#   - WEBAPP_URL: URL of the React webapp on Cloudflare Pages
+#                 (e.g., https://musepost-webapp.pages.dev)
+#                 When set, enables "Open App" button on home and webapp-based
+#                 draft editing. When empty, bot falls back to message-based editing.
+#
 # NOTE: Per-user API keys (X, Gemini, GitHub, HeyGen) are stored
 # encrypted in D1, NOT as Worker secrets. Users provide keys via
 # the onboarding flow or Settings > API Keys.

@@ -39,9 +39,9 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
     const config = parseTwitterAccountConfig(account);
 
     // Generate content (with media if enabled) — use account's analyzeMedia setting
-    const imageUrl = config.analyzeMedia ? tweet.media_url : null;
+    const imageUrls = config.analyzeMedia && tweet.media_url ? [tweet.media_url] : [];
     const content = await generateRepostContent(ctx.env, tweet, account.id, config, {
-        imageUrl,
+        imageUrls,
         language: ctx.lang || 'en',
         relevanceReason: tweet.relevance_reason,
     });

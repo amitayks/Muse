@@ -371,7 +371,7 @@ export async function postQuoteTweet(
         // Fallback: on 403 (quote not allowed), retry as regular tweet with URL appended
         if (response.status === 403 && options.originalTweetUrl) {
             console.log('Quote tweet 403, falling back to URL embed:', options.originalTweetUrl);
-            const fallbackText = `${text}\n\n${options.originalTweetUrl}`;
+            const fallbackText = `${options.originalTweetUrl}\n${text}`;
             return postTweetWithUrl(env, fallbackText, options.mediaIds);
         }
 
@@ -524,8 +524,15 @@ export async function getTweetById(env: Env, tweetId: string): Promise<TweetWith
     });
 
     if (!response.ok) {
-        console.error(`[x] getTweetById failed for ${tweetId}:`, response.status);
-        return null;
+        const errBody = await response.text();
+        console.error(`[x] getTweetById failed for ${tweetId}: ${response.status} ${errBody.substring(0, 500)}`);
+        if (response.status === 429) {
+            throw new Error('rate_limit');
+        }
+        if (response.status === 402) {
+            throw new Error('credits_depleted');
+        }
+        throw new Error(`x_api_${response.status}`);
     }
 
     const data = await response.json() as {
@@ -615,11 +622,13 @@ export async function searchConversation(
     env: Env,
     conversationId: string,
     username: string
-): Promise<XTweet[]> {
+): Promise<{ tweets: XTweet[]; media?: XMedia[] }> {
     const baseUrl = `${X_API_V2}/tweets/search/recent`;
     const queryParams: Record<string, string> = {
         'query': `conversation_id:${conversationId} from:${username}`,
-        'tweet.fields': 'id,text,author_id,conversation_id,in_reply_to_user_id,created_at,referenced_tweets,public_metrics',
+        'tweet.fields': 'id,text,author_id,conversation_id,in_reply_to_user_id,created_at,referenced_tweets,public_metrics,attachments',
+        'expansions': 'attachments.media_keys',
+        'media.fields': 'media_key,type,url,preview_image_url',
         'max_results': '100',
     };
 
@@ -638,11 +647,11 @@ export async function searchConversation(
     if (!response.ok) {
         const error = await response.text();
         console.error(`[x] searchConversation failed for ${conversationId}:`, response.status, error);
-        return [];
+        return { tweets: [] };
     }
 
-    const data = await response.json() as { data?: XTweet[] };
-    return data.data || [];
+    const data = await response.json() as { data?: XTweet[]; includes?: { media?: XMedia[] } };
+    return { tweets: data.data || [], media: data.includes?.media };
 }
 
 // ==================== Identity: Fetch User's Own Tweets ====================

@@ -1,0 +1,184 @@
+## ADDED Requirements
+
+### Requirement: API route registration under /api/v1/
+The system SHALL register all new webapp API routes under the `/api/v1/` namespace in the existing Cloudflare Worker's `index.ts`, with rate limiting and security headers.
+
+#### Scenario: API routes registered
+- **WHEN** the Worker receives a request to `/api/v1/*`
+- **THEN** it SHALL route to the appropriate handler based on method and path, with rate limiting applied
+
+#### Scenario: Unknown API route
+- **WHEN** the Worker receives a request to `/api/v1/nonexistent`
+- **THEN** it SHALL return HTTP 404 with `{ error: "Not Found" }`
+
+### Requirement: Authentication via Telegram initData
+All `/api/v1/*` endpoints SHALL validate the `Authorization: tma <initData>` header using the existing `validateInitData()` function.
+
+#### Scenario: Valid auth
+- **WHEN** a request includes a valid `Authorization: tma <initData>` header
+- **THEN** the system SHALL extract the `chat_id` from the validated data and proceed with the handler
+
+#### Scenario: Missing auth header
+- **WHEN** a request to `/api/v1/*` has no `Authorization` header
+- **THEN** the system SHALL return HTTP 401 with `{ error: "Unauthorized" }`
+
+#### Scenario: Expired initData
+- **WHEN** a request includes an expired initData (older than auth window)
+- **THEN** the system SHALL return HTTP 401 with `{ error: "Session expired" }`
+
+### Requirement: CORS headers for Cloudflare Pages domain
+All `/api/v1/*` responses SHALL include CORS headers allowing requests from the Cloudflare Pages domain.
+
+#### Scenario: CORS preflight
+- **WHEN** an OPTIONS request is received at `/api/v1/*`
+- **THEN** the system SHALL respond with HTTP 204 and headers: `Access-Control-Allow-Origin: <WEBAPP_URL>`, `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`, `Access-Control-Allow-Headers: Authorization, Content-Type`
+
+#### Scenario: CORS on regular response
+- **WHEN** any `/api/v1/*` response is sent
+- **THEN** it SHALL include `Access-Control-Allow-Origin: <WEBAPP_URL>` header
+
+### Requirement: Dashboard API
+The system SHALL provide a dashboard endpoint returning status counts and next scheduled draft.
+
+#### Scenario: GET /api/v1/dashboard
+- **WHEN** a GET request is made to `/api/v1/dashboard`
+- **THEN** the response SHALL include: `{ counts: { draft, approved, scheduled, published }, nextScheduled: { id, title, firstTweet, scheduledAt, format } | null, isAdmin: boolean }`
+
+### Requirement: Drafts CRUD API
+The system SHALL provide full CRUD operations for drafts.
+
+#### Scenario: GET /api/v1/drafts (list)
+- **WHEN** a GET request is made to `/api/v1/drafts?status=draft&source=handwrite&page=0&limit=20`
+- **THEN** the response SHALL include `{ drafts: Draft[], total: number }` filtered by the query parameters, scoped to the authenticated user's chat_id
+
+#### Scenario: GET /api/v1/drafts/:id (detail)
+- **WHEN** a GET request is made to `/api/v1/drafts/:id`
+- **THEN** the response SHALL include the full draft with parsed content, publish targets, publish results, and user profile data for display
+
+#### Scenario: PUT /api/v1/drafts/:id (update content)
+- **WHEN** a PUT request is made with `{ content: DraftContent }` body
+- **THEN** the draft's content SHALL be updated in D1, and the bot message SHALL be updated via `editMessageText`
+
+#### Scenario: POST /api/v1/drafts/:id/approve
+- **WHEN** a POST request is made to `/api/v1/drafts/:id/approve`
+- **THEN** the draft's status SHALL change to "approved" and the bot message SHALL be updated
+
+#### Scenario: POST /api/v1/drafts/:id/publish
+- **WHEN** a POST request is made to `/api/v1/drafts/:id/publish`
+- **THEN** the system SHALL execute the full publish pipeline (X, Instagram) via the existing `publishDraft()` function and return the results
+
+#### Scenario: POST /api/v1/drafts/:id/schedule
+- **WHEN** a POST request is made with `{ scheduled_at: "ISO8601" }` body
+- **THEN** the draft SHALL be scheduled with status "scheduled" and the bot message SHALL be updated
+
+#### Scenario: DELETE /api/v1/drafts/:id/schedule
+- **WHEN** a DELETE request is made to `/api/v1/drafts/:id/schedule`
+- **THEN** the schedule SHALL be removed and status reverted to "approved"
+
+#### Scenario: DELETE /api/v1/drafts/:id
+- **WHEN** a DELETE request is made to `/api/v1/drafts/:id`
+- **THEN** the draft SHALL be deleted from D1 and associated R2 media cleaned up
+
+#### Scenario: POST /api/v1/drafts/:id/refine
+- **WHEN** a POST request is made with `{ instruction: "make it shorter" }` body
+- **THEN** the system SHALL call the AI refinement function with the instruction and current content, update the draft, and return the new content
+
+### Requirement: Compose API
+The system SHALL provide an endpoint to create drafts from the webapp compose flow.
+
+#### Scenario: POST /api/v1/compose
+- **WHEN** a POST request is made with `{ tweets: [{text, media}], options: {aiRefine, imageGen, analyzeImages, instruction} }` body
+- **THEN** the system SHALL create a new draft (with optional AI refinement), store it in D1, and return the draft ID
+
+### Requirement: Generate API
+The system SHALL provide an endpoint to generate tweets from commits.
+
+#### Scenario: POST /api/v1/generate
+- **WHEN** a POST request is made with `{ repoId, commitSha, fastImage, fastAi }` body
+- **THEN** the system SHALL fetch the PR, generate content via AI, create a draft, and return the draft ID
+
+### Requirement: Repost API
+The system SHALL provide an endpoint to create repost drafts from X URLs.
+
+#### Scenario: POST /api/v1/repost
+- **WHEN** a POST request is made with `{ url, tweets, options }` body
+- **THEN** the system SHALL fetch the original tweet, create a repost draft with the composed text, and return the draft ID
+
+### Requirement: Repos CRUD API
+The system SHALL provide full CRUD operations for watched repositories.
+
+#### Scenario: GET /api/v1/repos
+- **WHEN** a GET request is made to `/api/v1/repos`
+- **THEN** the response SHALL include all repos for the authenticated user with their config and overview status
+
+#### Scenario: POST /api/v1/repos
+- **WHEN** a POST request is made with `{ owner, repo }` body
+- **THEN** the system SHALL create a new repo entry and set up the GitHub webhook
+
+#### Scenario: PUT /api/v1/repos/:id
+- **WHEN** a PUT request is made with config updates
+- **THEN** the repo config SHALL be updated in D1
+
+#### Scenario: DELETE /api/v1/repos/:id
+- **WHEN** a DELETE request is made
+- **THEN** the repo SHALL be deleted along with its webhook
+
+### Requirement: Accounts CRUD API
+The system SHALL provide full CRUD operations for Twitter accounts.
+
+#### Scenario: GET /api/v1/accounts
+- **WHEN** a GET request is made to `/api/v1/accounts`
+- **THEN** the response SHALL include all accounts for the user with config and persona overview
+
+#### Scenario: PUT /api/v1/accounts/:id
+- **WHEN** a PUT request is made with config updates (threshold, toggles)
+- **THEN** the account config SHALL be updated in D1
+
+### Requirement: Settings API
+The system SHALL provide endpoints for reading and updating all user settings.
+
+#### Scenario: GET /api/v1/settings
+- **WHEN** a GET request is made to `/api/v1/settings`
+- **THEN** the response SHALL include all user settings: language, timezone, page_size, ai_provider, default_publish_targets, repost defaults, commit defaults, repo defaults, has_* feature flags, and connection status for each service
+
+#### Scenario: PUT /api/v1/settings
+- **WHEN** a PUT request is made with partial settings (e.g., `{ timezone: "UTC+2" }`)
+- **THEN** only the provided fields SHALL be updated in the users table
+
+#### Scenario: PUT /api/v1/settings/keys/:service
+- **WHEN** a PUT request is made with `{ key: "..." }` for a service (gemini, claude, github, instagram)
+- **THEN** the key SHALL be encrypted and stored, and the `has_*` flag SHALL be updated
+
+#### Scenario: PUT /api/v1/settings/keys/x
+- **WHEN** a PUT request is made with `{ apiKey, apiSecret, accessToken, accessSecret }` for the X service
+- **THEN** all four credentials SHALL be encrypted and stored, and `has_x` SHALL be updated
+
+### Requirement: Media upload API
+The system SHALL provide an endpoint for uploading images from the webapp.
+
+#### Scenario: POST /api/v1/media/upload
+- **WHEN** a POST request is made with a multipart form containing an image file
+- **THEN** the image SHALL be stored in R2 with a key like `webapp/{chatId}/{timestamp}/{filename}`, and the response SHALL include `{ key, url }` where url is the `/media/:key` serving URL
+
+#### Scenario: Upload size limit
+- **WHEN** the uploaded file exceeds 10MB
+- **THEN** the system SHALL return HTTP 413 with `{ error: "File too large (max 10MB)" }`
+
+#### Scenario: Invalid file type
+- **WHEN** the uploaded file is not an image (not jpg, png, gif, webp)
+- **THEN** the system SHALL return HTTP 400 with `{ error: "Invalid file type" }`
+
+### Requirement: Prompts API (migrate existing)
+The system SHALL expose the existing prompt CRUD functionality under `/api/v1/prompts`.
+
+#### Scenario: GET /api/v1/prompts
+- **WHEN** a GET request is made
+- **THEN** the response SHALL include all editable prompt types with their current content, isCustom flag, and isStale flag
+
+#### Scenario: PUT /api/v1/prompts/:type
+- **WHEN** a PUT request is made with `{ content, lang }` body
+- **THEN** the prompt SHALL be saved (reusing existing prompt storage logic)
+
+#### Scenario: DELETE /api/v1/prompts/:type
+- **WHEN** a DELETE request is made
+- **THEN** the custom prompt SHALL be deleted, reverting to default
