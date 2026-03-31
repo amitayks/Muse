@@ -737,6 +737,7 @@ export const he: StringsMap = {
         eventRepo: '<b>ריפו:</b> <code>{repo}</code>',
         eventAuthor: '<b>מחבר:</b> {author}',
         eventStats: '{files} קבצים · +{additions} / -{deletions}',
+        eventStatsFilesOnly: '{files} קבצים',
         eventCommitCount: '{count} קומיט(ים)',
         prMergedLabel: 'PR #{number} מוזג',
         pushLabel: '{count} קומיט{plural} נדחפו',

@@ -203,6 +203,7 @@ export async function callGeminiText(
         contents: [{ role: 'user', parts }],
         generationConfig: {
             temperature,
+            maxOutputTokens: 65536,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
             thinkingConfig: {
                 thinkingBudget: 8000,
@@ -227,13 +228,45 @@ export async function callGeminiText(
     }
 
     const data = await response.json() as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        candidates?: Array<{
+            content?: { parts?: Array<{ text?: string; thought?: boolean }> };
+            finishReason?: string;
+        }>;
+        usageMetadata?: Record<string, unknown>;
     };
 
-    const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+    const candidate = data.candidates?.[0];
+    const allParts = candidate?.content?.parts || [];
+
+    // Log full response structure for debugging
+    logInfo('[gemini] finishReason:', candidate?.finishReason,
+        'totalParts:', allParts.length,
+        'partTypes:', allParts.map((p, i) => `${i}:${p.thought ? 'thought' : 'text'}(${p.text?.length || 0})`).join(', '),
+        'usage:', JSON.stringify(data.usageMetadata));
+
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+        logError('[gemini] ⚠️ Response TRUNCATED (MAX_TOKENS). Output may be incomplete.');
+    }
+
+    // Filter out thinking parts — only use the actual text response
+    const textParts = allParts.filter(p => !p.thought);
+    let text = textParts.find(p => p.text)?.text;
+
+    if (!text) {
+        // Fallback: if no non-thought text found, try all parts
+        text = allParts.find(p => p.text)?.text;
+        logError('[gemini] No non-thought text part found.',
+            'thoughtParts:', allParts.filter(p => p.thought).length,
+            'textParts:', textParts.length,
+            'usingFallback:', !!text,
+            'firstPartPreview:', allParts[0]?.text?.substring(0, 300));
+    }
+
     if (!text) {
         throw new Error('No content generated');
     }
+
+    logInfo('[gemini] response length:', text.length, 'preview:', text.substring(0, 500));
 
     return text;
 }
@@ -293,10 +326,20 @@ export async function validateGeminiKey(key: string): Promise<boolean> {
  * Parse content response from Gemini into DraftContent and optional overviewUpdates
  */
 function parseContentResponse(content: string): ContentResponse {
-    // Extract JSON from response (model may wrap in code fences)
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    logInfo('[parse] input length:', content.length, 'preview:', content.substring(0, 300));
+
+    // Strip markdown code fences before extraction
+    let cleaned = content;
+    const fenceMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (fenceMatch) {
+        cleaned = fenceMatch[1];
+        logInfo('[parse] stripped code fence, inner length:', cleaned.length);
+    }
+
+    // Extract JSON from response
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-        logError('No JSON found in response, first 200 chars:', content.substring(0, 200));
+        logError('[parse] No JSON found in response, first 500 chars:', content.substring(0, 500));
         const fallbackContent: DraftContent = {
             format: 'single',
             tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],
@@ -305,10 +348,14 @@ function parseContentResponse(content: string): ContentResponse {
         return { content: fallbackContent, overviewUpdates: null };
     }
 
+    logInfo('[parse] JSON match length:', jsonMatch[0].length, 'starts:', jsonMatch[0].substring(0, 100));
+
     try {
         const parsed = JSON.parse(jsonMatch[0]);
 
         if (!parsed.format || !Array.isArray(parsed.tweets)) {
+            logError('[parse] Invalid structure — format:', parsed.format, 'tweets type:', typeof parsed.tweets,
+                'top-level keys:', Object.keys(parsed).join(', '));
             throw new Error('Invalid content structure');
         }
 
@@ -320,7 +367,8 @@ function parseContentResponse(content: string): ContentResponse {
             })),
         };
 
-        logInfo('Response has imagePrompt:', !!parsed.imagePrompt, 'type:', typeof parsed.imagePrompt);
+        logInfo('[parse] ✅ parsed OK — format:', parsed.format, 'tweets:', parsed.tweets.length,
+            'hasImagePrompt:', !!parsed.imagePrompt, 'hasOverviewUpdates:', !!parsed.overviewUpdates);
 
         if (parsed.imagePrompt && isValidImagePromptData(parsed.imagePrompt)) {
             draftContent.imagePrompt = parsed.imagePrompt;
@@ -338,7 +386,10 @@ function parseContentResponse(content: string): ContentResponse {
 
         return { content: draftContent, overviewUpdates };
     } catch (parseError) {
-        logError('JSON parse error:', parseError instanceof Error ? parseError.message : String(parseError));
+        logError('[parse] ❌ JSON parse failed:', parseError instanceof Error ? parseError.message : String(parseError),
+            'match length:', jsonMatch[0].length,
+            'match start:', jsonMatch[0].substring(0, 200),
+            'match end:', jsonMatch[0].substring(jsonMatch[0].length - 200));
         const fallbackContent: DraftContent = {
             format: 'single',
             tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],

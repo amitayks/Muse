@@ -781,6 +781,7 @@ export const en = {
         eventRepo: '<b>Repo:</b> <code>{repo}</code>',
         eventAuthor: '<b>Author:</b> {author}',
         eventStats: '{files} files · +{additions} / -{deletions}',
+        eventStatsFilesOnly: '{files} files',
         eventCommitCount: '{count} commit(s)',
         prMergedLabel: 'PR #{number} Merged',
         pushLabel: '{count} commit{plural} pushed',

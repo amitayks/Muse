@@ -34,11 +34,14 @@ export function renderEventSummary(
         t(lang, 'notifications.eventAuthor').replace('{author}', author),
     ];
 
-    if (filesChanged > 0 || additions > 0 || deletions > 0) {
+    if (additions > 0 || deletions > 0) {
         lines.push(t(lang, 'notifications.eventStats')
             .replace('{files}', String(filesChanged))
             .replace('{additions}', String(additions))
             .replace('{deletions}', String(deletions)));
+    } else if (filesChanged > 0) {
+        lines.push(t(lang, 'notifications.eventStatsFilesOnly')
+            .replace('{files}', String(filesChanged)));
     }
 
     if (commitCount > 1) {
