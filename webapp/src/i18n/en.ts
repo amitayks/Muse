@@ -104,6 +104,7 @@ export const en: Record<string, string> = {
   'compose.refining': 'Refining...',
   'compose.discardDraft': 'Discard draft?',
   'compose.unsavedChanges': 'You have unsaved changes. Discard?',
+  'compose.langToggle': 'AI Language',
 
   // Generate
   'generate.title': 'Generate from Commit',

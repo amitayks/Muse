@@ -126,6 +126,8 @@ export const en = {
         btnInstruct: '📝 Instruct',
         btnAnalyze: '📷 Analyze',
         btnThread: '🧵 Thread',
+        btnLangHe: 'עברית',
+        btnLangEn: 'English',
 
         // Instruction UX
         instructToast: 'Type your instruction next',

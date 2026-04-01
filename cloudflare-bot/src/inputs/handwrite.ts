@@ -113,6 +113,11 @@ export async function handwriteInput(ctx: HandwriteInputContext): Promise<void> 
             instruction: compose.instruction,
             awaitingInstruction: compose.awaitingInstruction,
             analyzeImages: compose.analyzeImages,
+            fetchThread: compose.fetchThread,
+            sourceTweet: compose.sourceTweet,
+            sourceCommit: compose.sourceCommit,
+            langOverride: compose.langOverride,
+            globalLang: lang as 'en' | 'he',
         });
         try {
             await editMessage(env, chatId, statusMessageId, view.text, view.keyboard);

@@ -830,5 +830,7 @@ export interface ComposeState {
     // Commit-specific (only when mode === 'commit')
     sourceCommit?: ComposeSourceCommit;
     eventId?: string; // commit_events.id for draft linkage
+    // Per-session language override for AI skills/prompts (not persisted to DB)
+    langOverride?: 'en' | 'he';
 }
 

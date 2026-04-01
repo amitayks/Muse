@@ -104,6 +104,7 @@ export const he: Record<string, string> = {
   'compose.refining': 'מעדן...',
   'compose.discardDraft': 'למחוק טיוטה?',
   'compose.unsavedChanges': 'יש שינויים שלא נשמרו. למחוק?',
+  'compose.langToggle': 'שפת AI',
 
   // Generate
   'generate.title': 'יצירה מ-Commit',

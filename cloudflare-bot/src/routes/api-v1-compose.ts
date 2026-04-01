@@ -24,7 +24,7 @@ export async function handleComposeApi(ctx: ApiContext, path: string): Promise<R
 async function handleCompose(ctx: ApiContext): Promise<Response> {
     const body = await ctx.request.json() as {
         tweets: Array<{ text: string; media?: Array<{ key: string; type: 'photo' | 'video' }> }>;
-        options?: { aiRefine?: boolean; imageGen?: boolean; instruction?: string };
+        options?: { aiRefine?: boolean; imageGen?: boolean; instruction?: string; langOverride?: 'en' | 'he' };
     };
 
     if (!body.tweets?.length) return errorResponse('At least one tweet is required', 400);
@@ -46,11 +46,14 @@ async function handleCompose(ctx: ApiContext): Promise<Response> {
         try {
             const { hydrateEnv } = await import('../data/user-keys');
             const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
+            const { getUserLanguage } = await import('../data/user-settings-db');
+            const userLang = await getUserLanguage(ctx.env, ctx.chatId);
+            const effectiveLang = body.options?.langOverride ?? userLang;
             const { refineHandwrittenContent } = await import('../ai/gemini');
             const refined = await refineHandwrittenContent(
                 userEnv, content,
                 { refineText: true, generateImagePrompt: !!body.options?.imageGen, instruction: body.options?.instruction },
-                undefined, ctx.chatId,
+                effectiveLang, ctx.chatId,
             );
             if (refined) content = refined;
         } catch (err) {
@@ -77,6 +80,7 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
         commitSha: string;
         fastImage?: boolean;
         fastAi?: boolean;
+        langOverride?: 'en' | 'he';
     };
 
     if (!body.commitSha) return errorResponse('commitSha is required', 400);
@@ -93,6 +97,11 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
     const { getContentSource } = await import('../integrations/github');
     const { generateContent } = await import('../ai/gemini');
 
+    // Resolve effective language
+    const { getUserLanguage } = await import('../data/user-settings-db');
+    const userLang = await getUserLanguage(ctx.env, ctx.chatId);
+    const effectiveLang = body.langOverride ?? userLang;
+
     // Find repo context if repoId provided
     let repoId: string | undefined;
     if (body.repoId) {
@@ -104,7 +113,7 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
     let contentResult;
     try {
         const source = await getContentSource(userEnv, body.commitSha);
-        contentResult = await generateContent(userEnv, source, repoId, undefined, ctx.chatId);
+        contentResult = await generateContent(userEnv, source, repoId, effectiveLang, ctx.chatId);
     } catch (err) {
         return errorResponse(`Generation failed: ${err instanceof Error ? err.message : String(err)}`, 500);
     }
@@ -128,7 +137,7 @@ async function handleRepost(ctx: ApiContext): Promise<Response> {
     const body = await ctx.request.json() as {
         url: string;
         tweets?: Array<{ text: string }>;
-        options?: { aiRefine?: boolean; instruction?: string };
+        options?: { aiRefine?: boolean; instruction?: string; langOverride?: 'en' | 'he' };
     };
 
     if (!body.url) return errorResponse('url is required', 400);

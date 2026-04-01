@@ -129,6 +129,8 @@ export const he: StringsMap = {
         btnInstruct: '📝 הוראה',
         btnAnalyze: '📷 ניתוח',
         btnThread: '🧵 שרשור',
+        btnLangHe: 'עברית',
+        btnLangEn: 'English',
 
         // Instruction UX
         instructToast: 'הקלד את ההוראה שלך עכשיו',

@@ -121,6 +121,8 @@ export async function composeAction(
             return handleInstruct(env, chatId, context, compose, lang);
         case 'toggle_thread':
             return handleToggle(env, chatId, context, compose, 'fetchThread', lang);
+        case 'toggle_lang':
+            return handleToggleLang(env, chatId, context, compose, lang);
         case 'cancel':
             await handleCancel(env, chatId, ctx.messageId, compose, lang);
             return; // void — handled sending ourselves
@@ -160,6 +162,7 @@ async function handleHandwritePenDown(
     lang: Lang,
 ): Promise<void> {
     const { hasTweets, hasInstruction, allOriginalMedia } = extractComposeData(compose);
+    const effectiveLang = (compose.langOverride ?? lang) as Lang;
 
     if (!hasTweets && !hasInstruction) {
         const view = renderCompose([], [], compose.imageGen, compose.aiRefine, lang);
@@ -167,7 +170,7 @@ async function handleHandwritePenDown(
         return;
     }
 
-    // Handwrite has a more granular status message
+    // Handwrite has a more granular status message (uses global lang for UI)
     const statusText = hasInstruction && !hasTweets
         ? t(lang, 'compose.generatingFromInstruction')
         : compose.aiRefine && compose.imageGen
@@ -195,7 +198,7 @@ async function handleHandwritePenDown(
                 generateImagePrompt: compose.imageGen,
                 instruction: compose.instruction,
                 imageParts,
-            }, lang, chatId);
+            }, effectiveLang, chatId);
 
             // Handwrite re-attaches per-tweet if same count, else first-tweet bulk
             if (content.tweets.length === tweets.length) {
@@ -221,6 +224,7 @@ async function handleRepostPenDown(
 ): Promise<void> {
     const { hasTweets, hasInstruction, allOriginalMedia, userTweetTexts } = extractComposeData(compose);
     const sourceTweet = compose.sourceTweet;
+    const effectiveLang = (compose.langOverride ?? lang) as Lang;
 
     // Repost allows pen down with just source tweet (AI generates everything)
     if (!sourceTweet && !hasTweets && !hasInstruction) {
@@ -302,7 +306,7 @@ async function handleRepostPenDown(
 
             const generated = await generateRepostContent(env, tweetData, compose.sourceAccountId || '', config, {
                 imageUrls: sourceTweet.mediaUrls || (sourceTweet.mediaUrl ? [sourceTweet.mediaUrl] : []),
-                language: lang,
+                language: effectiveLang,
                 userTweets: userTweetTexts,
                 instruction: compose.instruction,
                 threadText: sourceTweet.threadText,
@@ -351,6 +355,7 @@ async function handleCommitPenDown(
 ): Promise<void> {
     const { hasTweets, hasInstruction, allOriginalMedia, userTweetTexts } = extractComposeData(compose);
     const sourceCommit = compose.sourceCommit;
+    const effectiveLang = (compose.langOverride ?? lang) as Lang;
 
     // Commit allows pen down with just source commit (AI generates everything)
     if (!sourceCommit && !hasTweets && !hasInstruction) {
@@ -378,7 +383,7 @@ async function handleCommitPenDown(
             const userImageParts = await buildUserImageParts(env, compose, allOriginalMedia);
 
             const result = await generateContent(
-                env, contentSource, sourceCommit.repoId, lang, chatId,
+                env, contentSource, sourceCommit.repoId, effectiveLang, chatId,
                 {
                     userTweets: userTweetTexts.length > 0 ? userTweetTexts : undefined,
                     instruction: compose.instruction,
@@ -619,6 +624,31 @@ async function handleInstruct(
     return view;
 }
 
+async function handleToggleLang(
+    env: import('../types').Env,
+    chatId: string,
+    context: import('../types').ChatContext,
+    compose: ComposeState | undefined,
+    lang: Lang = 'en'
+): Promise<ViewResult> {
+    if (!compose) {
+        return renderHome(env, chatId, lang);
+    }
+
+    // Toggle: if override matches opposite of global, clear it; otherwise set to opposite
+    const opposite = lang === 'en' ? 'he' : 'en';
+    compose.langOverride = compose.langOverride ? undefined : opposite;
+
+    await updateChatState(env, chatId, {
+        context: {
+            ...context,
+            compose,
+        },
+    });
+
+    return buildComposeView(compose, lang);
+}
+
 function buildComposeView(compose: ComposeState, lang: Lang): ViewResult {
     const composeTweets = compose.tweets.map((t) => {
         return { text: t.text, mediaCount: t.media?.length || 0 };
@@ -631,6 +661,8 @@ function buildComposeView(compose: ComposeState, lang: Lang): ViewResult {
         fetchThread: compose.fetchThread,
         sourceTweet: compose.sourceTweet,
         sourceCommit: compose.sourceCommit,
+        langOverride: compose.langOverride,
+        globalLang: lang as 'en' | 'he',
     });
 }
 

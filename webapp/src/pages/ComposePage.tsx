@@ -6,7 +6,7 @@ import { useTranslation } from '../i18n';
 import { Toggle, ConfirmDialog, Spinner, useToast } from '../components/ui';
 import { MediaGrid } from '../components/MediaGrid';
 import { AutoTextarea } from '../components/AutoTextarea';
-import { Brain, ImagePlus, Search, FileText } from 'lucide-react';
+import { Brain, ImagePlus, Search, FileText, Languages } from 'lucide-react';
 import type { TweetMedia } from '../types/draft';
 import type { UploadedMedia } from '../hooks/useMediaUpload';
 
@@ -16,13 +16,14 @@ interface ComposeTweet {
 }
 
 export function ComposePage() {
-  const { t } = useTranslation();
+  const { lang, t } = useTranslation();
   const navigate = useNavigate();
   const { show: showToast, element: toastEl } = useToast();
 
   const [tweets, setTweets] = useState<ComposeTweet[]>([{ text: '', media: [] }]);
   const [aiRefine, setAiRefine] = useState(false);
   const [imageGen, setImageGen] = useState(false);
+  const [langOverride, setLangOverride] = useState<'en' | 'he' | undefined>(undefined);
   const [instruction, setInstruction] = useState('');
   const [showInstruction, setShowInstruction] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -33,7 +34,7 @@ export function ComposePage() {
     mutationFn: async () => {
       const result = await api.post<{ success: boolean; draftId: string }>('/api/v1/compose', {
         tweets: tweets.map(tw => ({ text: tw.text, media: tw.media })),
-        options: { aiRefine, imageGen: !hasImages && imageGen, instruction: instruction || undefined },
+        options: { aiRefine, imageGen: !hasImages && imageGen, instruction: instruction || undefined, langOverride },
       });
       return result;
     },
@@ -138,6 +139,19 @@ export function ComposePage() {
               <Toggle checked={false} onChange={() => {}} />
             </div>
           )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}><Languages size={14} /> {t('compose.langToggle')}</span>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '4px 10px', fontSize: 'var(--text-sm)', fontWeight: 500 }}
+              onClick={() => {
+                const opposite = lang === 'en' ? 'he' : 'en';
+                setLangOverride(prev => prev ? undefined : opposite);
+              }}
+            >
+              {(langOverride ?? lang) === 'en' ? 'עברית' : 'English'}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -60,7 +60,7 @@ The system SHALL allow an optional instruction to guide AI refinement.
 - **THEN** the instruction SHALL be included in the AI refinement request when saving
 
 ### Requirement: Save as draft (pen-down equivalent)
-The system SHALL provide a "Save as Draft" button that creates the draft, optionally running AI refinement.
+The system SHALL provide a "Save as Draft" button that creates the draft, optionally running AI refinement. When a language override is active, the API request SHALL include it so the server uses the correct language for AI calls.
 
 #### Scenario: Save without AI
 - **WHEN** the user taps "Save as Draft" with AI Refine toggle OFF
@@ -69,6 +69,11 @@ The system SHALL provide a "Save as Draft" button that creates the draft, option
 #### Scenario: Save with AI refine
 - **WHEN** the user taps "Save as Draft" with AI Refine toggle ON
 - **THEN** the system SHALL show a loading state ("Refining..."), create the draft with AI refinement via `POST /api/v1/compose`, and navigate to the draft editor for the new draft
+
+#### Scenario: Save with AI refine and lang override
+- **WHEN** the user taps "Save as Draft" with AI Refine toggle ON and `langOverride` set to `'he'`
+- **THEN** the `POST /api/v1/compose` request body SHALL include `options.langOverride: 'he'`
+- **AND** the server SHALL use `'he'` as the language for `refineHandwrittenContent` and `assembleSystemInstruction`
 
 #### Scenario: Cancel compose
 - **WHEN** the user taps "Cancel"
@@ -80,3 +85,56 @@ The system SHALL preserve compose state if the user accidentally navigates away.
 #### Scenario: Back navigation with unsaved content
 - **WHEN** the user has typed content and taps the back button
 - **THEN** a confirmation dialog SHALL appear: "You have unsaved changes. Discard?"
+
+### Requirement: Language override toggle in compose page
+The webapp ComposePage SHALL include a language override toggle button in the toggles card that allows the user to switch the AI generation language for the current compose session.
+
+#### Scenario: Default state — no override
+- **WHEN** the ComposePage loads
+- **THEN** the lang toggle SHALL display the opposite language name as a button (e.g., "עברית" if user's language is English)
+- **AND** no `langOverride` SHALL be included in the API request
+
+#### Scenario: Toggle to Hebrew
+- **WHEN** the user clicks the lang toggle button showing "עברית"
+- **THEN** the button SHALL change to show "English"
+- **AND** `langOverride: 'he'` SHALL be included in the compose API request
+
+#### Scenario: Toggle back to default
+- **WHEN** the user clicks the lang toggle button showing "English" (after previously switching to Hebrew)
+- **THEN** the button SHALL change back to show "עברית"
+- **AND** `langOverride` SHALL not be included in the API request (back to default)
+
+#### Scenario: Lang toggle placement in toggles card
+- **WHEN** the ComposePage toggles card is rendered
+- **THEN** the lang toggle SHALL appear in the toggles card alongside AI Refine and Image Gen toggles
+
+### Requirement: Webapp i18n strings for lang toggle
+The webapp i18n registries (en.ts, he.ts) SHALL include string keys for the language override toggle label.
+
+#### Scenario: English i18n registry
+- **WHEN** the English i18n registry is examined
+- **THEN** it SHALL include a key for the compose lang toggle label (e.g., `compose.langToggle`)
+
+#### Scenario: Hebrew i18n registry
+- **WHEN** the Hebrew i18n registry is examined
+- **THEN** it SHALL include the corresponding key for the compose lang toggle label
+
+### Requirement: Compose API accepts langOverride
+The `POST /api/v1/compose` endpoint SHALL accept an optional `langOverride` field in the `options` object. When present, the server SHALL use it instead of the user's global language for AI calls.
+
+#### Scenario: Compose API with langOverride
+- **WHEN** `POST /api/v1/compose` is called with `options.langOverride: 'he'`
+- **THEN** `refineHandwrittenContent` SHALL be called with `lang = 'he'`
+- **AND** the AI system instruction SHALL use Hebrew skill variants and Hebrew identity document
+
+#### Scenario: Compose API without langOverride
+- **WHEN** `POST /api/v1/compose` is called without `langOverride` in options
+- **THEN** `refineHandwrittenContent` SHALL use the user's global language from `getUserLanguage()` (existing behavior preserved)
+
+#### Scenario: Generate API with langOverride
+- **WHEN** `POST /api/v1/generate` is called with `langOverride: 'he'`
+- **THEN** `generateContent` SHALL be called with `lang = 'he'`
+
+#### Scenario: Repost API with langOverride
+- **WHEN** `POST /api/v1/repost` is called with `options.langOverride: 'he'`
+- **THEN** any AI calls in the repost flow SHALL use `'he'` as the language

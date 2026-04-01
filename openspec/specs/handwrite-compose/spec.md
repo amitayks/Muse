@@ -76,7 +76,7 @@ The system SHALL handle `edited_message` Telegram updates to update previously b
 - **THEN** the update SHALL be silently ignored
 
 ### Requirement: Compose mode toggle buttons
-The compose status message SHALL include context-aware toggle buttons that adapt based on current state: whether images are attached, whether AI is enabled, and whether an instruction exists.
+The compose status message SHALL include context-aware toggle buttons that adapt based on current state: whether images are attached, whether AI is enabled, and whether an instruction exists. The compose view SHALL also include a persistent extras row containing the language toggle button and any mode-specific buttons (Thread, View Existing).
 
 #### Scenario: No images — show image gen, AI, and instruct buttons
 - **WHEN** no tweets have media attached
@@ -106,6 +106,17 @@ The compose status message SHALL include context-aware toggle buttons that adapt
 - **THEN** `HandwriteState.aiRefine` SHALL be set to `false`
 - **AND** `HandwriteState.analyzeImages` SHALL also be set to `false`
 - **AND** the analyze button SHALL disappear from the button row
+
+#### Scenario: Extras row always present with lang button
+- **WHEN** the compose view is rendered in any mode (handwrite, repost, commit)
+- **THEN** an extras row SHALL appear between the toggle row and the action row
+- **AND** the extras row SHALL always contain the language toggle button
+- **AND** mode-specific buttons (Thread toggle for repost, View Existing for duplicates) SHALL share or follow the extras row
+
+#### Scenario: Extras row persists across message sends
+- **WHEN** the user sends a text message or photo during compose mode
+- **THEN** the re-rendered compose view SHALL include the full extras row with the lang button and any mode-specific buttons
+- **AND** the source header (sourceTweet or sourceCommit) SHALL also persist
 
 ### Requirement: Pen Down finalizes compose and creates draft
 When the user clicks "Pen Down", the compose session SHALL end and a draft SHALL be created from the buffered tweets. The behavior depends on the compose mode.
@@ -272,3 +283,44 @@ The `ComposeOptions` interface SHALL include an optional `sourceCommit` field fo
 - **WHEN** building compose view for commit mode
 - **THEN** `ComposeOptions` SHALL accept `sourceCommit?: ComposeSourceCommit`
 - **AND** the field SHALL be passed through from `buildComposeView` helper
+
+### Requirement: Handwrite input re-render passes all ComposeOptions
+When the `handwriteInput` handler re-renders the compose view after buffering a user message, it SHALL pass ALL relevant fields from `ComposeState` to the `renderCompose` options, ensuring no buttons or headers are lost.
+
+#### Scenario: Re-render in repost mode preserves Thread button
+- **WHEN** a user sends a text message in repost compose mode with `fetchThread` set
+- **THEN** the re-rendered compose view SHALL include the `[Thread: ON/OFF]` button
+- **AND** the source tweet header SHALL be visible
+
+#### Scenario: Re-render in commit mode preserves source header
+- **WHEN** a user sends a text message in commit compose mode
+- **THEN** the re-rendered compose view SHALL include the source commit header with repo name, title, and stats
+
+#### Scenario: Re-render preserves View Existing button
+- **WHEN** a user sends a text message in repost compose mode with `existingDraftId` set
+- **THEN** the re-rendered compose view SHALL include the `[View Existing]` button
+
+#### Scenario: Re-render preserves lang override button state
+- **WHEN** a user has toggled lang to Hebrew and then sends a text message
+- **THEN** the re-rendered compose view SHALL show the lang button as "English" (reflecting the active override)
+
+#### Scenario: Re-render passes all options fields
+- **WHEN** `handwriteInput` calls `renderCompose` to update the status message
+- **THEN** the options object SHALL include: `instruction`, `awaitingInstruction`, `analyzeImages`, `fetchThread`, `sourceTweet`, `sourceCommit`, `existingDraftId`, `langOverride`, and `globalLang`
+
+### Requirement: ComposeState type extended with langOverride
+The `ComposeState` interface SHALL include `langOverride?: 'en' | 'he'` for carrying the per-session language preference.
+
+#### Scenario: ComposeState stored in ChatContext
+- **WHEN** compose mode is active
+- **THEN** `ChatContext` SHALL contain `awaiting_input: 'handwrite'` and `compose: ComposeState`
+- **AND** `ComposeState` SHALL have fields: `mode: 'handwrite' | 'repost' | 'commit'`, `tweets: ComposeTweet[]`, `imageGen: boolean`, `aiRefine: boolean`, `analyzeImages: boolean`, `statusMessageId: number`, optional `instruction: string`, optional `instructionMessageId: number`, optional `awaitingInstruction: boolean`, optional `sourceTweet`, optional `sourceAccountId: string`, optional `batchTweetId: string`, optional `fetchThread: boolean`, optional `sourceCommit`, optional `eventId: string`, optional `langOverride: 'en' | 'he'`
+
+### Requirement: Compose action handles lang toggle callback
+The compose action handler SHALL route the `compose:toggle_lang` callback value to toggle `ComposeState.langOverride`.
+
+#### Scenario: Toggle lang callback
+- **WHEN** callback data is `compose:toggle_lang`
+- **THEN** the handler SHALL toggle `ComposeState.langOverride` between `undefined` (global) and the opposite of the global language
+- **AND** the compose preview SHALL re-render with the updated lang button label
+- **AND** the chat state SHALL be updated with the new compose state

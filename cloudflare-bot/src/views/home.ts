@@ -54,29 +54,32 @@ ${t(lang, 'home.allClear')}
         keyboard.push([
             { text: t(lang, 'home.btnSchedule'), callback_data: 'view:drafts_scheduled' },
             { text: t(lang, 'home.btnDrafts'), callback_data: 'view:drafts' },
+            { text: t(lang, 'home.btnRepos'), callback_data: 'view:repos' },
+            { text: t(lang, 'home.btnAccounts'), callback_data: 'view:accounts' },
         ]);
     } else {
-        keyboard.push([{ text: t(lang, 'home.btnDrafts'), callback_data: 'view:drafts' }]);
+        keyboard.push([
+            { text: t(lang, 'home.btnDrafts'), callback_data: 'view:drafts' },
+            { text: t(lang, 'home.btnRepos'), callback_data: 'view:repos' },
+            { text: t(lang, 'home.btnAccounts'), callback_data: 'view:accounts' },
+        ]);
     }
     keyboard.push([
         { text: t(lang, 'home.btnHandwrite'), callback_data: 'view:handwrite', style: 'primary' },
         { text: t(lang, 'home.btnGenerate'), callback_data: 'view:generate', style: 'primary' },
         { text: t(lang, 'home.btnRepost'), callback_data: 'view:repost', style: 'primary' },
     ]);
-    keyboard.push([
+    // Thumbs + Video Studio + Open App in one row
+    const utilRow: InlineButton[] = [
         { text: t(lang, 'home.btnThumbs'), callback_data: 'view:thumbs' },
-    ]);
-    keyboard.push([
-        { text: t(lang, 'home.btnRepos'), callback_data: 'view:repos' },
-        { text: t(lang, 'home.btnAccounts'), callback_data: 'view:accounts' },
-    ]);
+    ];
     if (isAdmin(chatId, env)) {
-        keyboard.push([{ text: t(lang, 'home.btnVideoStudio'), callback_data: 'view:video_studio' }]);
+        utilRow.push({ text: t(lang, 'home.btnVideoStudio'), callback_data: 'view:video_studio' });
     }
-    // Open App button (webapp) — only when WEBAPP_URL is configured
     if (env.WEBAPP_URL) {
-        keyboard.push([{ text: `${t(lang, 'home.btnOpenApp')}`, web_app: { url: `${env.WEBAPP_URL}/#/` } }]);
+        utilRow.push({ text: `${t(lang, 'home.btnOpenApp')}`, web_app: { url: `${env.WEBAPP_URL}/#/` } });
     }
+    keyboard.push(utilRow);
     keyboard.push([
         { text: t(lang, 'home.btnSettings'), callback_data: 'view:settings' },
         { text: t(lang, 'home.btnHelp'), callback_data: 'view:help' },
@@ -163,6 +166,8 @@ export interface ComposeOptions {
     sourceTweet?: import('../types').ComposeSourceTweet;
     sourceCommit?: import('../types').ComposeSourceCommit;
     existingDraftId?: string;
+    langOverride?: 'en' | 'he';
+    globalLang?: 'en' | 'he';
 }
 
 export function renderCompose(
@@ -287,12 +292,18 @@ ${t(lang, 'compose.analyzeHint')}`;
 
     const keyboard: import('../types').InlineButton[][] = [toggleRow];
 
-    // Thread fetch toggle — repost mode only, on its own row
+    // Extras row: lang button + mode-specific buttons (Thread toggle for repost)
+    const effectiveLang = options?.langOverride ?? options?.globalLang ?? lang;
+    const langLabel = effectiveLang === 'en' ? t(lang, 'compose.btnLangHe') : t(lang, 'compose.btnLangEn');
+    const extrasRow: import('../types').InlineButton[] = [
+        { text: langLabel, callback_data: 'compose:toggle_lang' },
+    ];
     if (sourceTweet) {
-        keyboard.push([{ text: `${t(lang, 'compose.btnThread')}: ${options?.fetchThread ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_thread' }]);
+        extrasRow.push({ text: `${t(lang, 'compose.btnThread')}: ${options?.fetchThread ? 'ON' : 'OFF'}`, callback_data: 'compose:toggle_thread' });
     }
+    keyboard.push(extrasRow);
 
-    // Duplicate warning: add View Existing button
+    // Duplicate warning: add View Existing button on its own row
     if (options?.existingDraftId) {
         keyboard.push([{ text: t(lang, 'repost.viewExisting'), callback_data: `draft:${options.existingDraftId}` }]);
     }
