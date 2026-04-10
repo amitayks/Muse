@@ -3,7 +3,7 @@
  */
 
 import type { Env, ViewResult, Draft, DraftContent, InlineButton, PublishResults } from '../types';
-import { getAllDrafts, countDrafts, getDraft, getPublishedByDraft, getHandwriteDraftCount, getDraftsBySource, countDraftsBySource, countThumbDrafts } from '../data/db';
+import { getAllDrafts, countDrafts, getDraft, getPublishedByDraft, getHandwriteDraftCount, getDraftsBySource, countDraftsBySource, countThumbDrafts, countImageDrafts } from '../data/db';
 import { getUser } from '../data/user-db';
 import { formatLocalTime } from '../infra/timezone';
 import { escapeHtml, truncateHtml } from '../ui/utils';
@@ -27,7 +27,7 @@ const statusEmoji: Record<string, string> = {
 };
 
 export async function renderDraftCategories(env: Env, chatId: string, lang: Lang = 'en'): Promise<ViewResult> {
-    const [autoCount, handwriteCount, repostCount, approvedCount, scheduledCount, publishedCount, thumbCount] = await Promise.all([
+    const [autoCount, handwriteCount, repostCount, approvedCount, scheduledCount, publishedCount, thumbCount, imageCount] = await Promise.all([
         countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']),
         getHandwriteDraftCount(env, chatId),
         countDraftsBySource(env, chatId, 'repost', ['draft']),
@@ -35,9 +35,10 @@ export async function renderDraftCategories(env: Env, chatId: string, lang: Lang
         countDrafts(env, chatId, 'scheduled'),
         countDrafts(env, chatId, 'published'),
         countThumbDrafts(env, chatId),
+        countImageDrafts(env, chatId),
     ]);
 
-    const total = autoCount + handwriteCount + repostCount + approvedCount + scheduledCount + publishedCount + thumbCount;
+    const total = autoCount + handwriteCount + repostCount + approvedCount + scheduledCount + publishedCount + thumbCount + imageCount;
 
     if (total === 0) {
         return {
@@ -64,6 +65,7 @@ ${t(lang, 'drafts.selectCategory')}`,
             [{ text: `${t(lang, 'drafts.scheduledLabel')} (${scheduledCount})`, callback_data: 'view:drafts_scheduled' }],
             [{ text: `${t(lang, 'drafts.publishedLabel')} (${publishedCount})`, callback_data: 'view:drafts_published' }],
             [{ text: `${t(lang, 'thumb.draftsCategory')} (${thumbCount})`, callback_data: 'view:drafts_thumbs' }],
+            [{ text: `${t(lang, 'imgcreate.draftsCategory')} (${imageCount})`, callback_data: 'view:drafts_images' }],
             [homeButton(lang)],
         ],
     };

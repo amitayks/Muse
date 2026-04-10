@@ -50,6 +50,7 @@ export const en = {
         btnVideoStudio: '🎬 Video Studio',
         btnOpenApp: 'Open App',
         btnSettings: '⚙️ Settings',
+        btnImageCreate: '🎨 Image',
         btnHelp: '❓ Help',
     },
 
@@ -1062,6 +1063,24 @@ export const en = {
         noDrafts: 'No thumbnails yet.',
         btnFullRes: 'Full Res',
         deleteConfirm: '🗑 Delete this thumbnail?',
+    },
+    imgcreate: {
+        composeTitle: '🎨 <b>Image Create</b>',
+        labelPrompt: 'Prompt',
+        labelImage: 'Image',
+        instructions: 'Send your prompt as a text message.\nOptionally attach a reference image (photo or file).',
+        btnPenDown: '✏️ Pen Down',
+        missing: 'Missing',
+        missingPrompt: 'Prompt is required',
+        generating: '🎨 Generating image...',
+        generationFailed: '❌ Image generation failed. Please try again.',
+        imageNotFound: '❌ Image not found.',
+        notFound: '❌ Image not found.',
+        draftsTitle: 'Images',
+        draftsCategory: '🎨 Images',
+        noDrafts: 'No images yet.',
+        btnFullRes: 'Full Res',
+        deleteConfirm: '🗑 Delete this image?',
     },
 };
 

@@ -525,6 +525,25 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('thumb_drafts migration note:', String(thumbDraftsError));
         }
 
+        // Migration: Create image_drafts table (018)
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS image_drafts (
+                    id TEXT PRIMARY KEY,
+                    chat_id TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    source_image_key TEXT,
+                    result_image_key TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_image_drafts_chat ON image_drafts(chat_id);`,
+            ]);
+            logInfo('Ensured image_drafts table exists');
+        } catch (imageDraftsError) {
+            logInfo('image_drafts migration note:', String(imageDraftsError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);
@@ -572,7 +591,7 @@ export async function handleWipeUser(request: Request, url: URL, env: Env): Prom
             'users', 'drafts', 'published', 'repos', 'repo_overviews',
             'video_drafts', 'video_published', 'video_presets',
             'twitter_accounts', 'twitter_account_overviews', 'twitter_tweets',
-            'commit_events', 'user_prompts', 'thumb_drafts',
+            'commit_events', 'user_prompts', 'thumb_drafts', 'image_drafts',
         ];
 
         for (const table of tables) {

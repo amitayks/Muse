@@ -23,7 +23,7 @@ The system SHALL display a preview card of the next scheduled draft, if any.
 - **THEN** the next-up section SHALL be hidden or show "All clear — nothing scheduled"
 
 ### Requirement: Action buttons for content creation
-The system SHALL provide action buttons that mirror the bot's home screen: Handwrite, Generate, Repost.
+The system SHALL provide action buttons that mirror the bot's home screen: Handwrite, Generate, Repost. The home view's bottom row (Settings/Help) SHALL include an "Image" button between Settings and Help that enters image create compose mode.
 
 #### Scenario: Handwrite button navigates to compose
 - **WHEN** the user taps the "Handwrite" button
@@ -36,6 +36,11 @@ The system SHALL provide action buttons that mirror the bot's home screen: Handw
 #### Scenario: Repost button navigates to repost page
 - **WHEN** the user taps the "Repost" button
 - **THEN** the app SHALL navigate to `/#/repost`
+
+#### Scenario: Image button in settings row on bot home
+- **WHEN** the user views the bot home screen
+- **THEN** the bottom row SHALL contain `[Settings] [🎨 Image] [Help]`
+- **AND** the Image button callback data SHALL be `view:image_create`
 
 ### Requirement: Quick navigation to drafts by status
 The system SHALL allow tapping a status counter to navigate directly to the filtered drafts list.

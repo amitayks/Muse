@@ -11,7 +11,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { updateChatState, getChatState, parseContext } from '../data/db';
 import { getThumbDraft, deleteThumbDraft, countThumbDrafts, getThumbDrafts } from '../data/thumb-db';
-import { sendMessage, sendPhoto, sendDocument, editMessage, deleteMessage, answerCallback } from '../integrations/telegram';
+import { sendMessage, sendPhotoBuffer, sendDocumentBuffer, editMessage, deleteMessage, answerCallback } from '../integrations/telegram';
 import { getPrompt } from '../ai/prompts';
 import { logInfo, logError } from '../infra/security';
 import { renderThumbCompose, renderThumbDraftCaption, renderThumbDraftButtons, renderThumbDeleteConfirm } from '../views/thumb';
@@ -204,6 +204,7 @@ async function handleThumbPenDown(
                 }],
                 generationConfig: {
                     responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { imageSize: '4K' },
                 },
             }),
         });
@@ -265,15 +266,19 @@ async function handleThumbPenDown(
             result_image_key: resultKey,
         });
 
-        // 7. Delete the "generating" message, then send result as draft detail
+        // 7. Delete the "generating" message, then send result via multipart upload
         try { await deleteMessage(env, chatId, generatingMsgId); } catch { /* ignore */ }
 
-        const workerUrl = env.WORKER_URL || '';
-        const imageUrl = `${workerUrl}/media/${resultKey}`;
+        const filename = `thumbnail.${ext}`;
         const caption = renderThumbDraftCaption(tc.title!, tc.color!, tc.icons!, tc.ratio, lang);
         const keyboard = renderThumbDraftButtons(savedThumbId, lang);
 
-        await sendPhoto(env, chatId, imageUrl, caption, keyboard);
+        // Upload bytes directly to Telegram (no URL size limits)
+        try {
+            await sendPhotoBuffer(env, chatId, resultBytes, filename, caption, keyboard);
+        } catch {
+            await sendDocumentBuffer(env, chatId, resultBytes, filename, caption, keyboard);
+        }
 
         // 8. Clear compose state
         await updateChatState(env, chatId, { current_view: 'home', context: null });
@@ -284,6 +289,18 @@ async function handleThumbPenDown(
         const detail = errMsg.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
         await sendMessage(env, chatId, `${t(lang, 'thumb.generationFailed')}\n\n<code>${detail}</code>`, [[homeButton(lang)]]);
     }
+}
+
+/**
+ * Fetch image bytes from R2 for multipart upload to Telegram
+ */
+async function fetchR2Image(env: Env, key: string): Promise<{ data: Uint8Array; filename: string } | null> {
+    const obj = await env.IMAGES.get(key);
+    if (!obj) return null;
+    const mimeType = obj.httpMetadata?.contentType || 'image/jpeg';
+    const ext = mimeType.includes('png') ? 'png' : 'jpg';
+    const buffer = await obj.arrayBuffer();
+    return { data: new Uint8Array(buffer), filename: `thumbnail.${ext}` };
 }
 
 /**
@@ -303,12 +320,20 @@ async function handleThumbDetail(env: Env, chatId: string, thumbId: string, lang
         return;
     }
 
-    const workerUrl = env.WORKER_URL || '';
-    const imageUrl = `${workerUrl}/media/${draft.result_image_key}`;
+    const image = await fetchR2Image(env, draft.result_image_key);
+    if (!image) {
+        await sendMessage(env, chatId, t(lang, 'thumb.imageNotFound'), [[homeButton(lang)]]);
+        return;
+    }
+
     const caption = renderThumbDraftCaption(draft.title, draft.color, draft.icons, draft.ratio, lang);
     const keyboard = renderThumbDraftButtons(thumbId, lang);
 
-    await sendPhoto(env, chatId, imageUrl, caption, keyboard);
+    try {
+        await sendPhotoBuffer(env, chatId, image.data, image.filename, caption, keyboard);
+    } catch {
+        await sendDocumentBuffer(env, chatId, image.data, image.filename, caption, keyboard);
+    }
 }
 
 /**
@@ -321,9 +346,12 @@ async function handleThumbFullRes(env: Env, chatId: string, thumbId: string, lan
         return;
     }
 
-    const workerUrl = env.WORKER_URL || '';
-    const documentUrl = `${workerUrl}/media/${draft.result_image_key}`;
-    const caption = `🖼 ${draft.title}`;
+    const image = await fetchR2Image(env, draft.result_image_key);
+    if (!image) {
+        await sendMessage(env, chatId, t(lang, 'thumb.imageNotFound'), [[homeButton(lang)]]);
+        return;
+    }
 
-    await sendDocument(env, chatId, documentUrl, caption);
+    const caption = `🖼 ${draft.title}`;
+    await sendDocumentBuffer(env, chatId, image.data, image.filename, caption);
 }

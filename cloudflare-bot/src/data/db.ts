@@ -12,3 +12,4 @@ export * from './video-db';
 export * from './twitter-db';
 export * from './persona-db';
 export * from './thumb-db';
+export * from './image-create-db';

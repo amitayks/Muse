@@ -82,6 +82,7 @@ ${t(lang, 'home.allClear')}
     keyboard.push(utilRow);
     keyboard.push([
         { text: t(lang, 'home.btnSettings'), callback_data: 'view:settings' },
+        { text: t(lang, 'home.btnImageCreate'), callback_data: 'view:image_create' },
         { text: t(lang, 'home.btnHelp'), callback_data: 'view:help' },
     ]);
 

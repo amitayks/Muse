@@ -129,6 +129,7 @@ import { platformToggleAction, platformShowAction, platformDoneAction } from '..
 import { editComposeAction } from '../actions/edit-compose';
 import { fastCommitAction } from '../actions/fast-commit';
 import { thumbAction } from '../actions/thumb';
+import { imageCreateAction } from '../actions/image-create';
 
 /** Action handlers keyed by the `action` part of `action:ACTION:ID` */
 const actionSubHandlers: Record<string, ActionHandler> = {
@@ -209,6 +210,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
     tw_config: accountConfigToggleAction,
     compose: composeAction,
     thumb: thumbAction,
+    imgcreate: imageCreateAction,
     tw_batch: batchPageAction,
     tw_view: tweetViewDraftAction,
     vconfig: videoConfigAction,

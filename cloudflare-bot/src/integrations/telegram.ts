@@ -221,6 +221,84 @@ export async function sendDocument(
 }
 
 /**
+ * Send a photo via multipart file upload — bypasses Telegram's 5MB URL limit.
+ * Telegram's file upload limit for photos is 10MB; falls back to document if too large.
+ */
+export async function sendPhotoBuffer(
+    env: Env,
+    chatId: string | number,
+    photoData: ArrayBuffer | Uint8Array,
+    filename: string,
+    caption?: string,
+    keyboard?: InlineButton[][],
+): Promise<number> {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+    formData.append('photo', new Blob([photoData]), filename);
+    if (caption) {
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'HTML');
+    }
+    if (keyboard) {
+        formData.append('reply_markup', JSON.stringify({ inline_keyboard: toTelegramKeyboard(keyboard) }));
+    }
+
+    const response = await fetch(`${TELEGRAM_API}${env.TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    const data = await response.json() as { ok: boolean; result?: { message_id: number }; description?: string };
+
+    if (!data.ok || !data.result) {
+        console.error('sendPhotoBuffer failed:', data.description);
+        throw new Error(`Failed to send photo: ${data.description}`);
+    }
+
+    console.log('Sent photo (buffer):', data.result.message_id);
+    return data.result.message_id;
+}
+
+/**
+ * Send a document via multipart file upload — bypasses Telegram's 20MB URL limit.
+ * Telegram's file upload limit for documents is 50MB.
+ */
+export async function sendDocumentBuffer(
+    env: Env,
+    chatId: string | number,
+    docData: ArrayBuffer | Uint8Array,
+    filename: string,
+    caption?: string,
+    keyboard?: InlineButton[][],
+): Promise<number> {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+    formData.append('document', new Blob([docData]), filename);
+    if (caption) {
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'HTML');
+    }
+    if (keyboard) {
+        formData.append('reply_markup', JSON.stringify({ inline_keyboard: toTelegramKeyboard(keyboard) }));
+    }
+
+    const response = await fetch(`${TELEGRAM_API}${env.TELEGRAM_BOT_TOKEN}/sendDocument`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    const data = await response.json() as { ok: boolean; result?: { message_id: number }; description?: string };
+
+    if (!data.ok || !data.result) {
+        console.error('sendDocumentBuffer failed:', data.description);
+        throw new Error(`Failed to send document: ${data.description}`);
+    }
+
+    console.log('Sent document (buffer):', data.result.message_id);
+    return data.result.message_id;
+}
+
+/**
  * Send a group of photos as an album (2–10 photos)
  */
 export async function sendMediaGroup(

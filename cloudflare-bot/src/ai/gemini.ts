@@ -569,6 +569,7 @@ export async function generateImage(env: Env, content: DraftContent): Promise<{ 
                 contents: [{ parts: [{ text: `Generate an image: ${promptStr}` }] }],
                 generationConfig: {
                     responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { imageSize: '4K' },
                 },
             }),
         });

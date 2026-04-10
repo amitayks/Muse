@@ -18,6 +18,7 @@ import { characterCreateInput } from '../inputs/character-create';
 import { lookCreateInput } from '../inputs/look-create';
 import { videoComposeInput } from '../inputs/video-compose';
 import { thumbComposeInput } from '../inputs/thumb';
+import { imageComposeInput } from '../inputs/image-create';
 
 /**
  * Handle incoming text message (or edited message)
@@ -108,6 +109,27 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                 // Fall through to handle the command
             } else {
                 await thumbComposeInput({
+                    env, chatId, text, context, lang,
+                    message: {
+                        message_id: message.message_id,
+                        photo: message.photo,
+                        document: message.document as any,
+                        caption: message.caption,
+                    },
+                });
+                return;
+            }
+        }
+
+        // Image create compose mode
+        if (context.imageCompose?.active) {
+            if (!isEdit && text.startsWith('/')) {
+                await updateChatState(env, chatId, {
+                    context: { ...context, imageCompose: undefined },
+                });
+                // Fall through to handle the command
+            } else {
+                await imageComposeInput({
                     env, chatId, text, context, lang,
                     message: {
                         message_id: message.message_id,

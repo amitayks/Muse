@@ -131,6 +131,25 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             return renderThumbDraftsList(env, chatId, 0, lang);
         }
 
+        // ==================== IMAGE CREATE VIEWS ====================
+        case 'image_create': {
+            const { renderImageCompose } = await import('../views/image-create');
+            const imageState = {
+                active: true as const,
+                statusMessageId: ctx.messageId || 0,
+            };
+            await updateChatState(env, chatId, {
+                current_view: 'image_compose',
+                context: { imageCompose: imageState },
+            });
+            return renderImageCompose(imageState, lang);
+        }
+        case 'drafts_images': {
+            const { renderImageDraftsList } = await import('../views/image-create-drafts');
+            await updateChatState(env, chatId, { current_view: 'drafts_images', context: { page: 0 } });
+            return renderImageDraftsList(env, chatId, 0, lang);
+        }
+
         // ==================== REPOST VIEW ====================
         case 'repost': {
             const { renderRepostPrompt } = await import('../views/repost');

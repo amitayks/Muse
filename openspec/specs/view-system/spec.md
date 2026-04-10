@@ -381,3 +381,95 @@ The `views/index.ts` barrel file SHALL re-export `renderAccountsList`, `renderAc
 #### Scenario: Import from barrel
 - **WHEN** code imports from `../views/index`
 - **THEN** account view functions SHALL be available
+
+### Requirement: Image create view transition
+The view-change handler SHALL support `case 'image_create'` to enter image create compose mode. It SHALL initialize an `ImageComposeState`, update chat state with `current_view: 'image_compose'` and `context: { imageCompose: state }`, and return the rendered compose view.
+
+#### Scenario: Enter image create from home
+- **WHEN** the user clicks the "Image" button on the home view (callback `view:image_create`)
+- **THEN** the view-change handler initializes `ImageComposeState { active: true, statusMessageId: <msgId> }`
+- **AND** the chat state is updated with `current_view: 'image_compose'`
+- **AND** the image create compose view is rendered and returned
+
+### Requirement: Image drafts list view transition
+The view-change handler SHALL support `case 'drafts_images'` to show the image drafts list. It SHALL update chat state with `current_view: 'drafts_images'` and render the paginated image drafts list.
+
+#### Scenario: Navigate to image drafts from drafts categories
+- **WHEN** the user clicks "Images" in the drafts category view (callback `view:drafts_images`)
+- **THEN** the image drafts list is rendered with page 0
+- **AND** chat state is updated with `current_view: 'drafts_images'`
+
+### Requirement: imgcreate callback prefix routing
+The callback router SHALL register an `imgcreate` prefix handler that dispatches to the image create action handler. The handler SHALL parse callback data in the format `imgcreate:{value}:{extra}` and route to the appropriate sub-action.
+
+Supported sub-actions:
+- `imgcreate:pendown` — trigger image generation
+- `imgcreate:cancel` — cancel compose and return home
+- `imgcreate:detail:{id}` — show image draft detail
+- `imgcreate:fullres:{id}` — send full-resolution image as document
+- `imgcreate:delete:{id}` — show delete confirmation
+- `imgcreate:confirm_delete:{id}` — execute deletion and navigate to list
+- `imgcreate:list:{page}` — show image drafts list at page N
+
+#### Scenario: Pen down callback dispatched
+- **WHEN** the user clicks "Pen Down" (callback `imgcreate:pendown`)
+- **THEN** the router dispatches to `imageCreateAction` with `value='pendown'`
+
+#### Scenario: Detail callback dispatched
+- **WHEN** the user clicks an image draft (callback `imgcreate:detail:abc-123`)
+- **THEN** the router dispatches to `imageCreateAction` with `value='detail'`, `extra='abc-123'`
+
+#### Scenario: List pagination callback dispatched
+- **WHEN** the user clicks next page (callback `imgcreate:list:1`)
+- **THEN** the router dispatches to `imageCreateAction` with `value='list'`, `extra='1'`
+
+### Requirement: Image compose mode in message handler
+The message handler SHALL check for `context.imageCompose?.active` and route messages to the image compose input handler. This check SHALL be placed after the existing `thumbCompose` check in the priority chain.
+
+If the user sends a slash command during image compose mode, the compose state SHALL be cleared and the command SHALL be executed normally (same pattern as thumb compose).
+
+#### Scenario: Text message during image compose
+- **WHEN** the user is in image compose mode
+- **AND** the user sends a text message (not a slash command)
+- **THEN** the message is routed to `imageComposeInput`
+- **AND** the prompt is set to the message text
+
+#### Scenario: Edited message during image compose
+- **WHEN** the user is in image compose mode
+- **AND** the user edits a previously sent message
+- **THEN** the edited text is routed to `imageComposeInput`
+- **AND** the prompt is updated with the edited text
+
+#### Scenario: Slash command during image compose
+- **WHEN** the user is in image compose mode
+- **AND** the user sends `/start`
+- **THEN** the `imageCompose` state is cleared from context
+- **AND** the `/start` command is handled normally
+
+### Requirement: i18n strings for image create
+The i18n string files (`ui/strings/en.ts` and `ui/strings/he.ts`) SHALL include string keys for image create compose and drafts views:
+- `home.btnImageCreate` — home button label (e.g., "🎨 Image")
+- `imgcreate.composeTitle` — compose header (e.g., "🎨 Image Create")
+- `imgcreate.labelPrompt` — field label "Prompt"
+- `imgcreate.labelImage` — field label "Image"
+- `imgcreate.instructions` — compose instructions text
+- `imgcreate.btnPenDown` — pen down button label
+- `imgcreate.generating` — "Generating..." message
+- `imgcreate.generationFailed` — error message
+- `imgcreate.imageNotFound` — image not found in R2
+- `imgcreate.missing` — missing fields toast prefix
+- `imgcreate.missingPrompt` — specific "prompt is required" message
+- `imgcreate.draftsTitle` — drafts list header (e.g., "🎨 Images")
+- `imgcreate.draftsCategory` — drafts category label (e.g., "🎨 Images")
+- `imgcreate.noDrafts` — empty list message
+- `imgcreate.deleteConfirm` — delete confirmation text
+- `imgcreate.btnFullRes` — full-res button label
+- `imgcreate.notFound` — draft not found message
+
+#### Scenario: English strings exist
+- **WHEN** the system renders image create views with `lang='en'`
+- **THEN** all `imgcreate.*` and `home.btnImageCreate` string keys resolve to English text
+
+#### Scenario: Hebrew strings exist
+- **WHEN** the system renders image create views with `lang='he'`
+- **THEN** all `imgcreate.*` and `home.btnImageCreate` string keys resolve to Hebrew text

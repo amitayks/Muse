@@ -710,6 +710,7 @@ export interface ChatContext {
     characterCreate?: CharacterCreateState;
     lookCreate?: LookCreateState;
     thumbCompose?: ThumbComposeState;
+    imageCompose?: ImageComposeState;
     voiceSelect?: { groupId: string; voiceIds: string[] };
     selectedCharGroupId?: string;
     selected_account_id?: string;
@@ -768,6 +769,25 @@ export interface ThumbDraft {
     color: string;
     icons: string;
     ratio: string;
+    source_image_key: string | null;
+    result_image_key: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+// Image create compose mode
+export interface ImageComposeState {
+    active: boolean;
+    prompt?: string;
+    imageKey?: string;
+    statusMessageId: number;
+}
+
+// Image draft record from D1
+export interface ImageDraft {
+    id: string;
+    chat_id: string;
+    prompt: string;
     source_image_key: string | null;
     result_image_key: string | null;
     created_at: string;
