@@ -1,3 +1,9 @@
+## Purpose
+
+Notifies users when their customized system prompts are based on an outdated default version: counting stale prompts, showing a badge on the Settings "System Prompts" button, displaying a warning banner in the prompt editor with View Default / Update to New / Keep Mine actions, and exposing API endpoints to acknowledge a stale prompt and to fetch the stale count.
+
+## Requirements
+
 ### Requirement: Stale prompt count function
 The system SHALL provide a `countStalePrompts(env, chatId)` function that returns the number of user custom prompts that are based on an older default version.
 

@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Publishing of images, carousels, stories, and reels to Instagram via the Meta Content Publishing API, using per-user encrypted credentials. Publish failures surface the real Graph API reason and flag auth (expired-token) errors so the user can reconnect.
+## Requirements
 ### Requirement: Instagram feed post publishing (single image)
 The system SHALL provide a function `publishToInstagramPost(env, imageUrl, caption)` that publishes a single image as an Instagram feed post via the Meta Content Publishing API.
 
@@ -94,3 +96,39 @@ All Instagram publishing functions for regular drafts SHALL be located in `servi
 - **WHEN** a developer looks for Instagram post/story/carousel publishing code
 - **THEN** the functions SHALL be in `services/instagram-publish.ts`
 - **AND** the existing video-specific Instagram Reel code SHALL remain in `services/video-publish.ts`
+
+### Requirement: Structured, actionable Instagram publish errors
+Instagram publish functions (`publishToInstagramPost`, `publishToInstagramCarousel`, `publishToInstagramStory` in `services/instagram-publish.ts`, and the Instagram paths in `services/video-publish.ts`) SHALL surface the underlying Graph API error rather than returning a bare `null` that the pipeline reports as a generic `"Instagram story publish failed"`. On failure, the system SHALL parse the Graph API JSON error (`{ error: { message, code, error_subcode } }`) and propagate a structured result containing at minimum the human-readable `message`, the numeric `code`, and an `isAuthError` flag.
+
+#### Scenario: Container creation failure carries the real reason
+- **WHEN** an Instagram media-container creation responds non-OK with a Graph API error body
+- **THEN** the system SHALL parse `error.message` and `error.code` from the response
+- **AND** propagate them so the user-facing failure message reflects the real reason (e.g., expired token, invalid aspect ratio) instead of a generic string
+
+#### Scenario: Expired/invalid token is classified as an auth error
+- **WHEN** the Graph API returns `code: 190` (e.g., "Error validating access token: Session has expired")
+- **THEN** the structured error SHALL set `isAuthError = true`
+- **AND** the user-facing reason SHALL be a clear message such as "Instagram access token expired — reconnect Instagram"
+
+#### Scenario: Error reason reaches publish_results
+- **WHEN** an Instagram platform fails during `publishDraft()`
+- **THEN** the mapped reason SHALL be recorded in `publish_results.errors` keyed by the failing platform (e.g., `instagram_story`)
+- **AND** the pipeline SHALL NOT replace it with a generic `"Instagram story publish failed"`
+
+### Requirement: Reconnect affordance on Instagram auth failures
+When an Instagram publish fails due to an auth error (expired/invalid token), the user-facing failure notification SHALL include a "Reconnect Instagram" next-step action, for BOTH interactive publishing (`actions/publish.ts`) and scheduled/cron publishing (`handlers/cron.ts`).
+
+#### Scenario: Interactive publish auth failure shows reconnect button
+- **WHEN** a user taps Publish and the Instagram platform fails with `isAuthError = true`
+- **THEN** the failure message SHALL display the actionable reason
+- **AND** SHALL include a button that routes the user to reconnect their Instagram credentials
+
+#### Scenario: Scheduled publish auth failure notifies with reconnect
+- **WHEN** a scheduled (cron) publish fails with an Instagram auth error
+- **THEN** the user SHALL receive a notification containing the actionable reason and a reconnect action
+
+#### Scenario: Non-auth failure does not offer reconnect
+- **WHEN** an Instagram publish fails for a non-auth reason (e.g., aspect ratio, processing timeout)
+- **THEN** the failure message SHALL show the specific reason
+- **AND** SHALL NOT present the reconnect action (which would not resolve the problem)
+

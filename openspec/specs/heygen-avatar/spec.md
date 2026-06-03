@@ -1,10 +1,10 @@
-# HeyGen Avatar Integration
+## Purpose
 
-This spec defines the full HeyGen avatar integration: API client, Avatar IV video generation with motion prompts, photo avatar and look management, webhook handling, job queue, and credit estimation.
+Full HeyGen avatar video integration: the API client, Avatar IV video generation with per-scene motion prompts, photo-avatar and look management, webhook handling, a job queue, and credit estimation.
 
----
+## Requirements
 
-## 1. HeyGen API Client
+<!-- 1. HeyGen API Client -->
 
 ### Requirement: HeyGen API client module
 The system SHALL provide a `services/heygen.ts` module with functions for all HeyGen API interactions: video generation, job status, video download, asset upload, photo avatar creation, and webhook handling.
@@ -39,7 +39,7 @@ All HeyGen API calls SHALL handle errors gracefully without exposing API keys or
 
 ---
 
-## 2. Avatar IV Video Generation
+<!-- 2. Avatar IV Video Generation -->
 
 ### Requirement: Avatar IV is the only video generation engine
 The system SHALL use HeyGen's Avatar IV endpoint (`/v2/video/av4/generate`) for all video generation. No other engine option SHALL exist.
@@ -119,7 +119,7 @@ Before calling the av4 endpoint, the system SHALL verify that `config.imageKey` 
 
 ---
 
-## 3. Per-Scene Motion Prompts
+<!-- 3. Per-Scene Motion Prompts -->
 
 ### Requirement: Per-scene custom motion prompts
 Each scene in the video request SHALL include a `custom_motion_prompt` field describing the avatar's body movement, hand gestures, and facial expressions for that scene. The `enhance_custom_motion_prompt` field SHALL always be set to `true`.
@@ -149,7 +149,7 @@ The Gemini video script generation system prompt SHALL instruct the AI to produc
 
 ---
 
-## 4. Look Management
+<!-- 4. Look Management -->
 
 ### Requirement: HeyGenLook stores imageKey
 Each `HeyGenLook` SHALL have an `imageKey: string` field that stores the `image_key` value returned by the HeyGen Upload Asset API. This field is used by the av4 video generation endpoint.
@@ -187,6 +187,11 @@ The "Add Look" flow SHALL accept a photo upload (not an AI text prompt). The use
 ### Requirement: AI prompt-based look generation is removed
 The AI look generation endpoint (`/v2/photo_avatar/look/generate`) SHALL NOT be used. Since the av4 video endpoint requires `image_key`, and the AI generation endpoint does not expose one, AI-generated looks cannot be used for video generation. Use photo upload to add new looks instead.
 
+#### Scenario: Adding a new look uses photo upload
+- **WHEN** a user adds a new look for a photo avatar
+- **THEN** the system SHALL use photo upload (which yields an `image_key`) and SHALL NOT call `/v2/photo_avatar/look/generate`
+- **AND** AI-generated looks SHALL NOT be offered for video generation
+
 ### Requirement: Sync looks merges with existing data
 The `sync_looks` operation SHALL merge HeyGen's talking photo data into existing looks rather than replacing them, preserving stored `imageKey` values.
 
@@ -215,7 +220,7 @@ When a user selects a look for video generation, `VideoConfig.imageKey` SHALL be
 
 ---
 
-## 5. Photo Avatar Creation
+<!-- 5. Photo Avatar Creation -->
 
 ### Requirement: Photo Avatar creation flow
 The system SHALL provide functions for creating HeyGen Photo Avatars through the bot, enabling character setup without leaving Telegram.
@@ -243,7 +248,7 @@ The system SHALL provide functions for creating HeyGen Photo Avatars through the
 
 ---
 
-## 6. Voice Listing
+<!-- 6. Voice Listing -->
 
 ### Requirement: Voice listing
 The system SHALL provide a `listVoices(env)` function to retrieve available HeyGen voices for configuration.
@@ -255,7 +260,7 @@ The system SHALL provide a `listVoices(env)` function to retrieve available HeyG
 
 ---
 
-## 7. Video Status and Download
+<!-- 7. Video Status and Download -->
 
 ### Requirement: Video status checking
 The system SHALL provide a `checkVideoStatus(env, videoId)` function that queries HeyGen for video generation status.
@@ -296,7 +301,7 @@ The system SHALL provide a `downloadVideo(env, videoUrl)` function that download
 
 ---
 
-## 8. Webhook Handler
+<!-- 8. Webhook Handler -->
 
 ### Requirement: Webhook callback handler
 The system SHALL expose a `/heygen-webhook` endpoint that receives HeyGen callback notifications when video generation completes or fails.
@@ -325,7 +330,7 @@ The system SHALL expose a `/heygen-webhook` endpoint that receives HeyGen callba
 
 ---
 
-## 9. Generation Queue and Timeout
+<!-- 9. Generation Queue and Timeout -->
 
 ### Requirement: Sequential generation queue
 The system SHALL NOT allow multiple concurrent video generation jobs. New requests SHALL be queued with status "queued" and processed sequentially.
@@ -355,7 +360,7 @@ The cron handler SHALL mark video drafts as "failed" if they have been in "gener
 
 ---
 
-## 10. VideoConfig and Data Model
+<!-- 10. VideoConfig and Data Model -->
 
 ### Requirement: VideoConfig simplified without engine fields
 The `VideoConfig` type SHALL NOT contain `engine`, `avatarStyle`, or any engine-selection fields. The `VideoScene` type SHALL NOT contain `avatarStyle`. Both SHALL contain a `motionPrompt` field instead.
@@ -382,7 +387,7 @@ Existing saved presets and video drafts that contain `engine` and `avatarStyle` 
 
 ---
 
-## 11. Credit Estimation
+<!-- 11. Credit Estimation -->
 
 ### Requirement: Credit estimation uses Avatar IV rates only
 Credit estimation SHALL always use Avatar IV rates (approximately 1 Premium Credit per 3 seconds of video). The system SHALL NOT display or calculate Avatar III rates.
@@ -398,7 +403,7 @@ Credit estimation SHALL always use Avatar IV rates (approximately 1 Premium Cred
 
 ---
 
-## 12. Configuration UI
+<!-- 12. Configuration UI -->
 
 ### Requirement: Config UI removes engine-related controls
 The video configuration view SHALL NOT display engine toggle, engine label, or avatar style selector. The removed space SHALL be reclaimed (no empty gaps).

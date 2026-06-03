@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Covers watched-repository management in the webapp: listing repos with their watch and overview status, adding and deleting repos (including GitHub webhook setup and cleanup), a detail page with inline overview editing, watch-PRs/watch-pushes toggles, pause/resume watching, and bootstrapping or re-bootstrapping the project overview.
+
+## Requirements
 
 ### Requirement: Repos list page
 The system SHALL display all watched repositories as a list with status indicators.

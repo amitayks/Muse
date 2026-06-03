@@ -1,3 +1,7 @@
+## Purpose
+
+This capability provides a compose mode for commit/PR-based content, entered via the Edit button on a commit event notification. Users can view the source commit context, add their own tweets as initial thoughts, set instructions, and toggle AI refinement and image generation before pen-down. It defines the `ComposeSourceCommit` type and `eventId` linkage, generates content via the `work-progress` skill (with or without user tweets), and supports an AI-off path that saves user tweets directly.
+
 ## Requirements
 
 ### Requirement: Commit compose mode lifecycle

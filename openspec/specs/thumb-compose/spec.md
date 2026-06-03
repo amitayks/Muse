@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the Telegram thumbnail compose flow where the user enters a title, color, and icons (via numbered text input), attaches a base image, and selects an aspect ratio through a live-updating status message, then triggers Gemini image generation on "Pen Down" to produce and persist a thumbnail.
+
+## Requirements
 
 ### Requirement: Home view Thumbs button
 The home view SHALL display a "Thumbs" button that opens the thumbnail compose flow. The button SHALL appear in a new row after the main action buttons (Handwrite/Generate/Repost) and before the Repos/Accounts row.

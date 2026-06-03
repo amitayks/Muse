@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Publishes generated video drafts to Twitter/X (chunked media upload) and Instagram Reels (Meta Content Publishing API), supporting single- or multi-platform delivery with per-platform success reporting, and records each successful publish in the video_published table.
+
+## Requirements
 
 ### Requirement: Video publish to Twitter
 The system SHALL provide a function to publish a video to Twitter (X) by uploading the video file via the chunked media upload API and creating a tweet with the video attached and caption as text.

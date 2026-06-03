@@ -1,3 +1,9 @@
+## Purpose
+
+This capability defines the `commit_events` table and its data layer for storing code-change events (from webhooks and `/generate`) before any AI generation. It specifies the table schema and indexes, a `notified`/`drafted`/`skipped` status lifecycle, CRUD functions (`createCommitEvent`, `getCommitEvent`, `getCommitEventByCommitSha`, `updateCommitEvent`) with deduplication by `chat_id + commit_sha`, and the `drafts.event_id` linkage that replaces the removed `source_data` column on drafts.
+
+## Requirements
+
 ### Requirement: commit_events table schema
 The database SHALL have a `commit_events` table that stores code change events (from webhooks and `/generate`) before any AI generation occurs.
 

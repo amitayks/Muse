@@ -14,6 +14,7 @@ import { renderApiKeys } from '../views/settings';
 import { validateGeminiKey } from '../ai/gemini';
 import { validateClaudeKey } from '../ai/claude';
 import { setAiProvider } from '../data/user-settings-db';
+import { connectInstagram } from '../services/instagram-token';
 
 export async function settingsKeyInput(
     ctx: HandlerContext & { text: string; context: ChatContext }
@@ -106,12 +107,12 @@ export async function settingsKeyInput(
         await setAiProvider(env, chatId, 'claude');
     } else if (service === 'instagram') {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        if (lines.length !== 2) {
+        if (lines.length !== 3) {
             return failWithRetry(t(lang, 'settingsKeys.instagramExpectedLines').replace('{count}', String(lines.length)));
         }
-        const [accessToken, businessAccountId] = lines;
+        const [accessToken, businessAccountId, appSecret] = lines;
 
-        // Validate by calling Facebook Graph API
+        // Validate by calling the Instagram Graph API
         try {
             const response = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
             if (!response.ok) {
@@ -121,8 +122,8 @@ export async function settingsKeyInput(
             return failWithRetry(t(lang, 'settingsKeys.instagramValidationError'));
         }
 
-        await storeEncryptedKey(env, chatId, 'instagram_token_enc', await encrypt(env, accessToken));
-        await storeEncryptedKey(env, chatId, 'instagram_account_id_enc', await encrypt(env, businessAccountId));
+        // Exchange short-lived -> long-lived and persist token/account/secret/expiry
+        await connectInstagram(env, chatId, accessToken, businessAccountId, appSecret);
         await updateUser(env, chatId, { has_instagram: 1 });
     }
 

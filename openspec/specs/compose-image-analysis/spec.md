@@ -1,3 +1,7 @@
+## Purpose
+
+This capability controls how user-attached images are handled in compose mode. It swaps the compose button between an image-generation toggle and an "Analyze" toggle based on attached media and AI state, auto-disables image generation when images are attached, and—when analyze is on—fetches images from R2 and sends them as multimodal `inline_data` parts to the AI across handwrite, repost, and commit modes.
+
 ## Requirements
 
 ### Requirement: Dynamic image button based on attached media

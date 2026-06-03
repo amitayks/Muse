@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Builds and applies a per-user first-person Identity Document by fetching the user's tweets and running the `/who-am-i` analysis skill, stores it in `user_prompts` (with a skeleton default fallback), supports re-analysis, and injects the identity into identity-attached generation skills with a defined precedence where identity overrides conflicting skill instructions.
+
+## Requirements
 
 ### Requirement: Identity analysis from user tweets
 The system SHALL provide a `/who-am-i` skill that accepts the user's tweets and produces a comprehensive Identity Document. The skill SHALL instruct Gemini to analyze the tweets **as if they are Gemini's own tweets** — framed in first-person self-reflection ("these are posts I wrote, let me understand my own patterns"). The analysis SHALL cover: writing fingerprint (rhythm, length, structure), vocabulary spectrum (casual/formal ratio, jargon, characteristic phrases), emotional range as a spectrum (not a single tone), grammar patterns to preserve (not replicate), topic interests and perspective angles, humor and sarcasm patterns, engagement patterns (reactions, triggers), and signature moves (openers, closers, recurring structures).

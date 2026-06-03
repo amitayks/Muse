@@ -1,3 +1,9 @@
+## Purpose
+
+Threads the scoring `relevance_reason` into repost/quote generation as internal AI context and injects each author's persona overview into the scoring batch, removes the artificial character limit on the scoring reason in the `what-i-like` skill, and documents the future score-band behavior as implementation notes in the auto-approve and batch-notification files.
+
+## Requirements
+
 ### Requirement: Scoring reason threaded to quote generation
 The scoring `relevance_reason` SHALL be passed through the repost generation pipeline as internal AI context. When `generateRepostContent()` is called for a tweet that has a `relevance_reason`, that reason SHALL be included in the user prompt sent to the quote skill so Gemini receives the emotional entry point.
 

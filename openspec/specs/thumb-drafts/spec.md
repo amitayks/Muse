@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Manages persisted thumbnail drafts: a Thumbs category and paginated list in the drafts view, a detail view with photo preview and metadata, full-resolution document download, confirmed deletion (with R2 cleanup), and storage of each generated thumbnail in the `thumb_drafts` D1 table scoped by chat ID.
+
+## Requirements
 
 ### Requirement: Thumb drafts category in drafts view
 The drafts category view SHALL include a "Thumbs" category showing the count of stored thumbnail drafts for the user. This category SHALL appear after the existing draft categories (auto-generated, handwritten, reposts, approved, scheduled, published).

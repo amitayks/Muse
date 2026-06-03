@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Stores generated videos in R2, serves them through a public range-capable /media/:key endpoint (used by Instagram and Telegram previews), and defines the D1 schema for the video_drafts, video_published, and video_presets tables.
+
+## Requirements
 
 ### Requirement: Video file storage in R2
 The system SHALL store generated video files in R2 at the path `videos/{videoDraftId}/video.mp4` with appropriate content type metadata.

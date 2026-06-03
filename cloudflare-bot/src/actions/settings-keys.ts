@@ -171,7 +171,7 @@ export async function settingsKeysAction(
                 context: { awaiting_input: 'update_key', key_service: 'instagram' },
             });
             return {
-                text: `${t(lang, 'apiKeys.updateInstagramTitle')}\n\n${t(lang, 'apiKeys.updateInstagramDesc')}\n\n<code>ACCESS_TOKEN</code>\n<code>BUSINESS_ACCOUNT_ID</code>\n\n<i>(Message will be deleted after saving)</i>`,
+                text: `${t(lang, 'apiKeys.updateInstagramTitle')}\n\n${t(lang, 'apiKeys.updateInstagramDesc')}\n\n<code>ACCESS_TOKEN</code>\n<code>BUSINESS_ACCOUNT_ID</code>\n<code>APP_SECRET</code>\n\n<i>(Message will be deleted after saving)</i>`,
                 keyboard: [
                     [{ text: t(lang, 'apiKeys.instagramDevPortal'), url: 'https://developers.facebook.com/' }],
                     [{ text: t(lang, 'common.back'), callback_data: 'settings:keys' }],

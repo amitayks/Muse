@@ -125,6 +125,7 @@ export function renderInstagramPrompt(lang: Lang = 'en'): ViewResult {
             '',
             t(lang, 'onboarding.instagramAccessToken'),
             t(lang, 'onboarding.instagramAccountId'),
+            t(lang, 'onboarding.instagramAppSecret'),
             '',
             t(lang, 'onboarding.instagramDeleteNote'),
         ].join('\n'),

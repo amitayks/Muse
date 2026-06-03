@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the bot settings area for video creation, covering HeyGen character and look creation/management, per-character voice and default emotion, default video options (aspect ratio, max length, character, background, captions), HeyGen account/API key configuration, and Instagram credentials for Reels publishing.
+
+## Requirements
 
 ### Requirement: Video settings section in bot settings
 The bot settings view SHALL include a "Video Settings" section with subsections for: Characters & Looks, Voice Configuration, Default Settings, HeyGen Account, and Instagram Config.

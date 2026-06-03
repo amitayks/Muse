@@ -1,3 +1,7 @@
+## Purpose
+
+This capability assembles the data sent to the AI for commit/PR-based content. It populates commit messages and changed file names on `PRData` and `CommitData`, restricts `buildContentPrompt` to send only those plus the repo overview (no PR titles, bodies, authors, or stats), and threads optional user thoughts, instructions, and image parts through `buildContentPrompt`/`generateContent`. It also routes `/generate` to create a commit event rather than entering compose, and removes the `codeContext` and `tone` fields from `RepoConfig`.
+
 ## Requirements
 
 ### Requirement: PRData includes commit messages

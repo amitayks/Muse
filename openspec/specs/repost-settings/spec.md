@@ -1,3 +1,9 @@
+## Purpose
+
+Adds per-user repost default settings — `fast_generate_image` (whether Fast Generate also produces an image) and `analyze_source_image` (whether the source tweet's image is sent to Gemini during repost generation) — stored on the `users` table via D1 migration and exposed as toggle buttons in a "Repost Defaults" section of the settings view.
+
+## Requirements
+
 ### Requirement: Fast generate image default setting
 The `users` table SHALL include a `fast_generate_image` column (`INTEGER DEFAULT 0`) controlling whether "Fast Generate" in batch notifications also generates an image for the draft.
 

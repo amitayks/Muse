@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Applies per-account exponential backoff to the Twitter poller, lengthening the polling interval (30 minutes up to a 4-hour cap) after consecutive empty polls and resetting it when new tweets appear, persisting `next_poll_at` and `consecutive_empty_polls` so accounts not yet due are skipped without X API calls.
+
+## Requirements
 
 ### Requirement: Exponential backoff on empty polls
 The poller SHALL track consecutive empty polls per account and exponentially increase the polling interval. The minimum interval SHALL be 30 minutes and the maximum SHALL be 4 hours.

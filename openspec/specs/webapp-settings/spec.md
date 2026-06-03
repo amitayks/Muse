@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides a single scrollable settings page covering general preferences (timezone, language, page size), AI provider selection, default publish targets, repost/commit/repo defaults, API key connection status and updates for each service, and links to the prompt editor and identity re-analysis.
+
+## Requirements
 
 ### Requirement: Settings page with sections
 The system SHALL display all user settings on a single scrollable page organized into sections, replacing the bot's 6 nested sub-menus.

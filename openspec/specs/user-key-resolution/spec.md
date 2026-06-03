@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Resolves per-user API credentials by decrypting stored keys (including the Claude key, with no fallback to Worker secrets) into an `Env`-shaped object via `getUserKeys`, and hydrates `env.AI_PROVIDER` from the user's stored provider preference, with `CLAUDE_API_KEY` and `AI_PROVIDER` added to the `Env` type.
+
+## Requirements
 
 ### Requirement: getUserKeys resolves per-user decrypted keys
 The system SHALL provide a `getUserKeys(env, chatId)` function that reads the user's encrypted keys from D1, decrypts them, and returns an object matching the shape of API key fields on `Env`. This now includes `CLAUDE_API_KEY` decrypted from `claude_key_enc`.
@@ -23,7 +27,6 @@ The system SHALL provide a `getUserKeys(env, chatId)` function that reads the us
 - **WHEN** `getUserKeys` is called for a user with `claude_key_enc` set but `gemini_key_enc` null
 - **THEN** it returns `CLAUDE_API_KEY` decrypted and `GOOGLE_API_KEY` as undefined
 
-## ADDED Requirements
 
 ### Requirement: Env hydration includes AI provider
 The `hydrateEnv` function SHALL populate `env.AI_PROVIDER` from the user's stored `ai_provider` field. This makes the provider preference available to all downstream consumers via the standard env object.

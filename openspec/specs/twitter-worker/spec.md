@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines a dedicated `twitter-poller` Cloudflare Worker (sharing the content-bot D1 database and R2 bucket) that runs a cron-only `scheduled()` handler to poll followed account timelines in chunks of 10 via consistent hashing, with its own `Env` bindings and shared X API, Gemini, and Telegram secrets.
+
+## Requirements
 
 ### Requirement: Separate Cloudflare Worker for Twitter polling
 The system SHALL have a dedicated Cloudflare Worker (`twitter-poller`) in a `twitter-poller/` directory at the repo root, with its own `wrangler.toml`, `src/index.ts`, and `tsconfig.json`. It SHALL bind to the same D1 database and R2 bucket as the existing `content-bot` worker.

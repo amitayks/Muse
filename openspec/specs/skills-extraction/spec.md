@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Organizes the 10 skill prompt types into individual per-skill source files in `src/skills/` (each exporting English and Hebrew constants) and a barrel `index.ts` that re-exports all 20 prompt constants and provides a `getDefaultPromptTexts()` helper for seeding default prompts.
+
+## Requirements
 
 ### Requirement: Individual skill prompt files
 Each of the 10 skill types SHALL have its own file in `src/skills/` containing both EN and HE prompt exports. File names SHALL match the skill type kebab-case name (e.g., `work-progress.ts`, `who-am-i.ts`, `identity-default.ts`).

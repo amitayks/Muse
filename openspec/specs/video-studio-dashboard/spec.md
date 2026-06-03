@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the Video Studio navigation in the bot: a dashboard entry point, a home view listing repos with overviews plus standalone video creation, per-repo status-categorized video lists with pagination, and detail views for drafts, generating, and published videos.
+
+## Requirements
 
 ### Requirement: Video Studio entry point on dashboard
 The main dashboard SHALL include a "Video Studio" button that navigates to the video studio home view.

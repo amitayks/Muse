@@ -1,3 +1,9 @@
+## Purpose
+
+This capability adds one-tap repost generation to scored-tweet batch notifications. Each undrafted tweet gets a "Fast Generate" button that fetches the cached tweet, applies the user's image/source-analysis settings, calls `generateRepostContent`, creates a repost draft, and rebuilds the batch message inline to show a "Generated" link. It also defines the batch page layout—truncated plain-text tweet previews with an "Open" URL button—and the per-tweet button rows for drafted versus undrafted tweets.
+
+## Requirements
+
 ### Requirement: Fast Generate button in batch notifications
 Each scored tweet in the batch notification SHALL have a "Fast Generate" button that immediately generates a repost draft using default settings.
 

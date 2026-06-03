@@ -1,3 +1,9 @@
+## Purpose
+
+A one-tap "Fast" generation flow that turns a stored commit event into a draft using the user's commit default settings — reading `commitFastImage`/`commitFastAi`, generating content (with optional image prompt) from the event's source data, applying overview patches, updating event status, lazily generating images, editing the original notification in place, and sending a "ready" notification.
+
+## Requirements
+
 ### Requirement: Fast commit generation action handler
 The system SHALL provide a `fastCommitAction` handler for `action:fast_commit:EVENT_ID` that generates content from a stored commit event using the user's default settings.
 

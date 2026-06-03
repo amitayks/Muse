@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines the per-video configuration screen where users choose commit depth, tone, length, character/look, aspect ratio, voice emotion, background, captions, text overlays, and manual instructions, then trigger Gemini script generation with preview/approval, and save or load configurations as named presets.
+
+## Requirements
 
 ### Requirement: Commit depth toggle
 The video configuration SHALL include a commit depth selector with options: 0 (overview only), 1 (latest commit), 3 (last 3), 5 (last 5), "Since last video", and "Custom". The depth determines how many recent commits are included in the script generation context.

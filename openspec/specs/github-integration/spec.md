@@ -1,4 +1,6 @@
-# GitHub Integration Security
+## Purpose
+
+This capability secures and processes GitHub webhooks and API access: it verifies webhook signatures with timing-safe comparison, validates event types, repos, branches, and payloads, and protects the API token and error responses. On valid events it creates a `commit_events` row (rather than auto-generating content) and sends an event-summary notification with Fast/Edit buttons, deduplicating retries. It also scopes commit-SHA searches to the authenticated user's GitHub repos.
 
 ## Requirements
 

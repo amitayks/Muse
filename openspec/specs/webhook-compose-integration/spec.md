@@ -1,3 +1,7 @@
+## Purpose
+
+Defines how the `[✏️ Edit]` action on a commit-event notification opens a compose session by loading the event's source data from `commit_events` (building a `ComposeSourceCommit`), and how completing pen-down from that session creates a new draft linked back to the source event and updates the event's status and `draft_id`.
+
 ## Requirements
 
 ### Requirement: Edit Compose action opens compose from commit event

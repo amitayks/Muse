@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the repost page where users paste an X/Twitter tweet URL, view the fetched original tweet as an embedded preview, compose a quote tweet with AI-refine/image/instruction toggles, get warned about duplicate drafts for the same tweet, and save a repost draft linked to the original tweet.
+
+## Requirements
 
 ### Requirement: URL input for repost
 The system SHALL provide a text input for pasting an X/Twitter tweet URL.

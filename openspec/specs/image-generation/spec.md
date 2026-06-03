@@ -1,5 +1,9 @@
 # Image Generation Spec
 
+## Purpose
+
+Governs draft image generation: lazy, on-demand AI image generation via Gemini when a draft is first viewed (using the repo's visual theme and brand voice for consistency), deferral of generation away from webhook processing, identity-aware image prompts in commit and webhook flows, and tweet-card rendering (including repost cards) for Instagram-bound drafts that lack an image.
+
 ## Requirements
 
 ### Requirement: On-demand image generation when viewing draft

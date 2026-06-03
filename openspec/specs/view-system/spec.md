@@ -1,3 +1,9 @@
+## Purpose
+
+Organizes the bot's view layer into domain-specific modules (home, drafts, repos, accounts, video, image) with a barrel re-export, language-parameterized render functions using shared ui/components and ui/utils, and defines the concrete view behaviors for draft categories/lists/detail, repos, accounts, reposts, video studio, image create, and their callback routing and compose-mode handling.
+
+## Requirements
+
 ### Requirement: Views split into domain-specific files
 The monolithic `views/index.ts` SHALL be split into domain-specific modules: `views/home.ts` for general views, `views/drafts.ts` for draft-related views, and `views/repos.ts` for repository-related views. All view files SHALL import shared UI components from `ui/components.ts` and shared utilities from `ui/utils.ts` instead of defining them inline.
 

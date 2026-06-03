@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+When a user switches language, detects whether they have an analyzed identity in the target language and, if not, sends a one-time notification offering to re-analyze or keep the default. Tracks which languages have been notified via the `identity_lang_notified` column so the prompt appears at most once per language.
+
+## Requirements
 
 ### Requirement: Language switch identity detection
 When a user switches language via `config:language`, the system SHALL check whether the user has an analyzed identity in the target language. Detection logic: (1) check if ANY `user_prompts` row exists for `(chatId, 'identity', any_language)` — if none, user is on defaults everywhere, no action needed; (2) check if a `user_prompts` row exists for `(chatId, 'identity', targetLang)` — if yes, user has identity in target language, no action needed; (3) otherwise, user has analyzed identity in another language but not this one.

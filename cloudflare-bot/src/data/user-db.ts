@@ -41,6 +41,7 @@ export async function updateUser(
         'x_access_token_enc' | 'x_access_secret_enc' |
         'github_token_enc' | 'heygen_api_key_enc' |
         'instagram_token_enc' | 'instagram_account_id_enc' |
+        'instagram_app_secret_enc' | 'instagram_token_expires_at' |
         'claude_key_enc' |
         'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' | 'has_claude' |
         'ai_provider' |
@@ -90,7 +91,7 @@ export async function storeEncryptedKey(
         'gemini_key_enc', 'x_api_key_enc', 'x_api_secret_enc',
         'x_access_token_enc', 'x_access_secret_enc',
         'github_token_enc', 'heygen_api_key_enc',
-        'instagram_token_enc', 'instagram_account_id_enc',
+        'instagram_token_enc', 'instagram_account_id_enc', 'instagram_app_secret_enc',
         'claude_key_enc'
     ];
     if (!allowedFields.includes(keyField)) {
@@ -114,13 +115,14 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
     heygen_api_key_enc: string | null;
     instagram_token_enc: string | null;
     instagram_account_id_enc: string | null;
+    instagram_app_secret_enc: string | null;
     claude_key_enc: string | null;
 } | null> {
     return env.DB.prepare(`
         SELECT gemini_key_enc, x_api_key_enc, x_api_secret_enc,
                x_access_token_enc, x_access_secret_enc,
                github_token_enc, heygen_api_key_enc,
-               instagram_token_enc, instagram_account_id_enc,
+               instagram_token_enc, instagram_account_id_enc, instagram_app_secret_enc,
                claude_key_enc
         FROM users WHERE chat_id = ?
     `).bind(chatId).first();

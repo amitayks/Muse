@@ -29,6 +29,7 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
         HEYGEN_API_KEY: undefined,
         INSTAGRAM_ACCESS_TOKEN: undefined,
         INSTAGRAM_BUSINESS_ACCOUNT_ID: undefined,
+        INSTAGRAM_APP_SECRET: undefined,
         CLAUDE_API_KEY: undefined,
     };
 
@@ -59,6 +60,9 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
     if (keys.instagram_account_id_enc) {
         result.INSTAGRAM_BUSINESS_ACCOUNT_ID = await decrypt(env, keys.instagram_account_id_enc);
     }
+    if (keys.instagram_app_secret_enc) {
+        result.INSTAGRAM_APP_SECRET = await decrypt(env, keys.instagram_app_secret_enc);
+    }
     if (keys.claude_key_enc) {
         result.CLAUDE_API_KEY = await decrypt(env, keys.claude_key_enc);
     }
@@ -80,6 +84,8 @@ export async function hydrateEnv(env: Env, chatId: string): Promise<Env> {
         hydrated.GITHUB_OWNER = user.github_username;
     }
     hydrated.AI_PROVIDER = (user as any)?.ai_provider || 'gemini';
+    // Long-lived Instagram token expiry (plaintext) — used by the cron refresh step
+    hydrated.INSTAGRAM_TOKEN_EXPIRES_AT = user?.instagram_token_expires_at || undefined;
 
     return hydrated;
 }

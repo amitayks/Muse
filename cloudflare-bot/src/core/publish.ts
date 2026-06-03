@@ -9,7 +9,7 @@
 import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '../types';
 import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
-import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption } from '../services/instagram-publish';
+import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
 // Lazy-imported to avoid loading satori/yoga wasm at module evaluation time (breaks CF Workers)
 // import { renderTweetCard, renderThreadCards, renderQuoteTweetCard, createStoryImage, storeTweetCard, storeStoryImage, getTweetCard } from '../services/tweet-card';
@@ -69,6 +69,7 @@ export async function publishDraft(
             const msg = error instanceof Error ? error.message : String(error);
             console.error('[publish] Instagram Post publishing failed:', msg);
             results.errors = { ...results.errors, instagram_post: msg };
+            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
         }
     }
 
@@ -84,6 +85,7 @@ export async function publishDraft(
             const msg = error instanceof Error ? error.message : String(error);
             console.error('[publish] Instagram Story publishing failed:', msg);
             results.errors = { ...results.errors, instagram_story: msg };
+            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
         }
     }
 
@@ -100,6 +102,7 @@ export async function publishDraft(
             const msg = error instanceof Error ? error.message : String(error);
             console.error('[publish] Instagram Reel publishing failed:', msg);
             results.errors = { ...results.errors, instagram_reel: msg };
+            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
         }
     }
 
@@ -252,11 +255,9 @@ async function publishToIGPost(
     // Single or carousel
     if (imageUrls.length === 1) {
         const result = await publishToInstagramPost(env, imageUrls[0], caption);
-        if (!result) throw new Error('Instagram post publish failed');
         return { post_id: result.post_id, url: result.url || '' };
     } else {
         const result = await publishToInstagramCarousel(env, imageUrls, caption);
-        if (!result) throw new Error('Instagram carousel publish failed');
         return { post_id: result.post_id, url: result.url || '' };
     }
 }
@@ -311,7 +312,6 @@ async function publishToIGStory(
 
     const storyUrl = `${workerUrl}/media/${storyImageKey}`;
     const result = await publishToInstagramStory(env, storyUrl);
-    if (!result) throw new Error('Instagram story publish failed');
     return { post_id: result.post_id, url: null };
 }
 
@@ -348,7 +348,7 @@ async function publishToIGReel(
 
     // For reels, we need to use the REELS media type directly
     if (!env.INSTAGRAM_ACCESS_TOKEN || !env.INSTAGRAM_BUSINESS_ACCOUNT_ID) {
-        throw new Error('Instagram not configured');
+        throw new InstagramPublishError('Instagram is not configured', { isAuthError: true });
     }
 
     const containerUrl = `https://graph.instagram.com/v25.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
@@ -364,7 +364,7 @@ async function publishToIGReel(
     });
 
     if (!containerResponse.ok) {
-        throw new Error(`Reel container creation failed: ${await containerResponse.text()}`);
+        throw parseGraphError(await containerResponse.text(), 'Reel container creation failed');
     }
 
     const containerResult = await containerResponse.json() as { id: string };
@@ -394,7 +394,7 @@ async function publishToIGReel(
     });
 
     if (!publishResponse.ok) {
-        throw new Error(`Reel publish failed: ${await publishResponse.text()}`);
+        throw parseGraphError(await publishResponse.text(), 'Reel publish failed');
     }
 
     const publishResult = await publishResponse.json() as { id: string };

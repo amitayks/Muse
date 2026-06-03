@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines the data model and Telegram UI for following Twitter/X accounts: the `twitter_accounts`, `twitter_account_overviews`, and `twitter_tweets` tables (plus repost columns on `drafts`), the `TwitterAccountConfig` settings, account CRUD database functions, adding accounts by @username via the X API, and the account list and detail/settings views including AI persona bootstrapping.
+
+## Requirements
 
 ### Requirement: Twitter accounts table
 The system SHALL store followed Twitter/X accounts in a `twitter_accounts` table with columns: `id` (TEXT PK), `chat_id` (TEXT NOT NULL), `username` (TEXT NOT NULL), `user_id` (TEXT — X numeric ID), `display_name` (TEXT), `is_watching` (INTEGER DEFAULT 1), `last_tweet_id` (TEXT — for since_id pagination), `config` (TEXT NOT NULL — JSON TwitterAccountConfig), `thread_buffer` (TEXT — JSON for incomplete thread tracking), `created_at`, `updated_at`. UNIQUE constraint on `(chat_id, username)`.

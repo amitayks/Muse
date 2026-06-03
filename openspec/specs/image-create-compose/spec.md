@@ -1,5 +1,9 @@
 # Image Create Compose Spec
 
+## Purpose
+
+A standalone image-create compose mode where the user sends a text prompt and optionally attaches a reference image (photo or document), sees a live status preview, and on Pen Down generates an image via the Gemini image model, storing the result in R2 and saving an image draft. Supports prompt replacement, edited messages, single-image replacement, captions setting both fields, slash-command exit, and cancel.
+
 ## Requirements
 
 ### Requirement: Image create compose mode initialization

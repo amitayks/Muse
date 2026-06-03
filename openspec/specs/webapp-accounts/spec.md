@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the webapp pages for managing followed Twitter/X accounts: listing accounts with status, adding accounts by username, and an account detail page for configuring the relevance threshold, auto-approve and media-AI toggles, persona bootstrap/re-bootstrap, and follow/unfollow/delete actions.
+
+## Requirements
 
 ### Requirement: Accounts list page
 The system SHALL display all followed Twitter/X accounts as a list with status indicators.

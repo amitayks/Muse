@@ -1,3 +1,7 @@
+## Purpose
+
+Defines a structured `ImagePromptData` type (concept, composition, environment, technical) for AI-generated image prompts, has the content model emit it as JSON aligned to the repo's visual theme, and consolidates it into prose before image generation, while preserving backwards compatibility with legacy string prompts and providing structured fallbacks.
+
 ## Requirements
 
 ### Requirement: ImagePromptData type for structured image prompts

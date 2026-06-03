@@ -39,8 +39,12 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
                 const errorMessages = Object.entries(result.results.errors || {})
                     .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${escapeHtml(msg)}`)
                     .join('\n');
+                const keyboard = result.results.needsInstagramReconnect
+                    ? [[{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]]
+                    : undefined;
                 await editMessage(env, chatId, messageId,
                     `❌ <b>Publishing failed</b>\n\n<code>${errorMessages}</code>`,
+                    keyboard,
                 ).catch(() => {});
                 // Revert to approved so user can retry
                 await updateDraftStatus(env, draft.id, chatId, 'approved');
@@ -56,6 +60,12 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
                 if (hasErrors) {
                     const summary = formatPlatformSummary(result.results, lang);
                     view.text = `⚠️ <b>${t(lang, 'notifications.scheduledPostPartial')}</b>\n${summary}\n\n${view.text}`;
+                    if (result.results.needsInstagramReconnect) {
+                        view.keyboard = [
+                            [{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }],
+                            ...(view.keyboard || []),
+                        ];
+                    }
                 } else {
                     view.text = `✅ <b>Published!</b>\n\n${view.text}`;
                 }

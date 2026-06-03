@@ -1,3 +1,9 @@
+## Purpose
+
+Defines how the user prompt editor WebApp detects stale prompts when loading a tab and surfaces a warning banner with View Default, Update to New, and Keep Mine actions, including suppressing the banner once the stale prompt is acknowledged.
+
+## Requirements
+
 ### Requirement: Prompt editor shows stale warning
 The user prompt editor WebApp SHALL detect stale prompts when loading a tab and display a warning banner with action options.
 

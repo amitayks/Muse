@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
   heygen_api_key_enc TEXT,
   instagram_token_enc TEXT,
   instagram_account_id_enc TEXT,
+  instagram_app_secret_enc TEXT,
   claude_key_enc TEXT,
   -- Feature flags
   has_gemini INTEGER DEFAULT 0,
@@ -62,6 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
   video_settings TEXT,
   -- Multi-platform publish defaults
   default_publish_targets TEXT DEFAULT '{"x":true}',
+  -- Instagram long-lived token expiry (ISO 8601; NULL until exchanged/refreshed)
+  instagram_token_expires_at TEXT,
   -- Repo defaults (for newly added repos)
   repo_auto_overview INTEGER DEFAULT 0,
   repo_default_watch_pushes INTEGER DEFAULT 1,

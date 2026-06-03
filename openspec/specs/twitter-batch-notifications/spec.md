@@ -1,3 +1,9 @@
+## Purpose
+
+Sends one Telegram batch notification per poll cycle from the twitter-poller worker listing scored and auto-approved tweets with score, hyperlinked preview, and action buttons, tracks each tweet's `batch_message_id`, and has the content-bot worker handle the Fast Generate and Edit Repost button callbacks to create drafts or open compose sessions.
+
+## Requirements
+
 ### Requirement: Single batch notification per poll cycle
 After scoring, the poller SHALL send ONE Telegram message per poll cycle listing all scored tweets (above threshold) and auto-approved drafts. If no tweets pass scoring, no message SHALL be sent.
 

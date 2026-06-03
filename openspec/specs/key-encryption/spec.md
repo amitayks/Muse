@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides an AES-256-GCM encryption service (`services/crypto.ts`) for encrypting and decrypting strings such as API keys, using a 32-byte `ENCRYPTION_KEY` Worker secret and a base64-encoded `IV + ciphertext + authTag` composite format suitable for storage in a D1 TEXT column.
+
+## Requirements
 
 ### Requirement: AES-256-GCM encryption service
 The system SHALL provide an encryption service at `services/crypto.ts` that encrypts and decrypts strings using AES-256-GCM via `crypto.subtle`.

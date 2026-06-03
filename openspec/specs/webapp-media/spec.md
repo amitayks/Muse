@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Covers webapp image media handling: uploading images to R2 via the Worker API (file picker or drag-and-drop) with progress and error states, previewing existing and new images as thumbnails, removing images from a draft without deleting the R2 object, the webapp R2 key format, media-serving CORS, and file type and size validation.
+
+## Requirements
 
 ### Requirement: Image upload from webapp
 The system SHALL allow uploading images from the webapp to R2 storage via the Worker API.

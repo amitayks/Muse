@@ -1,3 +1,7 @@
+## Purpose
+
+This capability lets users attach a free-text instruction to a compose session that steers AI refinement. It provides an "Instruct" toggle that captures the next message as the instruction (auto-enabling AI refine), supports editing the instruction via Telegram native edits, displays it in the compose preview, and passes it to the appropriate AI function per mode (handwrite, repost, commit). It also removes 280-character warnings and counters from the compose and draft views.
+
 ## Requirements
 
 ### Requirement: Instruction toggle button

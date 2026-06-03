@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines the webapp application shell: the Vite + React 19 + TypeScript scaffold, Telegram WebApp SDK integration and theming, hash-based routing, a shared layout with navigation, English/Hebrew i18n with RTL, a centralized authenticated API client, and consistent loading and error states.
+
+## Requirements
 
 ### Requirement: React SPA project scaffold
 The system SHALL provide a Vite + React 19 + TypeScript project in the `webapp/` directory at the monorepo root, with Cloudflare Pages deployment configuration.

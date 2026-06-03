@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines the /api/v1/ HTTP API for the webapp, including Telegram initData authentication, CORS and rate limiting, and endpoints for the dashboard, drafts CRUD and actions, compose/generate/repost, repos, accounts, settings and keys, media upload, and prompts.
+
+## Requirements
 
 ### Requirement: API route registration under /api/v1/
 The system SHALL register all new webapp API routes under the `/api/v1/` namespace in the existing Cloudflare Worker's `index.ts`, with rate limiting and security headers.

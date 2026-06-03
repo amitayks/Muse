@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Handles user-supplied photos in compose mode: downloading them from Telegram, storing them in R2 as per-tweet media references, attaching media to individual tweets when publishing threads, and displaying per-tweet images (single photo or album) in the draft detail view with platform-aware limits.
+
+## Requirements
 
 ### Requirement: Download user-sent photos from Telegram
 The system SHALL provide a `getFileUrl(env, fileId)` function in `services/telegram.ts` that calls the Telegram `getFile` API and returns a download URL.

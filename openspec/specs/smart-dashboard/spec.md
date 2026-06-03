@@ -1,3 +1,9 @@
+## Purpose
+
+Renders the home dashboard with the next scheduled post and draft queue statistics by querying the database in an async `renderHome`, and shows dynamic navigation buttons including a conditional Video Studio button for admins and a conditional View Schedule button when scheduled drafts exist.
+
+## Requirements
+
 ### Requirement: Dashboard shows next scheduled post
 The dashboard SHALL display the next scheduled post's title (or first tweet text), scheduled time, format, and PR number when a scheduled draft exists.
 

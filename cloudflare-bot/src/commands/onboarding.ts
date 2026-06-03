@@ -23,6 +23,7 @@ import {
 } from '../views/onboarding';
 import { logInfo, logError, sanitizeError } from '../infra/security';
 import { validateGeminiKey } from '../ai/gemini';
+import { connectInstagram } from '../services/instagram-token';
 import { analyzeIdentity } from '../ai/identity';
 import { hydrateEnv } from '../data/user-keys';
 import type { Lang } from '../ui/strings';
@@ -298,11 +299,11 @@ async function handleInstagramInput(
     const currentUser = await getUser(env, chatId);
     const stepMessageId = currentUser?.onboarding_message_id ?? undefined;
 
-    // Parse 2 lines: ACCESS_TOKEN, BUSINESS_ACCOUNT_ID
+    // Parse 3 lines: ACCESS_TOKEN, BUSINESS_ACCOUNT_ID, APP_SECRET
     // Strip invisible Unicode chars (LTR/RTL marks, zero-width spaces) that Telegram may inject
     const lines = text.split('\n').map(l => l.replace(/[^\x20-\x7E]/g, '').trim()).filter(l => l.length > 0);
-    if (lines.length !== 2) {
-        const view = renderKeyError('Instagram', `Expected 2 lines (ACCESS_TOKEN, BUSINESS_ACCOUNT_ID), got ${lines.length}.`, lang);
+    if (lines.length !== 3) {
+        const view = renderKeyError('Instagram', `Expected 3 lines (ACCESS_TOKEN, BUSINESS_ACCOUNT_ID, APP_SECRET), got ${lines.length}.`, lang);
         if (stepMessageId) {
             await editMessage(env, telegramChatId, stepMessageId, view.text, view.keyboard);
         } else {
@@ -311,7 +312,7 @@ async function handleInstagramInput(
         return;
     }
 
-    const [accessToken, businessAccountId] = lines;
+    const [accessToken, businessAccountId, appSecret] = lines;
 
     try {
         // Validate by fetching the Instagram account via Instagram Graph API
@@ -326,9 +327,9 @@ async function handleInstagramInput(
             return;
         }
 
-        // Encrypt and store
-        await storeEncryptedKey(env, chatId, 'instagram_token_enc', await encrypt(env, accessToken));
-        await storeEncryptedKey(env, chatId, 'instagram_account_id_enc', await encrypt(env, businessAccountId));
+        // Validated — exchange the short-lived token for a long-lived one, then persist
+        // token, account id, app secret, and expiry (see services/instagram-token.ts).
+        await connectInstagram(env, chatId, accessToken, businessAccountId, appSecret);
 
         const user = await getUser(env, chatId);
         const hasX = user?.has_x === 1;

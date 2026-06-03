@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the webapp home dashboard with draft/approved/scheduled/published status counters that link to filtered draft lists, a next-scheduled-draft preview card, content-creation action buttons (Handwrite, Generate, Repost, Image), and an admin-only Video Studio entry point.
+
+## Requirements
 
 ### Requirement: Dashboard status counters
 The system SHALL display status counters showing the number of drafts, approved, scheduled, and published posts.

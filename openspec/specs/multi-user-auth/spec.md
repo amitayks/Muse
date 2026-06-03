@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Authorizes incoming Telegram messages by looking up the sender's `chat_id` in the `users` table and acting on their `status` (active, suspended, onboarding, or unregistered), and provides `isAdmin` and `isAuthorizedUser` helpers while leaving the existing `ADMIN_SECRET`-based admin endpoints unchanged.
+
+## Requirements
 
 ### Requirement: Authorization via users table
 The system SHALL authorize users by looking up their `chat_id` in the `users` table and checking `status = 'active'`.

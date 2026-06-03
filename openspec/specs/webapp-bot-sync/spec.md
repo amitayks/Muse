@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Keeps the Telegram bot message in sync with webapp changes by re-rendering shared view functions and calling editMessageText via fire-and-forget ctx.waitUntil(), updating the user's navigation context, and wiring the bot's Edit and Open App buttons to launch the webapp when WEBAPP_URL is set.
+
+## Requirements
 
 ### Requirement: Bot message update on draft save
 The system SHALL update the corresponding Telegram bot message whenever a draft is modified via the webapp API.

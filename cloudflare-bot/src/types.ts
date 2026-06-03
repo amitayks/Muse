@@ -28,6 +28,10 @@ export interface Env {
     // Instagram credentials
     INSTAGRAM_ACCESS_TOKEN?: string;
     INSTAGRAM_BUSINESS_ACCOUNT_ID?: string;
+    // Instagram App Secret (used once for the short-lived -> long-lived token exchange)
+    INSTAGRAM_APP_SECRET?: string;
+    // ISO 8601 expiry of the stored long-lived Instagram token (plaintext, not a secret)
+    INSTAGRAM_TOKEN_EXPIRES_AT?: string;
     // Multi-tenant: encryption key for user API keys (AES-256-GCM, 32 bytes base64)
     ENCRYPTION_KEY: string;
     // Multi-tenant: max registered users (default 50)
@@ -66,6 +70,8 @@ export interface User {
     heygen_api_key_enc: string | null;
     instagram_token_enc: string | null;
     instagram_account_id_enc: string | null;
+    instagram_app_secret_enc: string | null;
+    instagram_token_expires_at: string | null;
     claude_key_enc: string | null;
 
     // Feature flags
@@ -207,6 +213,8 @@ export interface PublishResults {
         url: string;
     };
     errors?: Record<string, string>;
+    /** Set when an Instagram failure was an auth error (expired/invalid token) — drives the "Reconnect Instagram" affordance */
+    needsInstagramReconnect?: boolean;
 }
 
 // Draft record from D1

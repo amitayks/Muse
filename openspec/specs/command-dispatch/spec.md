@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+This capability routes Telegram interactions through lookup tables instead of switch statements, dispatching slash commands, callback queries (by prefix), and awaiting-input text to per-feature handler files. It defines the `HandlerContext` object and `respond` utility, handles photo-to-text message transitions, registers the command menu via `setMyCommands`, and routes compose-mode messages, edits, and callbacks.
+
+## Requirements
 
 ### Requirement: Router dispatches Telegram commands via lookup table
 The system SHALL route incoming slash commands (e.g., `/start`, `/generate`, `/help`) through a `commandHandlers` dispatch table (`Record<string, CommandHandler>`) instead of a switch statement. Unknown commands SHALL fall back to the home view.

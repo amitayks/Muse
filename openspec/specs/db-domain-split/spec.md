@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+This capability splits the monolithic `db.ts` into six domain-specific data files (drafts, user settings, repos, video, twitter, persona) behind a barrel re-export that keeps all existing importers working with zero runtime behavior change. It also covers the schema and migration work for multi-platform publishing—new columns on drafts, users, twitter, and persona tables; a nullable/Instagram-aware `published` table; R2 namespaces for cards, profiles, fonts, and emoji; and the corresponding TypeScript interface and `createPublished`/draft-DB updates.
+
+## Requirements
 
 ### Requirement: Domain-specific database files
 The system SHALL organize database operations into domain-specific files within `src/data/`:

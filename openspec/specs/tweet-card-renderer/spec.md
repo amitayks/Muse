@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Rendering of tweet-style card images (single tweet, connected threads, and quote/repost layouts) and 9:16 story images for Instagram publishing, using Satori (JSX→SVG) + resvg, with Twemoji emoji replacement and BiDi-aware text layout.
+## Requirements
 ### Requirement: Tweet card image rendering
 The system SHALL provide a function `renderTweetCard(tweetData)` in `services/tweet-card.ts` that renders a single tweet as a styled PNG image using Satori (JSX→SVG) and resvg-wasm (SVG→PNG).
 
@@ -32,16 +34,21 @@ The system SHALL provide a function `renderThreadCards(tweets, authorData)` that
 - **THEN** it SHALL produce 1 PNG image without connecting lines (same as `renderTweetCard()`)
 
 ### Requirement: Quote-tweet card rendering
-The system SHALL render quote-tweet (repost) cards that include the user's commentary text above an embedded card showing the original tweet.
+The system SHALL render quote-tweet (repost) cards that include the user's commentary text above an embedded card showing the original tweet. Both the user's commentary AND the embedded original tweet's text are passed through the emoji-replacement text builder, so the renderer SHALL handle emoji originating in the original (quoted) tweet's text without crashing.
 
 #### Scenario: Render repost card
-- **WHEN** `renderTweetCard()` is called for a repost draft with `original_tweet_url` and original author data
+- **WHEN** `renderQuoteTweetCard()` is called for a repost draft with `original_tweet_url` and original author data
 - **THEN** the image SHALL show: the user's tweet text at top, followed by an embedded/indented card containing the original author's avatar, username, and tweet text
 - **AND** the embedded card SHALL have a visible border or background to distinguish it
 
 #### Scenario: Repost card with original author profile image
 - **WHEN** the original author's profile image URL is available (from `twitter_tweets.author_profile_image_url` or `persona_cache.profile_image_url`)
 - **THEN** the embedded card SHALL display the original author's profile image as a circle avatar
+
+#### Scenario: Original (quoted) tweet text contains emoji
+- **WHEN** a quote-repost is rendered whose own commentary is emoji-free but the original quoted tweet's text contains one or more emoji
+- **THEN** the emoji in the quoted text SHALL be replaced with Satori-compatible `<img>` elements
+- **AND** the card SHALL render to a PNG without throwing a Satori CSS validation error
 
 ### Requirement: Font loading for Satori
 The system SHALL load font files from R2 for Satori text rendering. At minimum, Inter Regular and Inter Bold in WOFF2 format.
@@ -56,7 +63,7 @@ The system SHALL load font files from R2 for Satori text rendering. At minimum, 
 - **THEN** the system SHALL throw an error indicating fonts need to be uploaded to R2
 
 ### Requirement: Twemoji replacement
-The system SHALL provide a function `replaceEmojisWithImages(text)` that replaces Unicode emoji characters with Twemoji SVG image references.
+The system SHALL provide emoji replacement that substitutes Unicode emoji characters with Twemoji SVG image references for Satori rendering. Each emoji segment SHALL be emitted as an `<img>` element whose inline style uses **only Satori-supported CSS**. Specifically, the emoji `<img>` SHALL NOT set `display: 'inline-block'` (Satori accepts only `flex | block | contents | none | -webkit-box`) and SHALL NOT set `verticalAlign` (unsupported by Satori). Vertical centering of emoji within a text line SHALL be achieved by the parent line container's existing flex layout (`display:flex`, `alignItems:center`, `flexWrap:wrap`).
 
 #### Scenario: Replace common emoji
 - **WHEN** text contains "Great work 🔥👀"
@@ -69,6 +76,12 @@ The system SHALL provide a function `replaceEmojisWithImages(text)` that replace
 #### Scenario: Emoji SVG source
 - **WHEN** an emoji is replaced
 - **THEN** the `<img>` src SHALL reference R2-cached Twemoji SVGs at `emoji/{codepoint}.svg`, falling back to jsDelivr CDN if not cached
+
+#### Scenario: Emoji image element is Satori-compatible
+- **WHEN** an emoji `<img>` element is built and passed to Satori
+- **THEN** its inline `style` SHALL NOT contain `display: 'inline-block'` or `verticalAlign`
+- **AND** Satori SHALL render the card without throwing `Invalid value for CSS property "display"`
+- **AND** the emoji SHALL remain vertically centered within its text line via the parent flex container
 
 ### Requirement: Tweet card storage in R2
 Rendered tweet card images SHALL be stored in R2 for reuse (e.g., re-publish from published state).
@@ -112,3 +125,4 @@ The system SHALL download and cache author profile images in R2 for tweet card r
 #### Scenario: Profile image URL is invalid or expired
 - **WHEN** the profile image URL cannot be fetched (404, expired CDN link)
 - **THEN** the system SHALL fall back to the placeholder avatar
+

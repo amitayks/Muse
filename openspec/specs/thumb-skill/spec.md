@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Registers a user-customizable `thumbnail` prompt skill with a default English template containing `[TITLE]`, `[GLOW_COLOR]`, `[ICONS]`, and `[ASPECT]` placeholders that are substituted from the compose state, and ensures thumbnail generation sends only that composed prompt plus the base image to Gemini with no identity or other skill injection.
+
+## Requirements
 
 ### Requirement: Thumbnail prompt skill registration
 A new `thumbnail` prompt type SHALL be registered in the skill/prompt system. The skill SHALL be added to:

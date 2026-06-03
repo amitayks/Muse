@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+This capability lets users choose between Gemini and Claude for text generation. It provides a `callLLMText` router that dispatches to the configured provider, a Claude Messages API integration (including multimodal input translation, web search tool mapping, and key validation), and the per-user `ai_provider` setting and encrypted Claude key storage on the users table.
+
+## Requirements
 
 ### Requirement: LLM text router dispatches to provider based on user preference
 The system SHALL provide a `callLLMText()` function with the same signature as `callGeminiText()` that reads `env.AI_PROVIDER` and dispatches the call to the appropriate provider-specific function (`callGeminiText` for `'gemini'`, `callClaudeText` for `'claude'`).

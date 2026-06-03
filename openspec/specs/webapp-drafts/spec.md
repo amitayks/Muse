@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the drafts list view with category tabs and count badges, an infinite-scrolling list of draft preview cards showing content, media, and status, status-based quick actions, navigation into the draft editor, and confirmed deletion.
+
+## Requirements
 
 ### Requirement: Draft list with category tabs
 The system SHALL display drafts in a tabbed list view with categories: All, Auto, Handwritten, Repost, Approved, Scheduled, Published.

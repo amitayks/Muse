@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+This capability adds a Delete button to the draft detail view for drafts in every status, with a confirmation prompt (preserving any image via caption edit) that, on confirmation, removes the draft row from D1, cleans up the associated R2 image (without blocking deletion on R2 failure), and navigates to the draft categories view, while Cancel restores the original detail view.
+
+## Requirements
 
 ### Requirement: Delete button on draft detail view
 The draft detail view SHALL display a "🗑 Delete" button for drafts in ALL statuses: draft, approved, scheduled, published, rejected. The button SHALL appear in its own row, positioned after the status-specific action buttons and before the Back button.

@@ -1,3 +1,9 @@
+## Purpose
+
+Adds a two-row layout to draft list items so each draft shows a title button (with platform target badges) plus inline quick-action buttons — approve, publish, and delete-with-confirmation — that act in place and re-render the same list page based on draft status. Quick actions also support repost drafts, including their list-type short code mapping and `🔄 @username — preview` titles.
+
+## Requirements
+
 ### Requirement: Two-row layout per draft in list views
 Each draft item in `renderDraftsList` SHALL render two rows of inline buttons: the first row is the full-width title button (navigates to draft detail), and the second row contains quick-action buttons side by side.
 

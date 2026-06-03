@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Ensures the user's selected language flows through every code path that produces user-facing text — render functions, input handlers, inline action results, cron notifications, and GitHub webhook notifications — so that views, errors, and notifications consistently render in the user's language rather than defaulting to English.
+
+## Requirements
 
 ### Requirement: All render calls pass user language
 Every call to a render function (`renderHome`, `renderError`, `renderSuccess`, `renderDraftsList`, `renderDraftDetail`, `renderAccountDetail`, `renderRepoDetail`, `renderCompose`, `renderDraftCategories`, etc.) across action files, input handlers, handlers, and router SHALL include the user's `lang` parameter.

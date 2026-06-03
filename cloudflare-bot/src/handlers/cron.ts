@@ -20,6 +20,8 @@ import {
     getUserLanguage,
 } from '../data/db';
 import { sendMessage, sendVideo } from '../integrations/telegram';
+import { updateUser } from '../data/user-db';
+import { refreshLongLivedToken, storeInstagramToken } from '../services/instagram-token';
 import { publishDraft } from '../core/publish';
 import { platformEmoji, formatPlatformSummary } from '../views/platform-toggle';
 import { sanitizeError, logInfo, logError } from '../infra/security';
@@ -44,6 +46,8 @@ export async function cronCoordinator(env: Env, ctx: ExecutionContext): Promise<
             SELECT chat_id FROM video_drafts WHERE status = 'generating' AND updated_at <= datetime('now', '-30 minutes')
             UNION
             SELECT chat_id FROM video_drafts WHERE status = 'scheduled' AND REPLACE(scheduled_at, 'T', ' ') <= datetime('now')
+            UNION
+            SELECT chat_id FROM users WHERE has_instagram = 1 AND instagram_token_expires_at IS NOT NULL AND instagram_token_expires_at <= datetime('now', '+7 days')
         )
     `).all<{ chat_id: string }>();
 
@@ -93,6 +97,14 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     }
 
     try {
+        await refreshUserInstagramToken(userEnv, chatId, lang);
+        results.instagramToken = 'ok';
+    } catch (error) {
+        logError(`[cron] Instagram token refresh failed for chat ${chatId}:`, sanitizeError(error));
+        results.instagramToken = 'error';
+    }
+
+    try {
         await publishUserDrafts(userEnv, chatId, lang);
         results.drafts = 'ok';
     } catch (error) {
@@ -122,6 +134,46 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
 // ==================== PER-USER CRON FUNCTIONS ====================
 
 /**
+ * Refresh a user's long-lived Instagram token before it expires.
+ * Selected by the coordinator when the token is within 7 days of expiry.
+ * No-op when Instagram isn't connected or no expiry is recorded (lazy-migration safe).
+ */
+async function refreshUserInstagramToken(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
+    const token = env.INSTAGRAM_ACCESS_TOKEN;
+    const expiresAt = env.INSTAGRAM_TOKEN_EXPIRES_AT;
+    if (!token || !expiresAt) return; // not connected / nothing to refresh
+
+    const expMs = Date.parse(expiresAt);
+    if (Number.isNaN(expMs)) return;
+
+    const now = Date.now();
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+    if (expMs > now + SEVEN_DAYS) return; // not due yet
+
+    const result = await refreshLongLivedToken(token);
+    if (result.ok) {
+        await storeInstagramToken(env, chatId, result.token, result.expiresInSec);
+        logInfo(`[cron] Refreshed Instagram token for chat ${chatId}`);
+        return;
+    }
+
+    // Refresh failed. If the token is already expired it cannot be recovered — stop
+    // retrying (null the expiry so the coordinator no longer selects this user) and
+    // notify the user once to reconnect. If it's still valid this was likely transient;
+    // leave the expiry intact so we retry on the next tick (no notification, no spam).
+    logError(`[cron] Instagram token refresh failed for chat ${chatId}:`, result.message);
+    if (expMs <= now) {
+        await updateUser(env, chatId, { instagram_token_expires_at: null });
+        await sendMessage(
+            env,
+            chatId,
+            t(lang, 'notifications.instagramReconnectNeeded'),
+            [[{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]]
+        ).catch(() => {});
+    }
+}
+
+/**
  * Publish due scheduled drafts for a specific user
  * Called with already-hydrated env
  */
@@ -142,6 +194,12 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
                 .map(([p, msg]) => `${platformEmoji(p)} ${msg}`)
                 .join('\n');
 
+            const failButtons: Array<Array<{ text: string; callback_data: string }>> = [];
+            if (publishResult.results.needsInstagramReconnect) {
+                failButtons.push([{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]);
+            }
+            failButtons.push([{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]);
+
             try {
                 await sendMessage(
                     env,
@@ -150,7 +208,7 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
                     `${draft.pr_title}\n\n` +
                     `${errorMessages}\n\n` +
                     t(lang, 'notifications.draftReturnedToApproved'),
-                    [[{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]]
+                    failButtons
                 );
             } catch (notifyError) {
                 logError('Failed to send error notification:', notifyError);
@@ -182,6 +240,10 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
             }
 
             const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+
+            if (publishResult.results.needsInstagramReconnect) {
+                buttons.push([{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]);
+            }
 
             if (publishResult.url) {
                 buttons.push([{ text: '🔗 Open', url: publishResult.url }]);

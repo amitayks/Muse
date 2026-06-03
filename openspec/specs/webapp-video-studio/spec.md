@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the admin-only Video Studio: a home page with repo selection and per-repo video counts by status, status-filtered video lists, a video detail page with script preview/editing and embedded playback, status-based actions, and a form for creating new videos from a repository.
+
+## Requirements
 
 ### Requirement: Video studio home page (admin only)
 The system SHALL display the video studio home page with repo selection and video status overview, accessible only to admin users.

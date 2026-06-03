@@ -1,3 +1,7 @@
+## Purpose
+
+A unified Telegram compose mode that lets users hand-write their own tweets across sequential messages (text and grouped photos), toggle per-session image generation, AI refinement, image analysis, language override, and instructions, then finalize into a single or thread draft. The mode is shared across handwrite, repost, and commit sources, supporting native message edits, per-tweet media, length/platform warnings, and source-specific headers.
+
 ## Requirements
 
 ### Requirement: Handwrite compose mode lifecycle

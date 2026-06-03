@@ -1,4 +1,10 @@
-## Stage 1: Cron Execution
+## Purpose
+
+The end-to-end Twitter source pipeline: inline parallel per-user cron execution, timeline polling with automatic user_id resolution, and relevance scoring of fetched tweets.
+
+## Requirements
+
+<!-- Stage 1: Cron Execution -->
 
 ### Requirement: Inline parallel cron execution
 The scheduled handler SHALL execute per-user cron tasks directly as parallel promises within the same isolate, without HTTP self-fetch fan-out.
@@ -23,7 +29,7 @@ The poller SHALL attempt to resolve missing `user_id` on twitter accounts via X 
 - **WHEN** the X API lookup fails for an account without user_id
 - **THEN** the poller SHALL skip the account (same as current behavior) and log a warning
 
-## Stage 2: Polling
+<!-- Stage 2: Polling -->
 
 ### Requirement: X API user lookup by username
 The system SHALL provide a function `lookupUserByUsername(env, username)` that calls `GET /2/users/by/username/:username` with `user.fields=id,name,username,description,profile_image_url,public_metrics`. It SHALL return the user's numeric ID, display name, bio, and follower count.
@@ -106,7 +112,7 @@ The twitter-poller SHALL implement OAuth 1.0a header generation for GET requests
 - **WHEN** `getUserTweets()` calls the X API
 - **THEN** it SHALL include an OAuth 1.0a Authorization header with proper signature for GET method and URL query parameters
 
-## Stage 3: Scoring
+<!-- Stage 3: Scoring -->
 
 ### Requirement: Batch scoring via single Gemini call
 The system SHALL score all pending tweets from a poll cycle in a single Gemini API call. The scoring function SHALL accept an array of tweets (with author, text, conversation context) and return an array of `{ tweet_id: string, score: number, reason: string }`.

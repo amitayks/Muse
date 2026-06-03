@@ -1,4 +1,8 @@
-# Telegram Bot Authorization
+## Purpose
+
+Governs Telegram bot authorization and security: per-user authorization by `users.status` with onboarding for unregistered users, chat-id-scoped database ownership and query/mutation filtering, admin endpoint protection, R2 image access control, rate limiting, timing-safe secret comparison, sanitized errors and logging, and security headers. It also covers Video Studio callback routing, compose-mode state and message-routing priority (character/look/video compose, handwrite), the HeyGen webhook endpoint and video cron fallback, and Telegram media-group (photo album) handling.
+
+## Requirements
 
 ### Requirement: Single-User Authorization
 The webhook entry point SHALL authorize users by looking up their `chat_id` in the `users` table. Users with `status = 'active'` are authorized for all features. Users with `status = 'onboarding'` are redirected to the onboarding flow. Users with `status = 'suspended'` receive a suspension message. Unregistered users (no `users` row) enter the onboarding flow. The `isAdmin(chatId, env)` function (`String(chatId) === env.TELEGRAM_CHAT_ID`) is used only for admin-specific features (Video Studio, admin endpoints), not for general authorization.

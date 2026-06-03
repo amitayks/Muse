@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Lets each user choose how many items appear per page in paginated list views via a Page Size setting (presets 5, 10, 15, 20; default 5) stored in the `chat_state` table and applied across all lists.
+
+## Requirements
 
 ### Requirement: Page size setting in user settings
 The system SHALL display a "Page Size" setting in the `/settings` view showing the current page size value.

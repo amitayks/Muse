@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Generates quote-tweet repost drafts using the first-person `/quote` skill assembled with the user's identity document (and the quoted account's persona when followed), reacting to a single tweet without fetching personas for unknown accounts or including author tweet history, and routes both repost and PR/commit content generation through the user's global language setting.
+
+## Requirements
 
 ### Requirement: Dedicated repost content generation prompt
 The repost system prompt SHALL be completely rewritten as the `/quote` skill using first-person self-narrative framing. Instead of instructing Gemini to "create a quote-tweet response," the skill SHALL frame the task as self-directed reaction: "This caught my attention, here's what I think." The system SHALL receive the user's full Identity Document (as self) and the account persona overview (as context about the other person, if available). The skill SHALL instruct Gemini to react FROM its identity TO the other person's post.

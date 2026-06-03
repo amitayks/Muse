@@ -1,3 +1,9 @@
+## Purpose
+
+Extracts each HTTP route handler into its own file under `routes/` so `index.ts` becomes a thin shell (under 80 lines) doing only route matching, rate limiting, and delegation plus the cron `scheduled()` handler, and registers the router's account, callback, view-change, input, pagination, and schedule (day-picker and time-input) handlers.
+
+## Requirements
+
 ### Requirement: HTTP route handlers extracted from index.ts
 Each HTTP route handler SHALL be in its own file under `routes/` directory. `index.ts` SHALL only contain the `fetch()` and `scheduled()` entry points with route matching that delegates to the route handlers.
 

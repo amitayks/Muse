@@ -1,3 +1,7 @@
+## Purpose
+
+Stores a structured per-repo overview (summary, tech stack, key features, audience, brand voice, visual theme, recent changes) in the `repo_overviews` table, bootstrapped from README and merged PRs via Gemini through the `/overview` command, and exposes read, patch, and Telegram-based manual editing so content and image generation can ground itself in each project's context.
+
 ## Requirements
 
 ### Requirement: repo_overviews table schema

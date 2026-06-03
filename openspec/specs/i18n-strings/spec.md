@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the localization foundation: English and Hebrew string registries with matching keys organized by domain (including the redesigned onboarding flow), a `Lang` type, and a `t(lang, key)` translation function that resolves dot-path keys and falls back to English (then to the raw key) when a translation is missing.
+
+## Requirements
 
 ### Requirement: String registry with English translations
 The system SHALL provide a `ui/strings/en.ts` module exporting an object with all user-facing strings organized by domain (common, home, settings, repos, accounts, drafts, onboarding, repost, video, errors). The onboarding section SHALL include keys for the redesigned flow: welcome screen with merged value prop, language toggle labels, feature-unlock framing for each step (X, Identity, Gemini, GitHub), identity cost transparency, identity snippet display, bonus step labeling, and completion screen with unlocked/locked feature summary.

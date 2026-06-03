@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the scheduling UI for drafts: inline buttons for the next 7 days in the user's timezone, followed by an HH:MM time prompt that validates the input (including past-time rejection) and converts the chosen day and time to UTC, with Cancel returning to the draft detail view.
+
+## Requirements
 
 ### Requirement: Day picker inline buttons for scheduling
 When a user initiates scheduling for any draft type, the system SHALL display inline buttons for the next 7 days in the user's configured timezone. Each button SHALL show the day name and date (e.g., "Thu 20/02", "Fri 21/02").

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the user settings UI for choosing the AI text provider (Gemini or Claude) and managing API keys, including a provider toggle, validated and encrypted Claude key connect/update, provider display on the settings home and Platforms sub-page, and a settings view showing language, timezone, page size, publish targets, repost defaults, and per-service key connection status.
+
+## Requirements
 
 ### Requirement: AI provider toggle in Platforms settings sub-page
 The Platforms settings sub-page SHALL display the user's current AI text provider and provide a toggle button to switch between Gemini and Claude.
@@ -71,7 +75,6 @@ The settings home view SHALL display the current AI provider in the summary alon
 - **WHEN** user opens settings home and their provider is Claude
 - **THEN** the summary SHALL include a line showing "🧠 AI → Claude"
 
-## MODIFIED Requirements
 
 ### Requirement: Settings view displays current timezone
 The settings view SHALL display the user's current timezone, page size, language preference, AI provider, system prompts button (with stale badge when applicable), default publish targets button, repost defaults section, and API key connection status. It SHALL NOT display video settings (those are in Video Studio). It SHALL include an API Keys management section. For admin users, a separate admin prompts button SHALL also appear.

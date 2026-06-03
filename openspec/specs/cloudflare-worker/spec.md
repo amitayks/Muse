@@ -1,4 +1,8 @@
-# Cloudflare Worker Security
+## Purpose
+
+This capability defines the security posture of the Cloudflare Worker host: hardened HTTP endpoints (public health check, 404 for unknown routes, security headers), secret management (shared infra keys as Worker secrets versus per-user API keys encrypted in D1), request validation, parameterized D1 queries with sanitized errors, safe R2 key/upload handling, secure cron execution, and safe responses. It also specifies the consolidated `users` table that replaces `chat_state`, carrying identity, encrypted keys, UI state, and settings.
+
+## Requirements
 
 ### Requirement: Worker Entry Point Security
 All HTTP endpoints exposed by the Cloudflare Worker SHALL implement appropriate security controls.

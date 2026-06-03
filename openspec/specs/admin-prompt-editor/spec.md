@@ -1,3 +1,9 @@
+## Purpose
+
+This capability provides an admin-only WebApp page at `/app/admin-prompts` for editing all seven system prompt types (content, edit, repost, video, overview, persona, scoring) in both English and Hebrew. It enforces 403 access control for non-admins, offers an EN/HE language toggle independent of the admin's bot language, and supports saving to the admin's personal `user_prompts` row or pushing a new versioned global default to all users; it is served as a standalone HTML page separate from the user prompt editor.
+
+## Requirements
+
 ### Requirement: Admin prompt editor WebApp page
 The system SHALL serve a separate HTML page at `/app/admin-prompts` that provides a prompt editing interface for all 7 prompt types in both languages. Access SHALL be restricted to admin users only.
 

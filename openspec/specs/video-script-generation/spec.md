@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Generates multi-scene talking-head video scripts via a dedicated Gemini prompt that incorporates repo context, commit history, tone, length, character personality, and manual instructions, returning per-scene JSON (text, emotion, motion, overlays) plus Instagram and Twitter captions, with length calibration and validation before approval.
+
+## Requirements
 
 ### Requirement: Video script system prompt
 The system SHALL use a dedicated Gemini system prompt for video script generation, separate from the tweet generation prompt. The prompt SHALL instruct Gemini to produce a multi-scene talking script structured for HeyGen's per-scene API model.

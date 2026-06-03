@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Defines the first-person self-narrative skill architecture in which each skill prompt combines a self-narrative with a task protocol and is assembled at runtime from three independently editable layers (skill prompt, identity document, task protocol), renames and consolidates prompt types to slash-named skills (e.g. `/work-progress`, `/refine`, `/quote`, `/who-am-i`), specifies per-skill identity attachment and the user/admin editable subsets, and removes tweet character-limit constraints from AI prompts.
+
+## Requirements
 
 ### Requirement: First-person self-narrative skill format
 Every skill prompt (system prompt) SHALL be written in first-person inner monologue. Skills SHALL use "I am...", "I write...", "I care about..." framing instead of "You are...", "You should...", "Write for the user...". No skill SHALL reference "the user" — all instructions SHALL be self-directed. This eliminates the director-actor meta-layer and produces authentic voice continuation from the model.

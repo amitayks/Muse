@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Lets a draft be published to multiple platforms (X, Instagram Post, Story, Reel) by storing per-draft `publish_targets` and per-platform `publish_results`, enforcing rules such as Post/Reel mutual exclusivity, video-gated Reels, Instagram-credential gating, and at-least-one-target, and drives the Telegram toggle UI, publish-targets header, and repost-from-published flow.
+
+## Requirements
 
 ### Requirement: PublishTargets type
 The system SHALL define a `PublishTargets` interface with boolean fields: `x`, `instagram_post`, `instagram_story`, `instagram_reel`.

@@ -1,3 +1,9 @@
+## Purpose
+
+Provides a single shared `publishDraft()` pipeline (in `core/publish.ts`) used by all publish flows — callback action, publish-all-approved, cron, and `/approve` — that parses content, prepares media once, publishes independently to X (including quote tweets with 403 URL fallback) and Instagram Post/Story/Reel, collects per-platform results into `draft.publish_results`, and updates draft and `published` records, alongside the supporting `source` field, multi-media-per-tweet handling, refinement of handwritten content, and per-record cron notifications.
+
+## Requirements
+
 ### Requirement: Shared publish pipeline function
 The system SHALL provide a single `publishDraft(env, chatId, draft)` function in `core/publish.ts` that executes the full multi-platform publish flow: parse content → determine targets → prepare media per platform → publish to each target independently → collect results → update DB status → store publish results on draft.
 

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Reorganizes `src/services/` into purpose-specific directories (`ai/`, `integrations/`, `data/`, `infra/`) while leaving only feature orchestrators in `services/`, updating all import paths so the project compiles cleanly with no runtime behavior or export changes.
+
+## Requirements
 
 ### Requirement: AI directory for Gemini-powered services
 `src/ai/` SHALL contain all files that interact with the Gemini API or orchestrate AI-powered operations: `gemini.ts`, `identity.ts`, `prompts.ts`, `prompt-utils.ts`, `scoring.ts`, `scoring-prompt.ts`, `repost-generate.ts`, `repost-prompt.ts`, `persona-bootstrap.ts`, `persona-prompt.ts`.

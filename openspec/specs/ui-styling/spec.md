@@ -1,3 +1,9 @@
+## Purpose
+
+Passes the optional inline-button style field ("primary", "success", "danger") through to Telegram's InlineKeyboardButton when present, and omits it otherwise so Telegram uses its default appearance.
+
+## Requirements
+
 ### Requirement: Inline buttons support color styles
 The system SHALL pass the optional `style` field ("primary", "success", "danger") to Telegram's InlineKeyboardButton when present on an InlineButton.
 

@@ -140,7 +140,10 @@ function textWithEmojisRaw(text: string, fontSize: number, emojiUrls?: Map<strin
                 alt: match[0],
                 width: fontSize,
                 height: fontSize,
-                style: { display: 'inline-block', verticalAlign: 'middle', margin: '0 2px' },
+                // NOTE: Satori only accepts display: flex|block|contents|none|-webkit-box and does
+                // not support verticalAlign. The parent line container (buildTextBlock) already sets
+                // display:flex + alignItems:center, so the emoji <img> is centered as a flex child.
+                style: { margin: '0 2px' },
             },
         });
         lastIndex = index + match[0].length;

@@ -1,5 +1,9 @@
 # Image Create Drafts Spec
 
+## Purpose
+
+Manages persisted image-create drafts: an Images category in the drafts view, a paginated list, a detail view showing the generated image as a photo, full-resolution document download, confirmed deletion with R2 cleanup, and the backing `image_drafts` D1 table, migration, and `ImageDraft` type.
+
 ## Requirements
 
 ### Requirement: Image drafts category in drafts view

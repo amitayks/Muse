@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Replaces the former multi-perspective expert prompting with first-person self-narrative skills (`/work-progress` for generation, `/refine` for editing) driven by the user's Identity Document as the single authentic voice. Defines the strict JSON response format (format, tweets, optional imagePrompt, overviewUpdates), DB-backed system-prompt assembly via `assembleSystemInstruction`, and overview-patch generation rules.
+
+## Requirements
 
 ### Requirement: Multi-perspective system prompt for content generation
 The system prompt for `generateContent()` SHALL be completely rewritten as the `/work-progress` skill using first-person self-narrative framing. Instead of instructing Gemini to "think from the perspective of" external experts (Tech Influencer, Copywriter, Growth Marketer, etc.), the skill SHALL frame the task as self-directed reflection: "I'm looking at my recent work and deciding what to share with my followers." The multi-perspective expert approach SHALL be replaced by the user's own Identity Document which provides authentic voice, tone, and perspective. When a repo overview is provided, it SHALL be framed as "my project" context, not external data.

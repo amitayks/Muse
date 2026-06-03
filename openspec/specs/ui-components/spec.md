@@ -1,3 +1,9 @@
+## Purpose
+
+Defines a shared ui/components.ts library of reusable inline-keyboard builders (home/back/back-home, pagination, toggle, add, cancel, selected-item label, confirm-delete, empty-list, input-prompt, and error-with-back views) and ui/utils.ts helpers (escapeHtml, truncateHtml), and requires all views and the Telegram service to use them instead of inline copies.
+
+## Requirements
+
 ### Requirement: Home button component
 The `ui/components.ts` module SHALL export a `homeButton()` function that returns a single `InlineButton` with text `🏠 Home` and callback_data `view:home`.
 

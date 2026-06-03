@@ -5,6 +5,7 @@
 import type { Env, VideoDraft } from '../types';
 import { generateOAuthHeader } from '../integrations/x';
 import { logInfo, logError } from '../infra/security';
+import { InstagramPublishError, parseGraphError } from './instagram-publish';
 
 // ==================== TWITTER VIDEO PUBLISH ====================
 
@@ -186,15 +187,13 @@ export async function publishVideoToTwitter(
 export async function publishVideoToInstagram(
     env: Env,
     videoDraft: VideoDraft
-): Promise<string | null> {
+): Promise<string> {
     if (!env.INSTAGRAM_ACCESS_TOKEN || !env.INSTAGRAM_BUSINESS_ACCOUNT_ID) {
-        logError('Instagram not configured');
-        return null;
+        throw new InstagramPublishError('Instagram is not configured', { isAuthError: true });
     }
 
     if (!videoDraft.video_url) {
-        logError('No video_url for Instagram publish');
-        return null;
+        throw new InstagramPublishError('No video available for Instagram publish');
     }
 
     try {
@@ -215,8 +214,7 @@ export async function publishVideoToInstagram(
         });
 
         if (!containerResponse.ok) {
-            logError('Instagram container creation failed:', await containerResponse.text());
-            return null;
+            throw parseGraphError(await containerResponse.text(), 'Instagram container creation failed');
         }
 
         const containerResult = await containerResponse.json() as { id: string };
@@ -235,8 +233,7 @@ export async function publishVideoToInstagram(
 
             if (statusResult.status_code === 'FINISHED') break;
             if (statusResult.status_code === 'ERROR') {
-                logError('Instagram container processing failed');
-                return null;
+                throw new InstagramPublishError('Instagram video processing failed');
             }
         }
 
@@ -252,8 +249,7 @@ export async function publishVideoToInstagram(
         });
 
         if (!publishResponse.ok) {
-            logError('Instagram publish failed:', await publishResponse.text());
-            return null;
+            throw parseGraphError(await publishResponse.text(), 'Instagram publish failed');
         }
 
         const publishResult = await publishResponse.json() as { id: string };
@@ -262,6 +258,6 @@ export async function publishVideoToInstagram(
         return igUrl;
     } catch (error) {
         logError('publishVideoToInstagram error:', error instanceof Error ? error.message : String(error));
-        return null;
+        throw error;
     }
 }

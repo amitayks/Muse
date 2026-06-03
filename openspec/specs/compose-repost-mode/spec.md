@@ -1,3 +1,9 @@
+## Purpose
+
+The repost variant of compose mode: entering compose directly when a tweet URL is fetched, rendering a pinned source-tweet header with metrics and thread/image indicators, handling duplicate detection, and using the `quote` skill on Pen Down to generate a quote tweet from the source tweet plus the user's initial thoughts and instruction. Always sends the source tweet's image to the AI as multimodal context, fetches full thread context, and links the resulting draft to the original tweet via a shared `enterComposeMode` initializer.
+
+## Requirements
+
 ### Requirement: Repost compose mode entry
 When a tweet URL is successfully fetched, the system SHALL enter compose mode with `mode: 'repost'` instead of showing a static preview. The compose session SHALL have `aiRefine: true` and `imageGen: false` as defaults for repost mode.
 

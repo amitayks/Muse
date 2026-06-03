@@ -1,3 +1,9 @@
+## Purpose
+
+Interprets all scheduling in each user's configured timezone (stored as an offset string in the `users.timezone` column, defaulting to `UTC`): converting entered datetimes to UTC for storage, displaying scheduled times, confirmations, and cron publish notifications back in the user's timezone, and validating past-time input against the user's local clock.
+
+## Requirements
+
 ### Requirement: Schedule input applies user timezone
 When a user enters a schedule datetime, the system SHALL interpret it in the user's configured timezone and convert to UTC for storage.
 

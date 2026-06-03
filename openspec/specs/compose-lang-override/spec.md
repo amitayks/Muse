@@ -1,3 +1,7 @@
+## Purpose
+
+This capability adds a per-session language override to compose mode so a user can generate content in English or Hebrew without changing their global language setting. It stores a non-persisted `langOverride` in `ComposeState`, provides a `compose:toggle_lang` callback and a language button in the compose extras row, computes the effective language (`langOverride ?? globalLang`) for all AI calls at pen-down while keeping UI strings in the global language, and defines the button-label i18n strings.
+
 ## Requirements
 
 ### Requirement: Per-compose language override stored in ComposeState

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the per-draft editing screen where users edit tweet/thread text with live character counters and auto-save, manage thread tweets and per-tweet media, run AI refine instructions, set platform targets and schedule date/time, and approve, publish, or delete the draft while viewing source metadata and per-platform publish results.
+
+## Requirements
 
 ### Requirement: Inline text editing per tweet
 The system SHALL display each tweet in the thread as an editable textarea with no character limit for input, but a live character counter showing proximity to X's 280-character limit.

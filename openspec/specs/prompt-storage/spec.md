@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Defines the `PromptType` union and the user/admin/all editable-skill sets, tracks whether a user's stored prompt is stale relative to the default version (excluding identity from the stale count), and resolves identity injection in `assembleSystemInstruction` from the `identity` prompt type so the user's identity document is used rather than the `who-am-i` analysis skill.
+
+## Requirements
 
 ### Requirement: Prompt type constants
 The system SHALL define a `PromptType` union type with values `'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen'`. It SHALL export `USER_EDITABLE_SKILLS` array containing `['work-progress', 'refine', 'quote', 'identity']`, `ADMIN_EDITABLE_SKILLS` containing all 10 types, and `ALL_SKILLS` containing all 10 types. `IDENTITY_ATTACHED_SKILLS` SHALL resolve identity via `'identity'` prompt type (not `'who-am-i'`).
@@ -34,7 +38,6 @@ The system SHALL provide a `getUserPromptStatus(env, chatId, type, lang)` functi
 - **WHEN** user has a `user_prompts` row for `identity` with outdated `based_on_version`, and a stale `work-progress` prompt
 - **THEN** `countStalePrompts()` SHALL return 1 (only counting work-progress, not identity)
 
-## ADDED Requirements
 
 ### Requirement: System instruction resolves identity from identity prompt type
 The `assembleSystemInstruction` function SHALL resolve identity injection using `getPrompt(env, chatId, 'identity', lang)` instead of `getPrompt(env, chatId, 'who-am-i', lang)`. This ensures the user's identity document (or skeleton default) is injected, never the analysis skill.

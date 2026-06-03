@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the commit-to-tweet generation page where users pick a watched repo, generate a draft from a pasted commit SHA or a recent PR, override Fast Image and Fast AI options per generation, and watch a staged loading state before landing in the draft editor.
+
+## Requirements
 
 ### Requirement: Repo selector for generation
 The system SHALL display a dropdown of the user's watched repositories for selecting the source of commit generation.

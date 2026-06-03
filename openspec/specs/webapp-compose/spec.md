@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Provides the webapp compose page for creating tweet drafts: a thread builder with character counters, per-tweet image uploads, AI Refine / Image Generation / Analyze Images toggles, an optional AI instruction, a per-session language override (with i18n and API support), and a save-as-draft flow.
+
+## Requirements
 
 ### Requirement: Tweet compose editor
 The system SHALL provide a compose page for creating new drafts with a rich editing experience, mirroring the bot's handwrite flow but with full editing power.

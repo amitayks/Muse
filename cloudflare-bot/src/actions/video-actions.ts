@@ -591,8 +591,6 @@ export async function videoPubInstagramAction(ctx: HandlerContext & { value: str
         const { publishVideoToInstagram } = await import('../services/video-publish');
         const igUrl = await publishVideoToInstagram(env, draft);
 
-        if (!igUrl) throw new Error('Instagram publish returned no URL');
-
         const { createVideoPublished } = await import('../data/db');
         await createVideoPublished(env, chatId, {
             video_draft_id: draftId,
@@ -608,9 +606,13 @@ export async function videoPubInstagramAction(ctx: HandlerContext & { value: str
         };
     } catch (error) {
         logError('Instagram publish failed:', error instanceof Error ? error.message : String(error));
+        const isAuth = !!(error as { isAuthError?: boolean })?.isAuthError;
+        const keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+        if (isAuth) keyboard.push([{ text: '🔁 Reconnect Instagram', callback_data: 'settings:update:instagram' }]);
+        keyboard.push([{ text: '◀️ Back', callback_data: `view:video_detail:${draftId}` }]);
         return {
             text: `❌ Instagram publish failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            keyboard: [[{ text: '◀️ Back', callback_data: `view:video_detail:${draftId}` }]],
+            keyboard,
         };
     }
 }
@@ -627,7 +629,13 @@ export async function videoPubBothAction(ctx: HandlerContext & { value: string; 
         const { createVideoPublished } = await import('../data/db');
 
         const twitterUrl = await publishVideoToTwitter(env, draft);
-        const igUrl = await publishVideoToInstagram(env, draft);
+        // Isolate Instagram failure so a Twitter success is still recorded
+        let igUrl: string | null = null;
+        try {
+            igUrl = await publishVideoToInstagram(env, draft);
+        } catch (igErr) {
+            logError('Instagram publish failed (both):', igErr instanceof Error ? igErr.message : String(igErr));
+        }
 
         await createVideoPublished(env, chatId, {
             video_draft_id: draftId,
