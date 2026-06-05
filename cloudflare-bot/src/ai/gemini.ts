@@ -540,79 +540,172 @@ function consolidateImagePrompt(data: ImagePromptData): string {
     ].join('. ');
 }
 
+// ==================== RESILIENT GEMINI IMAGE GENERATION ====================
+
+/** A request part for Gemini image generation: a text part or an inline image. */
+export type GeminiImagePart = { text: string } | { inline_data: { mime_type: string; data: string } };
+
+/** Decoded final image returned by the resilient helper. */
+export interface GeminiImageResult { data: Uint8Array<ArrayBuffer>; mimeType: string; }
+
+/** Error thrown when image generation fails (after retries, or on a terminal client error). */
+export class GeminiImageError extends Error {
+    status?: number;
+    detail: string;
+    constructor(message: string, status: number | undefined, detail: string) {
+        super(message);
+        this.name = 'GeminiImageError';
+        this.status = status;
+        this.detail = detail;
+    }
+}
+
+/** Response part shape from v1beta REST (camelCase `inlineData`, optional `thought` flag). */
+interface GeminiResponsePart {
+    text?: string;
+    thought?: boolean;
+    inlineData?: { mimeType: string; data: string };
+}
+
+const TRANSIENT_IMAGE_STATUSES = new Set([429, 500, 502, 503]);
+const DEFAULT_IMAGE_ATTEMPTS = 3;
+
+function isTransientStatus(status: number): boolean {
+    return TRANSIENT_IMAGE_STATUSES.has(status);
+}
+
+/**
+ * Pick the FINAL image from a Gemini response. Gemini 3 image responses may include
+ * intermediate "thinking"/draft frames (`thought: true`); the intended result is the last
+ * non-thought image part. Falls back to the last image part overall when no thought flags
+ * are present. Returns decoded bytes + normalized MIME, or null if no image part exists.
+ */
+function extractFinalImage(parts: GeminiResponsePart[]): GeminiImageResult | null {
+    const imageParts = parts.filter(p => p.inlineData);
+    if (imageParts.length === 0) return null;
+    const nonThought = imageParts.filter(p => p.thought !== true);
+    const pool = nonThought.length > 0 ? nonThought : imageParts;
+    const inlineData = pool[pool.length - 1].inlineData!;
+
+    const binaryStr = atob(inlineData.data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    let mimeType = inlineData.mimeType || 'image/jpeg';
+    if (mimeType === 'application/octet-stream') mimeType = 'image/jpeg';
+    return { data: bytes, mimeType };
+}
+
+/** Short exponential backoff, honoring a `Retry-After` header (seconds) when present, both clamped. */
+async function imageBackoff(attempt: number, retryAfter?: string | null): Promise<void> {
+    let ms = Math.min(500 * 2 ** (attempt - 1), 4000);
+    if (retryAfter) {
+        const secs = Number.parseInt(retryAfter, 10);
+        if (!Number.isNaN(secs) && secs > 0) ms = Math.min(secs * 1000, 5000);
+    }
+    await new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Resilient Gemini image generation — the single entry point for every image call site.
+ * Retries transient failures (429/500/502/503 and fetch errors) with bounded backoff,
+ * downgrades 4K→2K on the first retry (cheaper + more likely to succeed), fails fast on
+ * client errors, and returns the final (non-draft) image. Throws GeminiImageError on failure.
+ */
+export async function generateGeminiImage(
+    env: Env,
+    parts: GeminiImagePart[],
+    opts?: { imageSize?: '4K' | '2K' | '1K'; maxAttempts?: number },
+): Promise<GeminiImageResult> {
+    const maxAttempts = opts?.maxAttempts ?? DEFAULT_IMAGE_ATTEMPTS;
+    let size: '4K' | '2K' | '1K' = opts?.imageSize ?? '4K';
+    const url = `${GEMINI_API}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
+    let lastStatus: number | undefined;
+    let lastDetail = '';
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Downgrade heavy 4K to 2K on retries (never below 2K, never back up to 4K)
+        if (attempt >= 2 && size === '4K') size = '2K';
+
+        let response: Response;
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts }],
+                    generationConfig: {
+                        responseModalities: ['IMAGE', 'TEXT'],
+                        imageConfig: { imageSize: size },
+                    },
+                }),
+            });
+        } catch (fetchErr) {
+            // Network/fetch failure — transient
+            lastStatus = undefined;
+            lastDetail = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+            logError('Gemini image fetch error (attempt', attempt, 'of', maxAttempts, '):', lastDetail);
+            if (attempt < maxAttempts) { await imageBackoff(attempt); continue; }
+            break;
+        }
+
+        if (response.ok) {
+            const result = await response.json() as { candidates?: [{ content?: { parts?: GeminiResponsePart[] } }] };
+            const respParts = result.candidates?.[0]?.content?.parts ?? [];
+            const image = extractFinalImage(respParts);
+            if (image) {
+                logInfo('Gemini image generated (attempt', attempt, 'size', size, 'bytes', image.data.length, ')');
+                return image;
+            }
+            // OK response but no image part (e.g. text-only/safety) — won't improve on retry
+            const textParts = respParts.filter(p => p.text).map(p => p.text).join(' ');
+            throw new GeminiImageError('No image in Gemini response', response.status, textParts || 'No image in response');
+        }
+
+        lastStatus = response.status;
+        lastDetail = (await response.text()).substring(0, 300);
+        if (isTransientStatus(response.status)) {
+            logError('Gemini image transient error (attempt', attempt, 'of', maxAttempts, '):', response.status, lastDetail.substring(0, 200));
+            if (attempt < maxAttempts) { await imageBackoff(attempt, response.headers.get('Retry-After')); continue; }
+            break;
+        }
+        // Terminal client error (400/401/403/404/...) — fail fast, no retry
+        throw new GeminiImageError(`Gemini image generation failed: ${response.status}`, response.status, lastDetail);
+    }
+
+    throw new GeminiImageError(`Gemini image generation failed after ${maxAttempts} attempts`, lastStatus, lastDetail);
+}
+
 /**
  * Generate an image using Gemini image generation.
  * Returns the raw image data as ArrayBuffer, or null if failed.
  */
 export async function generateImage(env: Env, content: DraftContent): Promise<{ data: ArrayBuffer; mimeType: string } | null> {
-    try {
-        // Build the prompt string
-        let promptStr: string;
-
-        if (content.imagePrompt) {
-            if (typeof content.imagePrompt === 'string') {
-                promptStr = content.imagePrompt;
-            } else {
-                promptStr = consolidateImagePrompt(content.imagePrompt);
-            }
+    // Build the prompt string
+    let promptStr: string;
+    if (content.imagePrompt) {
+        if (typeof content.imagePrompt === 'string') {
+            promptStr = content.imagePrompt;
         } else {
-            promptStr = consolidateImagePrompt(buildImagePrompt(content));
+            promptStr = consolidateImagePrompt(content.imagePrompt);
         }
+    } else {
+        promptStr = consolidateImagePrompt(buildImagePrompt(content));
+    }
 
-        logInfo('Generating image with Gemini, prompt length:', promptStr.length);
+    logInfo('Generating image with Gemini, prompt length:', promptStr.length);
 
-        const url = `${GEMINI_API}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: `Generate an image: ${promptStr}` }] }],
-                generationConfig: {
-                    responseModalities: ['IMAGE', 'TEXT'],
-                    imageConfig: { imageSize: '4K' },
-                },
-            }),
-        });
-
-        logInfo('Gemini image API response status:', response.status);
-
-        if (!response.ok) {
-            const errText = await response.text();
-            logError('Gemini image generation failed:', response.status, errText.substring(0, 200));
-            return null;
-        }
-
-        const result = await response.json() as {
-            candidates?: [{
-                content?: {
-                    parts?: Array<{
-                        text?: string;
-                        inlineData?: { mimeType: string; data: string };
-                    }>;
-                };
-            }];
-        };
-
-        // Find the image part in the response
-        const parts = result.candidates?.[0]?.content?.parts || [];
-        const imagePart = parts.find(p => p.inlineData);
-
-        if (!imagePart?.inlineData) {
-            logError('No image data in Gemini response, parts count:', parts.length);
-            return null;
-        }
-
-        // Decode base64 to ArrayBuffer
-        const binaryStr = atob(imagePart.inlineData.data);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-        }
-
-        logInfo('Image generated successfully, size:', bytes.length);
-        return { data: bytes.buffer, mimeType: imagePart.inlineData.mimeType };
+    try {
+        const image = await generateGeminiImage(env, [{ text: `Generate an image: ${promptStr}` }]);
+        logInfo('Image generated successfully, size:', image.data.length);
+        return { data: image.data.buffer, mimeType: image.mimeType };
     } catch (error) {
-        logError('Image generation error:', error instanceof Error ? error.message : String(error));
+        if (error instanceof GeminiImageError) {
+            logError('Image generation failed:', error.status, error.detail.substring(0, 200));
+        } else {
+            logError('Image generation error:', error instanceof Error ? error.message : String(error));
+        }
         return null;
     }
 }

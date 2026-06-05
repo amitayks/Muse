@@ -17,18 +17,23 @@ export async function createImageDraft(
     data: {
         prompt: string;
         source_image_key?: string | null;
+        source_image_keys?: string[] | null;
         result_image_key?: string | null;
     },
 ): Promise<string> {
     const id = generateId();
+    const keys = data.source_image_keys && data.source_image_keys.length > 0 ? data.source_image_keys : null;
+    // Retain the first key in the legacy single-value column for back-compat.
+    const firstKey = keys ? keys[0] : (data.source_image_key || null);
     await env.DB.prepare(
-        `INSERT INTO image_drafts (id, chat_id, prompt, source_image_key, result_image_key)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO image_drafts (id, chat_id, prompt, source_image_key, source_image_keys, result_image_key)
+         VALUES (?, ?, ?, ?, ?, ?)`,
     )
         .bind(
             id, chatId,
             data.prompt,
-            data.source_image_key || null,
+            firstKey,
+            keys ? JSON.stringify(keys) : null,
             data.result_image_key || null,
         )
         .run();

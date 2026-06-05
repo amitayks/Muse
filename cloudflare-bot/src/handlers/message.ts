@@ -130,7 +130,7 @@ export async function handleMessage(env: Env, message: TelegramMessage, isEdit =
                 // Fall through to handle the command
             } else {
                 await imageComposeInput({
-                    env, chatId, text, context, lang,
+                    env, chatId, text, context, lang, isEdit,
                     message: {
                         message_id: message.message_id,
                         photo: message.photo,

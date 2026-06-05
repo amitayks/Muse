@@ -8,25 +8,44 @@ import { t } from '../ui/strings';
 import { homeButton, backButton } from '../ui/components';
 import { escapeHtml } from '../ui/utils';
 
+/** Max prompt segments to list before collapsing into a "+N more" line. */
+const SEGMENT_DISPLAY_CAP = 8;
+/** Max characters shown per segment preview. */
+const SEGMENT_PREVIEW_LEN = 40;
+
 export function renderImageCompose(state: ImageComposeState, lang: Lang = 'en'): ViewResult {
-    const promptVal = state.prompt
-        ? escapeHtml(state.prompt.length > 80 ? state.prompt.substring(0, 77) + '...' : state.prompt)
-        : '—';
-    const imageVal = state.imageKey ? '✅' : '—';
+    // Tolerate legacy single-slot state (prompt/imageKey) by normalizing for display.
+    const segments = state.segments ?? (state.prompt ? [{ messageId: 0, text: state.prompt }] : []);
+    const images = state.images ?? (state.imageKey ? [{ messageId: 0, key: state.imageKey }] : []);
 
-    const text = `${t(lang, 'imgcreate.composeTitle')}
+    const lines: string[] = [t(lang, 'imgcreate.composeTitle'), ''];
 
-<b>${t(lang, 'imgcreate.labelPrompt')}:</b> ${promptVal}
-<b>${t(lang, 'imgcreate.labelImage')}:</b> ${imageVal}
+    if (segments.length === 0) {
+        lines.push(`<b>${t(lang, 'imgcreate.labelPrompt')}:</b> —`);
+    } else {
+        const combinedLen = segments.map(s => s.text).join(' ').length;
+        lines.push(
+            `<b>${t(lang, 'imgcreate.labelPrompt')}</b> — ${segments.length} ${t(lang, 'imgcreate.messagesWord')} (${combinedLen} ${t(lang, 'imgcreate.charsWord')}):`,
+        );
+        segments.slice(0, SEGMENT_DISPLAY_CAP).forEach((s, i) => {
+            const flat = s.text.replace(/\s+/g, ' ').trim();
+            const preview = flat.length > SEGMENT_PREVIEW_LEN ? flat.substring(0, SEGMENT_PREVIEW_LEN - 1) + '…' : flat;
+            lines.push(`  ${i + 1}. ${escapeHtml(preview)}`);
+        });
+        if (segments.length > SEGMENT_DISPLAY_CAP) {
+            lines.push(`  (+${segments.length - SEGMENT_DISPLAY_CAP} ${t(lang, 'imgcreate.moreWord')})`);
+        }
+    }
 
-${t(lang, 'imgcreate.instructions')}`;
+    lines.push(`<b>${t(lang, 'imgcreate.imagesLabel')}:</b> ${images.length > 0 ? images.length : '—'}`);
+    lines.push('', t(lang, 'imgcreate.instructions'));
 
     const actionRow: InlineButton[] = [
         { text: t(lang, 'common.cancel'), callback_data: 'imgcreate:cancel', style: 'danger' },
         { text: t(lang, 'imgcreate.btnPenDown'), callback_data: 'imgcreate:pendown', style: 'success' },
     ];
 
-    return { text, keyboard: [actionRow] };
+    return { text: lines.join('\n'), keyboard: [actionRow] };
 }
 
 export function renderImageDraftCaption(prompt: string, lang: Lang = 'en'): string {

@@ -533,6 +533,7 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
                     chat_id TEXT NOT NULL,
                     prompt TEXT NOT NULL,
                     source_image_key TEXT,
+                    source_image_keys TEXT,
                     result_image_key TEXT,
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -542,6 +543,15 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('Ensured image_drafts table exists');
         } catch (imageDraftsError) {
             logInfo('image_drafts migration note:', String(imageDraftsError));
+        }
+
+        // Migration: Add source_image_keys to image_drafts for multi-image support (018)
+        try {
+            await env.DB.prepare(`ALTER TABLE image_drafts ADD COLUMN source_image_keys TEXT;`).run();
+            logInfo('Added image_drafts.source_image_keys column');
+        } catch (sourceImageKeysError) {
+            // Column already exists — safe to ignore on re-run
+            logInfo('image_drafts.source_image_keys migration note:', String(sourceImageKeysError));
         }
 
         return secureJsonResponse({ success: true, message: 'Database migrated' });

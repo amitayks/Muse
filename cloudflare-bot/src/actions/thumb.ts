@@ -16,9 +16,7 @@ import { getPrompt } from '../ai/prompts';
 import { logInfo, logError } from '../infra/security';
 import { renderThumbCompose, renderThumbDraftCaption, renderThumbDraftButtons, renderThumbDeleteConfirm } from '../views/thumb';
 import { homeButton, backButton } from '../ui/components';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+import { generateGeminiImage, GeminiImageError, type GeminiImageResult } from '../ai/gemini';
 
 /**
  * Enter thumbnail compose mode: sends initial status message, sets state
@@ -189,64 +187,30 @@ async function handleThumbPenDown(
         // Telegram often returns application/octet-stream for photos — fix to image/jpeg
         if (mimeType === 'application/octet-stream') mimeType = 'image/jpeg';
 
-        // 4. Call Gemini image model with prompt + image
+        // 4. Generate via the resilient shared helper (retry + 4K→2K fallback + final-image extraction)
         logInfo('Generating thumbnail, prompt length:', finalPrompt.length);
-        const url = `${GEMINI_API}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: finalPrompt },
-                        { inline_data: { mime_type: mimeType, data: base64 } },
-                    ],
-                }],
-                generationConfig: {
-                    responseModalities: ['IMAGE', 'TEXT'],
-                    imageConfig: { imageSize: '4K' },
-                },
-            }),
-        });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            logError('Gemini thumbnail generation failed:', response.status, errText.substring(0, 500));
-            const detail = errText.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            await sendMessage(env, chatId, `${t(lang, 'thumb.generationFailed')}\n\n<code>${response.status}: ${detail}</code>`, [[homeButton(lang)]]);
+        let image: GeminiImageResult;
+        try {
+            image = await generateGeminiImage(env, [
+                { text: finalPrompt },
+                { inline_data: { mime_type: mimeType, data: base64 } },
+            ]);
+        } catch (genErr) {
+            const status = genErr instanceof GeminiImageError ? genErr.status : undefined;
+            const rawDetail = genErr instanceof GeminiImageError
+                ? genErr.detail
+                : (genErr instanceof Error ? genErr.message : String(genErr));
+            logError('Gemini thumbnail generation failed:', status, rawDetail.substring(0, 200));
+            const detail = rawDetail.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const prefix = status ? `${status}: ` : '';
+            await sendMessage(env, chatId, `${t(lang, 'thumb.generationFailed')}\n\n<code>${prefix}${detail}</code>`, [[homeButton(lang)]]);
             return;
         }
 
-        const result = await response.json() as {
-            candidates?: [{
-                content?: {
-                    parts?: Array<{
-                        text?: string;
-                        inlineData?: { mimeType: string; data: string };
-                    }>;
-                };
-            }];
-        };
-
-        const parts = result.candidates?.[0]?.content?.parts || [];
-        const imagePart = parts.find(p => p.inlineData);
-
-        if (!imagePart?.inlineData) {
-            const textParts = parts.filter(p => p.text).map(p => p.text).join(' ');
-            logError('No image data in Gemini thumbnail response. Text parts:', textParts.substring(0, 300));
-            const detail = textParts ? textParts.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'No image in response';
-            await sendMessage(env, chatId, `${t(lang, 'thumb.generationFailed')}\n\n<code>${detail}</code>`, [[homeButton(lang)]]);
-            return;
-        }
-
-        // 5. Decode and store result in R2
+        // 5. Store result in R2
         const thumbId = crypto.randomUUID();
-        const resultBinaryStr = atob(imagePart.inlineData.data);
-        const resultBytes = new Uint8Array(resultBinaryStr.length);
-        for (let i = 0; i < resultBinaryStr.length; i++) {
-            resultBytes[i] = resultBinaryStr.charCodeAt(i);
-        }
-        const resultMime = imagePart.inlineData.mimeType;
+        const resultBytes = image.data;
+        const resultMime = image.mimeType;
         const ext = resultMime.includes('png') ? 'png' : 'jpg';
         const resultKey = `thumbs/${chatId}/${thumbId}/result.${ext}`;
 

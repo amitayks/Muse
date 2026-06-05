@@ -783,12 +783,28 @@ export interface ThumbDraft {
     updated_at: string;
 }
 
+// A single prompt segment in image compose, keyed by the Telegram message it came from
+export interface ImagePromptSegment {
+    messageId: number;
+    text: string;
+}
+
+// A single reference image in image compose, keyed by the Telegram message it came from
+export interface ImageRef {
+    messageId: number;
+    key: string;
+}
+
 // Image create compose mode
 export interface ImageComposeState {
     active: boolean;
+    segments: ImagePromptSegment[];
+    images: ImageRef[];
+    statusMessageId: number;
+    // Legacy single-slot fields — present only on in-flight sessions created before
+    // multi-message support; normalized into segments/images on read.
     prompt?: string;
     imageKey?: string;
-    statusMessageId: number;
 }
 
 // Image draft record from D1
@@ -797,6 +813,7 @@ export interface ImageDraft {
     chat_id: string;
     prompt: string;
     source_image_key: string | null;
+    source_image_keys: string | null; // JSON-encoded array of all reference image R2 keys
     result_image_key: string | null;
     created_at: string;
     updated_at: string;

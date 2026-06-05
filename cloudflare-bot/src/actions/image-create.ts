@@ -15,9 +15,7 @@ import { sendMessage, sendPhotoBuffer, sendDocumentBuffer, editMessage, deleteMe
 import { logInfo, logError } from '../infra/security';
 import { renderImageCompose, renderImageDraftCaption, renderImageDraftButtons, renderImageDeleteConfirm } from '../views/image-create';
 import { homeButton } from '../ui/components';
-
-const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+import { generateGeminiImage, GeminiImageError, type GeminiImageResult } from '../ai/gemini';
 
 /**
  * Enter image create compose mode: sends initial status message, sets state
@@ -25,6 +23,8 @@ const GEMINI_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 export async function enterImageCompose(env: Env, chatId: string, lang: Lang): Promise<void> {
     const state: ImageComposeState = {
         active: true,
+        segments: [],
+        images: [],
         statusMessageId: 0,
     };
 
@@ -89,9 +89,22 @@ export async function imageCreateAction(
             const imageId = extra || '';
             const draft = await getImageDraft(env, imageId, chatId);
             if (draft) {
-                // Clean up R2 images
-                if (draft.source_image_key) {
-                    try { await env.IMAGES.delete(draft.source_image_key); } catch { /* ignore */ }
+                // Clean up R2 images — every source image plus the result.
+                // Prefer the multi-image JSON column; fall back to the legacy single key.
+                const sourceKeys: string[] = [];
+                if (draft.source_image_keys) {
+                    try {
+                        const parsed = JSON.parse(draft.source_image_keys);
+                        if (Array.isArray(parsed)) {
+                            sourceKeys.push(...parsed.filter((k): k is string => typeof k === 'string'));
+                        }
+                    } catch { /* malformed JSON — fall through to legacy key */ }
+                }
+                if (sourceKeys.length === 0 && draft.source_image_key) {
+                    sourceKeys.push(draft.source_image_key);
+                }
+                for (const key of sourceKeys) {
+                    try { await env.IMAGES.delete(key); } catch { /* ignore */ }
                 }
                 if (draft.result_image_key) {
                     try { await env.IMAGES.delete(draft.result_image_key); } catch { /* ignore */ }
@@ -124,93 +137,54 @@ async function handleImagePenDown(
     lang: Lang,
     callbackId?: string,
 ): Promise<void> {
-    // Validate prompt is set
-    if (!ic.prompt) {
+    // Normalize state (tolerate legacy single-slot shape) and validate at least one segment exists
+    const segments = ic.segments ?? (ic.prompt ? [{ messageId: 0, text: ic.prompt }] : []);
+    const images = ic.images ?? (ic.imageKey ? [{ messageId: 0, key: ic.imageKey }] : []);
+    if (segments.length === 0) {
         if (callbackId) {
             await answerCallback(env, callbackId, t(lang, 'imgcreate.missingPrompt'));
         }
         return;
     }
 
+    // Combine all segments into a single prompt (single-space join, in order received)
+    const combinedPrompt = segments.map(s => s.text).join(' ');
+    const sourceKeys = images.map(img => img.key);
+
     // Send a "generating" message
     const generatingMsgId = await sendMessage(env, chatId, t(lang, 'imgcreate.generating'), []);
 
     try {
-        // Build Gemini request parts
+        // Build Gemini request parts: combined text first, then one inline_data per reference image
         const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
-            { text: ic.prompt },
+            { text: combinedPrompt },
         ];
-
-        // If reference image exists, add it
-        if (ic.imageKey) {
-            const imageObj = await env.IMAGES.get(ic.imageKey);
-            if (imageObj) {
-                const buffer = await imageObj.arrayBuffer();
-                const bytes = new Uint8Array(buffer);
-                let binary = '';
-                for (let i = 0; i < bytes.length; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                const base64 = btoa(binary);
-                let mimeType = imageObj.httpMetadata?.contentType || 'image/jpeg';
-                if (mimeType === 'application/octet-stream') mimeType = 'image/jpeg';
-                parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
-            }
+        for (const img of images) {
+            const part = await encodeImagePart(env, img.key);
+            if (part) parts.push(part);
         }
 
-        // Call Gemini image model
-        logInfo('Generating image, prompt length:', ic.prompt.length);
-        const url = `${GEMINI_API}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${env.GOOGLE_API_KEY}`;
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts }],
-                generationConfig: {
-                    responseModalities: ['IMAGE', 'TEXT'],
-                    imageConfig: { imageSize: '4K' },
-                },
-            }),
-        });
-
-        if (!response.ok) {
-            const errText = await response.text();
-            logError('Gemini image generation failed:', response.status, errText.substring(0, 500));
-            const detail = errText.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            await sendMessage(env, chatId, `${t(lang, 'imgcreate.generationFailed')}\n\n<code>${response.status}: ${detail}</code>`, [[homeButton(lang)]]);
+        // Generate via the resilient shared helper (retry + 4K→2K fallback + final-image extraction)
+        logInfo('Generating image, prompt length:', combinedPrompt.length, 'images:', images.length);
+        let image: GeminiImageResult;
+        try {
+            image = await generateGeminiImage(env, parts);
+        } catch (genErr) {
+            const status = genErr instanceof GeminiImageError ? genErr.status : undefined;
+            const rawDetail = genErr instanceof GeminiImageError
+                ? genErr.detail
+                : (genErr instanceof Error ? genErr.message : String(genErr));
+            logError('Gemini image generation failed:', status, rawDetail.substring(0, 200));
+            const detail = rawDetail.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const prefix = status ? `${status}: ` : '';
+            await sendMessage(env, chatId, `${t(lang, 'imgcreate.generationFailed')}\n\n<code>${prefix}${detail}</code>`, [[homeButton(lang)]]);
             return;
         }
 
-        const result = await response.json() as {
-            candidates?: [{
-                content?: {
-                    parts?: Array<{
-                        text?: string;
-                        inlineData?: { mimeType: string; data: string };
-                    }>;
-                };
-            }];
-        };
-
-        const resultParts = result.candidates?.[0]?.content?.parts || [];
-        const imagePart = resultParts.find(p => p.inlineData);
-
-        if (!imagePart?.inlineData) {
-            const textParts = resultParts.filter(p => p.text).map(p => p.text).join(' ');
-            logError('No image data in Gemini response. Text parts:', textParts.substring(0, 300));
-            const detail = textParts ? textParts.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'No image in response';
-            await sendMessage(env, chatId, `${t(lang, 'imgcreate.generationFailed')}\n\n<code>${detail}</code>`, [[homeButton(lang)]]);
-            return;
-        }
-
-        // Decode and store result in R2
+        // Store result in R2
         const imageId = crypto.randomUUID();
-        const resultBinaryStr = atob(imagePart.inlineData.data);
-        const resultBytes = new Uint8Array(resultBinaryStr.length);
-        for (let i = 0; i < resultBinaryStr.length; i++) {
-            resultBytes[i] = resultBinaryStr.charCodeAt(i);
-        }
-        const resultMime = imagePart.inlineData.mimeType;
+        const resultBytes = image.data;
+        const resultMime = image.mimeType;
         const ext = resultMime.includes('png') ? 'png' : 'jpg';
         const resultKey = `images/${chatId}/${imageId}/result.${ext}`;
 
@@ -222,8 +196,9 @@ async function handleImagePenDown(
         // Save image draft to D1
         const { createImageDraft } = await import('../data/image-create-db');
         const savedImageId = await createImageDraft(env, chatId, {
-            prompt: ic.prompt,
-            source_image_key: ic.imageKey || null,
+            prompt: combinedPrompt,
+            source_image_key: sourceKeys[0] || null,
+            source_image_keys: sourceKeys,
             result_image_key: resultKey,
         });
 
@@ -231,7 +206,7 @@ async function handleImagePenDown(
         try { await deleteMessage(env, chatId, generatingMsgId); } catch { /* ignore */ }
 
         const filename = `image.${ext}`;
-        const caption = renderImageDraftCaption(ic.prompt, lang);
+        const caption = renderImageDraftCaption(combinedPrompt, lang);
         const keyboard = renderImageDraftButtons(savedImageId, lang);
 
         // Upload bytes directly to Telegram (no URL size limits)
@@ -251,6 +226,27 @@ async function handleImagePenDown(
         const detail = errMsg.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
         await sendMessage(env, chatId, `${t(lang, 'imgcreate.generationFailed')}\n\n<code>${detail}</code>`, [[homeButton(lang)]]);
     }
+}
+
+/**
+ * Encode an R2 image as a Gemini `inline_data` part. Returns null if the object is missing.
+ */
+async function encodeImagePart(
+    env: Env,
+    key: string,
+): Promise<{ inline_data: { mime_type: string; data: string } } | null> {
+    const imageObj = await env.IMAGES.get(key);
+    if (!imageObj) return null;
+    const buffer = await imageObj.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    let mimeType = imageObj.httpMetadata?.contentType || 'image/jpeg';
+    if (mimeType === 'application/octet-stream') mimeType = 'image/jpeg';
+    return { inline_data: { mime_type: mimeType, data: base64 } };
 }
 
 /**

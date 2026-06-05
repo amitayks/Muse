@@ -136,6 +136,8 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             const { renderImageCompose } = await import('../views/image-create');
             const imageState = {
                 active: true as const,
+                segments: [],
+                images: [],
                 statusMessageId: ctx.messageId || 0,
             };
             await updateChatState(env, chatId, {

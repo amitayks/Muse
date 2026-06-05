@@ -3,9 +3,7 @@
 ## Purpose
 
 Manages persisted image-create drafts: an Images category in the drafts view, a paginated list, a detail view showing the generated image as a photo, full-resolution document download, confirmed deletion with R2 cleanup, and the backing `image_drafts` D1 table, migration, and `ImageDraft` type.
-
 ## Requirements
-
 ### Requirement: Image drafts category in drafts view
 The drafts category view SHALL include an "Images" category showing the count of stored image drafts for the user. This category SHALL appear after the "Thumbs" category row.
 
@@ -66,18 +64,24 @@ When the user clicks the "Full Res" button on an image draft detail, the bot SHA
 - **AND** the file is delivered at original quality/resolution
 
 ### Requirement: Delete image draft
-When the user clicks the "Delete" button on an image draft detail, the bot SHALL show a confirmation step before deleting. Upon confirmation, the bot SHALL delete the image draft record from D1 and clean up the associated R2 images (source and result).
+When the user clicks the "Delete" button on an image draft detail, the bot SHALL show a confirmation step before deleting. Upon confirmation, the bot SHALL delete the image draft record from D1 and clean up the associated R2 images: the result image AND **every** source image. Source keys SHALL be read from the `source_image_keys` JSON array; for legacy rows without that column populated, the bot SHALL fall back to the single `source_image_key` column.
 
 #### Scenario: Delete with confirmation
 - **WHEN** the user clicks "Delete" on an image draft
 - **THEN** a confirmation message is shown: "Delete this image?"
 - **AND** buttons [Yes, delete] [Cancel] are displayed
 
-#### Scenario: Confirmed deletion
-- **WHEN** the user confirms deletion
+#### Scenario: Confirmed deletion cleans up all source images
+- **WHEN** the user confirms deletion of a draft generated from three reference images
 - **THEN** the image draft record is deleted from D1
-- **AND** the associated R2 images are deleted
+- **AND** all three source images are deleted from R2
+- **AND** the result image is deleted from R2
 - **AND** the user is navigated back to the image drafts list
+
+#### Scenario: Confirmed deletion of a legacy single-image draft
+- **WHEN** the user confirms deletion of a legacy draft that has only `source_image_key` set (no `source_image_keys`)
+- **THEN** the single source image from `source_image_key` is deleted from R2
+- **AND** the result image is deleted from R2
 
 #### Scenario: Cancelled deletion
 - **WHEN** the user clicks "Cancel" on the delete confirmation
@@ -88,16 +92,21 @@ When the user clicks the "Delete" button on an image draft detail, the bot SHALL
 Each generated image SHALL be stored as a record in the `image_drafts` D1 table with the following fields:
 - `id` — unique identifier (UUID)
 - `chat_id` — owner's Telegram chat ID
-- `prompt` — the full prompt text used for generation
-- `source_image_key` — R2 key of the user's reference image (nullable, since image is optional)
+- `prompt` — the full combined prompt text used for generation (all segments joined with single spaces)
+- `source_image_key` — R2 key of the first reference image, retained for back-compat (nullable, since images are optional)
+- `source_image_keys` — JSON-encoded array of all reference image R2 keys (nullable; `null` or `[]` when no images were used)
 - `result_image_key` — R2 key of the generated result image
 - `created_at` — ISO timestamp (default `datetime('now')`)
 - `updated_at` — ISO timestamp (default `datetime('now')`)
 
 #### Scenario: Draft created after successful generation
 - **WHEN** the Gemini image model returns a generated image
-- **THEN** an `image_drafts` record is created with the prompt and image keys
+- **THEN** an `image_drafts` record is created with the combined prompt, `source_image_keys` set to the JSON array of all reference keys, `source_image_key` set to the first key (or null), and the result key
 - **AND** the result image is stored in R2 at `images/{chatId}/{imageId}/result.{ext}`
+
+#### Scenario: Draft created with no reference images
+- **WHEN** the user generated from prompt text only (no reference images)
+- **THEN** `source_image_keys` is `null` (or an empty array) and `source_image_key` is `null`
 
 #### Scenario: Query image drafts by chat_id
 - **WHEN** the system queries image drafts for a specific user
@@ -105,16 +114,22 @@ Each generated image SHALL be stored as a record in the `image_drafts` D1 table 
 - **AND** results are ordered by `created_at` descending
 
 ### Requirement: Image drafts D1 table migration
-The migration endpoint SHALL create the `image_drafts` table if it does not already exist, with the columns defined above plus an index on `chat_id`.
+The migration endpoint SHALL ensure the `image_drafts` table exists with all columns defined above plus an index on `chat_id`. The migration SHALL additively add the `source_image_keys TEXT` column to existing `image_drafts` tables (D1 has no `ALTER COLUMN`; the column is added via an idempotent `ALTER TABLE ... ADD COLUMN` that is safe to re-run). A numbered migration file SHALL be added under `cloudflare-bot/migrations/` recording this column addition.
 
-#### Scenario: Migration creates table
-- **WHEN** the migration endpoint is called
-- **THEN** the `image_drafts` table is created with columns: `id`, `chat_id`, `prompt`, `source_image_key`, `result_image_key`, `created_at`, `updated_at`
+#### Scenario: Migration creates table with new column
+- **WHEN** the migration endpoint is called against a database without `image_drafts`
+- **THEN** the `image_drafts` table is created with columns: `id`, `chat_id`, `prompt`, `source_image_key`, `source_image_keys`, `result_image_key`, `created_at`, `updated_at`
 - **AND** an index `idx_image_drafts_chat` is created on `chat_id`
 
+#### Scenario: Migration adds column to existing table
+- **WHEN** the migration endpoint is called against a database where `image_drafts` already exists without `source_image_keys`
+- **THEN** the `source_image_keys TEXT` column is added to the table
+- **AND** re-running the migration does not error (the duplicate-column error is caught)
+
 ### Requirement: ImageDraft type definition
-The `types.ts` file SHALL include an `ImageDraft` interface with fields matching the `image_drafts` D1 table: `id`, `chat_id`, `prompt`, `source_image_key`, `result_image_key`, `created_at`, `updated_at`.
+The `types.ts` file SHALL include an `ImageDraft` interface with fields matching the `image_drafts` D1 table: `id`, `chat_id`, `prompt`, `source_image_key`, `source_image_keys`, `result_image_key`, `created_at`, `updated_at`. The `source_image_keys` field SHALL be typed as a nullable string (the JSON-encoded array as stored in D1).
 
 #### Scenario: ImageDraft type used in DB operations
 - **WHEN** the database layer queries `image_drafts`
-- **THEN** results are typed as `ImageDraft`
+- **THEN** results are typed as `ImageDraft` including the `source_image_keys` field
+
