@@ -28,13 +28,14 @@ export function ComposePage() {
   const [showInstruction, setShowInstruction] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const hasContent = tweets.some(tw => tw.text.trim() || tw.media.length > 0);
-  const hasImages = tweets.some(tw => tw.media.length > 0);
+  const hasMedia = tweets.some(tw => tw.media.length > 0);
+  const hasPhotos = tweets.some(tw => tw.media.some(m => m.type === 'photo'));
 
   const composeMutation = useMutation({
     mutationFn: async () => {
       const result = await api.post<{ success: boolean; draftId: string }>('/api/v1/compose', {
         tweets: tweets.map(tw => ({ text: tw.text, media: tw.media })),
-        options: { aiRefine, imageGen: !hasImages && imageGen, instruction: instruction || undefined, langOverride },
+        options: { aiRefine, imageGen: !hasMedia && imageGen, instruction: instruction || undefined, langOverride },
       });
       return result;
     },
@@ -128,17 +129,17 @@ export function ComposePage() {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}><Brain size={14} /> {t('compose.aiRefineToggle')}</span>
             <Toggle checked={aiRefine} onChange={setAiRefine} />
           </div>
-          {!hasImages ? (
+          {!hasMedia ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}><ImagePlus size={14} /> {t('compose.imageGenToggle')}</span>
               <Toggle checked={imageGen} onChange={setImageGen} />
             </div>
-          ) : (
+          ) : hasPhotos ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}><Search size={14} /> {t('compose.analyzeToggle')}</span>
               <Toggle checked={false} onChange={() => {}} />
             </div>
-          )}
+          ) : null}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}><Languages size={14} /> {t('compose.langToggle')}</span>
             <button

@@ -236,10 +236,20 @@ export async function updateDraftContent(
     chatId: string,
     content: string
 ): Promise<boolean> {
+    // Recompute the denormalized has_video flag from the new content so the
+    // Instagram-Reel publish branch and the drafts-list video badge stay consistent
+    // with the actual attached media.
+    let hasVideo = 0;
+    try {
+        const parsed = JSON.parse(content) as { tweets?: Array<{ media?: Array<{ type?: string }> }> };
+        hasVideo = parsed.tweets?.some(t => t.media?.some(m => m.type === 'video')) ? 1 : 0;
+    } catch {
+        hasVideo = 0;
+    }
     const result = await env.DB.prepare(
-        "UPDATE drafts SET content = ?, updated_at = datetime('now') WHERE id = ? AND chat_id = ?"
+        "UPDATE drafts SET content = ?, has_video = ?, updated_at = datetime('now') WHERE id = ? AND chat_id = ?"
     )
-        .bind(content, id, chatId)
+        .bind(content, hasVideo, id, chatId)
         .run();
     return (result.meta?.changes ?? 0) > 0;
 }

@@ -52,6 +52,9 @@ export function DraftEditorPage() {
     queryKey: ['draft', id],
     queryFn: () => api.get<DraftDetailResponse>(`/api/v1/drafts/${id}`),
     enabled: !!id,
+    // Publish runs in the background; while the draft is 'publishing', poll so the editor
+    // reflects the terminal state (published / back to approved) once the pipeline finishes.
+    refetchInterval: (query) => query.state.data?.status === 'publishing' ? 3000 : false,
   });
 
   useEffect(() => {
@@ -148,10 +151,12 @@ export function DraftEditorPage() {
   const publishMutation = useMutation({
     mutationFn: () => api.post(`/api/v1/drafts/${id}/publish`),
     onSuccess: () => {
+      // Publish was kicked off in the background; the draft is now 'publishing'.
+      // Polling (refetchInterval) surfaces the final result once it completes.
       queryClient.invalidateQueries({ queryKey: ['draft', id] });
       queryClient.invalidateQueries({ queryKey: ['drafts'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      showToast('Published!', 'success');
+      showToast(t('editor.publishing'), 'success');
       setConfirmAction(null);
     },
     onError: () => setConfirmAction(null),
@@ -214,7 +219,7 @@ export function DraftEditorPage() {
   // ==================== Render ====================
 
   if (isLoading) return <PageLoading />;
-  if (error || !draft) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error || !draft) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   const hasInstagram = draft.user_profile?.has_instagram ?? false;
 

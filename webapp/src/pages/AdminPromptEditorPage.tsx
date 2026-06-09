@@ -80,7 +80,7 @@ export function AdminPromptEditorPage() {
         ))}
       </select>
 
-      {isLoading ? <PageLoading /> : error ? <ErrorBanner message={t('common.error')} onRetry={() => refetch()} /> : (
+      {isLoading ? <PageLoading /> : error ? <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} /> : (
         <>
           <textarea
             value={currentContent}

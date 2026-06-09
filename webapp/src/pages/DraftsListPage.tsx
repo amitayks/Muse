@@ -106,7 +106,7 @@ export function DraftsListPage() {
   const allDrafts = data?.pages.flatMap(p => p.drafts) ?? [];
 
   if (isLoading) return <PageLoading />;
-  if (error) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   return (
     <div>

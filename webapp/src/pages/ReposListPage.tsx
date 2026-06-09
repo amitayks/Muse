@@ -46,7 +46,7 @@ export function ReposListPage() {
   const repos = data?.repos ?? [];
 
   if (isLoading) return <PageLoading />;
-  if (error) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   return (
     <div>

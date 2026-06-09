@@ -3,7 +3,7 @@
  */
 
 import type { Env, VideoDraft } from '../types';
-import { generateOAuthHeader } from '../integrations/x';
+import { generateOAuthHeader, uploadVideoToX } from '../integrations/x';
 import { logInfo, logError } from '../infra/security';
 import { InstagramPublishError, parseGraphError } from './instagram-publish';
 
@@ -23,129 +23,16 @@ export async function publishVideoToTwitter(
     }
 
     try {
-        // Read video from R2
-        const obj = await env.IMAGES.get(videoDraft.video_url);
-        if (!obj) {
-            logError('Video not found in R2:', videoDraft.video_url);
+        // Upload the video to X via the shared chunked uploader (INIT/APPEND/FINALIZE/STATUS)
+        let mediaId: string;
+        try {
+            mediaId = await uploadVideoToX(env, videoDraft.video_url);
+        } catch (uploadError) {
+            logError('Twitter video upload failed:', uploadError instanceof Error ? uploadError.message : String(uploadError));
             return null;
         }
 
-        const videoData = await obj.arrayBuffer();
-        const totalBytes = videoData.byteLength;
-        const mediaUploadUrl = 'https://upload.twitter.com/1.1/media/upload.json';
-
-        // Step 1: INIT — initialize chunked upload
-        const initBodyParams = {
-            command: 'INIT',
-            total_bytes: String(totalBytes),
-            media_type: 'video/mp4',
-            media_category: 'tweet_video',
-        };
-        const initAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, initBodyParams);
-
-        const initResponse = await fetch(mediaUploadUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': initAuth,
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(initBodyParams),
-        });
-
-        if (!initResponse.ok) {
-            logError('Twitter media INIT failed:', await initResponse.text());
-            return null;
-        }
-
-        const initResult = await initResponse.json() as { media_id_string: string };
-        const mediaId = initResult.media_id_string;
-
-        // Step 2: APPEND — upload chunks (5MB each)
-        const chunkSize = 5 * 1024 * 1024;
-        let segmentIndex = 0;
-
-        for (let offset = 0; offset < totalBytes; offset += chunkSize) {
-            const chunk = videoData.slice(offset, Math.min(offset + chunkSize, totalBytes));
-
-            const appendParams = { command: 'APPEND', media_id: mediaId, segment_index: String(segmentIndex) };
-            const appendAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, appendParams);
-
-            const appendForm = new FormData();
-            appendForm.append('command', 'APPEND');
-            appendForm.append('media_id', mediaId);
-            appendForm.append('segment_index', String(segmentIndex));
-            appendForm.append('media_data', new Blob([chunk]));
-
-            const appendResponse = await fetch(mediaUploadUrl, {
-                method: 'POST',
-                headers: { 'Authorization': appendAuth },
-                body: appendForm,
-            });
-
-            if (!appendResponse.ok) {
-                logError('Twitter media APPEND failed:', await appendResponse.text());
-                return null;
-            }
-
-            segmentIndex++;
-        }
-
-        // Step 3: FINALIZE
-        const finalizeParams = { command: 'FINALIZE', media_id: mediaId };
-        const finalizeAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, finalizeParams);
-
-        const finalizeResponse = await fetch(mediaUploadUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': finalizeAuth,
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(finalizeParams),
-        });
-
-        if (!finalizeResponse.ok) {
-            logError('Twitter media FINALIZE failed:', await finalizeResponse.text());
-            return null;
-        }
-
-        const finalResult = await finalizeResponse.json() as {
-            media_id_string: string;
-            processing_info?: { state: string; check_after_secs?: number };
-        };
-
-        // Wait for processing if needed
-        if (finalResult.processing_info) {
-            let checkCount = 0;
-            const maxChecks = 30;
-            while (checkCount < maxChecks) {
-                const waitMs = (finalResult.processing_info.check_after_secs || 5) * 1000;
-                await new Promise(r => setTimeout(r, Math.min(waitMs, 15000)));
-
-                const statusQueryParams = { command: 'STATUS', media_id: mediaId };
-                const statusAuth = await generateOAuthHeader(env, 'GET', mediaUploadUrl, statusQueryParams);
-
-                const statusResponse = await fetch(`${mediaUploadUrl}?${new URLSearchParams(statusQueryParams)}`, {
-                    method: 'GET',
-                    headers: { 'Authorization': statusAuth },
-                });
-
-                if (!statusResponse.ok) break;
-
-                const statusResult = await statusResponse.json() as {
-                    processing_info?: { state: string; check_after_secs?: number; error?: { message: string } };
-                };
-
-                if (!statusResult.processing_info || statusResult.processing_info.state === 'succeeded') break;
-                if (statusResult.processing_info.state === 'failed') {
-                    logError('Twitter video processing failed:', statusResult.processing_info.error?.message);
-                    return null;
-                }
-
-                checkCount++;
-            }
-        }
-
-        // Step 4: Create tweet with media
+        // Create tweet with media
         const caption = videoDraft.twitter_caption || videoDraft.title || 'New video!';
         const tweetUrl = 'https://api.twitter.com/2/tweets';
         const tweetAuth = await generateOAuthHeader(env, 'POST', tweetUrl, {});

@@ -1,9 +1,7 @@
 ## Purpose
 
 Defines the /api/v1/ HTTP API for the webapp, including Telegram initData authentication, CORS and rate limiting, and endpoints for the dashboard, drafts CRUD and actions, compose/generate/repost, repos, accounts, settings and keys, media upload, and prompts.
-
 ## Requirements
-
 ### Requirement: API route registration under /api/v1/
 The system SHALL register all new webapp API routes under the `/api/v1/` namespace in the existing Cloudflare Worker's `index.ts`, with rate limiting and security headers.
 
@@ -61,7 +59,7 @@ The system SHALL provide full CRUD operations for drafts.
 
 #### Scenario: PUT /api/v1/drafts/:id (update content)
 - **WHEN** a PUT request is made with `{ content: DraftContent }` body
-- **THEN** the draft's content SHALL be updated in D1, and the bot message SHALL be updated via `editMessageText`
+- **THEN** the draft's content SHALL be updated in D1, the draft's `has_video` flag SHALL be recomputed from the content's media, and the bot message SHALL be updated via `editMessageText`
 
 #### Scenario: POST /api/v1/drafts/:id/approve
 - **WHEN** a POST request is made to `/api/v1/drafts/:id/approve`
@@ -69,7 +67,8 @@ The system SHALL provide full CRUD operations for drafts.
 
 #### Scenario: POST /api/v1/drafts/:id/publish
 - **WHEN** a POST request is made to `/api/v1/drafts/:id/publish`
-- **THEN** the system SHALL execute the full publish pipeline (X, Instagram) via the existing `publishDraft()` function and return the results
+- **THEN** the system SHALL set the draft status to "publishing", schedule the full publish pipeline (`publishDraft()`) to run in the background via `waitUntil`, and return immediately with `{ status: "publishing" }` rather than blocking on media upload and platform processing
+- **AND** when the background pipeline completes, the draft status SHALL transition to "published" (on any success) or back to "approved" (on full failure), and the bot message SHALL be synced to reflect the outcome
 
 #### Scenario: POST /api/v1/drafts/:id/schedule
 - **WHEN** a POST request is made with `{ scheduled_at: "ISO8601" }` body
@@ -158,18 +157,26 @@ The system SHALL provide endpoints for reading and updating all user settings.
 - **THEN** all four credentials SHALL be encrypted and stored, and `has_x` SHALL be updated
 
 ### Requirement: Media upload API
-The system SHALL provide an endpoint for uploading images from the webapp.
+The system SHALL provide an endpoint for uploading images and video from the webapp.
 
-#### Scenario: POST /api/v1/media/upload
+#### Scenario: POST /api/v1/media/upload (image)
 - **WHEN** a POST request is made with a multipart form containing an image file
-- **THEN** the image SHALL be stored in R2 with a key like `webapp/{chatId}/{timestamp}/{filename}`, and the response SHALL include `{ key, url }` where url is the `/media/:key` serving URL
+- **THEN** the image SHALL be stored in R2 with a key like `webapp/{chatId}/{timestamp}-{random}.{ext}`, and the response SHALL include `{ key, url }` where url is the `/media/:key` serving URL
 
-#### Scenario: Upload size limit
-- **WHEN** the uploaded file exceeds 10MB
+#### Scenario: POST /api/v1/media/upload (video)
+- **WHEN** a POST request is made with a multipart form containing a `video/mp4` file
+- **THEN** the file SHALL be streamed into R2 (without buffering the entire body in memory) under the same `webapp/{chatId}/...` key format, and the response SHALL include `{ key, url }`
+
+#### Scenario: Image size limit
+- **WHEN** an uploaded image exceeds 10MB
 - **THEN** the system SHALL return HTTP 413 with `{ error: "File too large (max 10MB)" }`
 
+#### Scenario: Video size limit
+- **WHEN** an uploaded video exceeds 50MB
+- **THEN** the system SHALL return HTTP 413 with `{ error: "File too large (max 50MB)" }`
+
 #### Scenario: Invalid file type
-- **WHEN** the uploaded file is not an image (not jpg, png, gif, webp)
+- **WHEN** the uploaded file is neither an allowed image (jpg, png, gif, webp) nor `video/mp4`
 - **THEN** the system SHALL return HTTP 400 with `{ error: "Invalid file type" }`
 
 ### Requirement: Prompts API (migrate existing)
@@ -186,3 +193,4 @@ The system SHALL expose the existing prompt CRUD functionality under `/api/v1/pr
 #### Scenario: DELETE /api/v1/prompts/:type
 - **WHEN** a DELETE request is made
 - **THEN** the custom prompt SHALL be deleted, reverting to default
+

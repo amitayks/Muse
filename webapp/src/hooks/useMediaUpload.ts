@@ -1,13 +1,15 @@
 import { useState, useCallback } from 'react';
 import { api } from '../api/client';
 
-const MAX_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const IMAGE_MAX_SIZE = 10 * 1024 * 1024; // 10MB
+const VIDEO_MAX_SIZE = 50 * 1024 * 1024; // 50MB
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const VIDEO_TYPE = 'video/mp4';
 
 export interface UploadedMedia {
   key: string;
   url: string;
-  type: 'photo';
+  type: 'photo' | 'video';
 }
 
 interface UploadState {
@@ -19,11 +21,16 @@ export function useMediaUpload() {
   const [state, setState] = useState<UploadState>({ uploading: false, error: null });
 
   const validate = useCallback((file: File): string | null => {
-    if (!ALLOWED_TYPES.has(file.type)) {
-      return 'Invalid file type. Allowed: jpg, png, gif, webp';
+    const isVideo = file.type === VIDEO_TYPE;
+    const isImage = ALLOWED_IMAGE_TYPES.has(file.type);
+    if (!isImage && !isVideo) {
+      return 'Invalid file type. Allowed: jpg, png, gif, webp, mp4';
     }
-    if (file.size > MAX_SIZE) {
-      return 'File too large (max 10MB)';
+    if (isVideo && file.size > VIDEO_MAX_SIZE) {
+      return 'Video too large (max 50MB)';
+    }
+    if (isImage && file.size > IMAGE_MAX_SIZE) {
+      return 'Image too large (max 10MB)';
     }
     return null;
   }, []);
@@ -43,7 +50,8 @@ export function useMediaUpload() {
 
       const result = await api.upload<{ key: string; url: string }>('/api/v1/media/upload', formData);
       setState({ uploading: false, error: null });
-      return { key: result.key, url: result.url, type: 'photo' };
+      const type = file.type === VIDEO_TYPE ? 'video' : 'photo';
+      return { key: result.key, url: result.url, type };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       setState({ uploading: false, error: message });

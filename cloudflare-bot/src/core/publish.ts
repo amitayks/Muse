@@ -7,7 +7,7 @@
  */
 
 import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '../types';
-import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia } from '../integrations/x';
+import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia, uploadVideoToX } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
 import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
@@ -149,32 +149,41 @@ async function publishToX(
     let mediaId: string | undefined;
     let perTweetMediaIds: (string[] | null)[] | undefined;
 
-    try {
-        if (hasPerTweetMedia) {
-            // Upload ALL media per tweet (up to 4 for X)
-            perTweetMediaIds = await Promise.all(
-                content.tweets.map(async (tweet) => {
-                    const mediaItems = tweet.media?.filter(m => m.type === 'photo') || [];
-                    if (mediaItems.length === 0) return null;
-                    // X supports max 4 images per tweet — silently truncate
-                    const toUpload = mediaItems.slice(0, 4);
-                    const ids: string[] = [];
-                    for (const media of toUpload) {
-                        try {
-                            const r2Object = await env.IMAGES.get(media.key);
-                            if (!r2Object) continue;
-                            const buffer = await r2Object.arrayBuffer();
-                            const id = await uploadMediaFromBuffer(env, buffer);
-                            ids.push(id);
-                        } catch {
-                            // Skip failed uploads, continue with others
-                        }
+    if (hasPerTweetMedia) {
+        // Per-tweet media: a tweet has EITHER exactly 1 video OR up to 4 photos
+        // (X's exclusivity rule; the editor enforces it, we enforce it defensively here).
+        // Photo uploads are best-effort (skip failures); a VIDEO upload failure throws and
+        // fails X publishing — caught by publishDraft's per-platform try/catch (→ errors.x).
+        perTweetMediaIds = await Promise.all(
+            content.tweets.map(async (tweet) => {
+                const items = tweet.media || [];
+                const video = items.find(m => m.type === 'video');
+                if (video) {
+                    // Video wins: upload exactly one video, ignore any photos on this tweet.
+                    const videoMediaId = await uploadVideoToX(env, video.key);
+                    return [videoMediaId];
+                }
+                // Photos: up to 4 for X — silently truncate the rest, skip individual failures.
+                const photos = items.filter(m => m.type === 'photo').slice(0, 4);
+                if (photos.length === 0) return null;
+                const ids: string[] = [];
+                for (const media of photos) {
+                    try {
+                        const r2Object = await env.IMAGES.get(media.key);
+                        if (!r2Object) continue;
+                        const buffer = await r2Object.arrayBuffer();
+                        const id = await uploadMediaFromBuffer(env, buffer);
+                        ids.push(id);
+                    } catch {
+                        // Skip failed photo uploads, continue with others
                     }
-                    return ids.length > 0 ? ids : null;
-                })
-            );
-        } else {
-            // Draft-level image for auto-generated drafts
+                }
+                return ids.length > 0 ? ids : null;
+            })
+        );
+    } else {
+        // Draft-level image for auto-generated drafts (best-effort — publish without on failure).
+        try {
             if (draft.image_url && draft.image_url.startsWith('drafts/')) {
                 const r2Object = await env.IMAGES.get(draft.image_url);
                 if (r2Object) {
@@ -184,20 +193,20 @@ async function publishToX(
             } else if (draft.image_url) {
                 mediaId = await uploadMedia(env, draft.image_url);
             }
-
             // No forced image generation at publish time — if compose didn't
             // generate an image, we publish without one.
+        } catch {
+            // Continue without image
+            mediaId = undefined;
         }
-    } catch {
-        // Continue without image
-        mediaId = undefined;
-        perTweetMediaIds = undefined;
     }
 
     // Quote tweet for reposts
     if (draft.source === 'repost' && draft.original_tweet_id) {
         const firstTweetText = content.tweets[0]?.text || '';
-        const mediaIds = mediaId ? [mediaId] : undefined;
+        // Prefer media attached to the commentary tweet in the webapp (photos or a video);
+        // fall back to the draft-level image for legacy auto-generated reposts.
+        const mediaIds = perTweetMediaIds?.[0] ?? (mediaId ? [mediaId] : undefined);
         const quoteTweetId = await postQuoteTweet(env, firstTweetText, draft.original_tweet_id, { mediaIds, originalTweetUrl: draft.original_tweet_url || undefined });
         const url = `https://x.com/i/status/${quoteTweetId}`;
         return { tweet_ids: [quoteTweetId], url };

@@ -47,7 +47,7 @@ export function AccountDetailPage() {
   });
 
   if (isLoading) return <PageLoading />;
-  if (error || !account) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error || !account) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   const config = typeof account.config === 'string' ? JSON.parse(account.config) : account.config;
 

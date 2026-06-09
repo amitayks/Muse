@@ -315,6 +315,126 @@ export async function uploadMediaFromBuffer(env: Env, imageBuffer: ArrayBuffer):
 }
 
 /**
+ * Upload a video to X via the chunked media upload flow (INIT → APPEND → FINALIZE → STATUS).
+ * Reads the video object from R2 by key and returns the resulting `media_id`.
+ * Throws on any step failure or a `failed` processing state so callers can record a
+ * per-platform error. Shared by the Video Studio (`publishVideoToTwitter`) and the
+ * per-tweet publish flow (`core/publish.ts`).
+ */
+export async function uploadVideoToX(env: Env, r2Key: string): Promise<string> {
+    const obj = await env.IMAGES.get(r2Key);
+    if (!obj) {
+        throw new Error(`Video not found in R2: ${r2Key}`);
+    }
+
+    const videoData = await obj.arrayBuffer();
+    const totalBytes = videoData.byteLength;
+    const mediaUploadUrl = `${X_UPLOAD_API}/media/upload.json`;
+
+    // Step 1: INIT — initialize chunked upload
+    const initBodyParams = {
+        command: 'INIT',
+        total_bytes: String(totalBytes),
+        media_type: 'video/mp4',
+        media_category: 'tweet_video',
+    };
+    const initAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, initBodyParams);
+    const initResponse = await fetch(mediaUploadUrl, {
+        method: 'POST',
+        headers: { Authorization: initAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(initBodyParams),
+    });
+    if (!initResponse.ok) {
+        throw new Error(`X video INIT failed: ${await initResponse.text()}`);
+    }
+    const initResult = await initResponse.json() as { media_id_string: string };
+    const mediaId = initResult.media_id_string;
+
+    // Step 2: APPEND — upload 5MB chunks
+    const chunkSize = 5 * 1024 * 1024;
+    let segmentIndex = 0;
+    for (let offset = 0; offset < totalBytes; offset += chunkSize) {
+        const chunk = videoData.slice(offset, Math.min(offset + chunkSize, totalBytes));
+        const appendParams = { command: 'APPEND', media_id: mediaId, segment_index: String(segmentIndex) };
+        const appendAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, appendParams);
+
+        const appendForm = new FormData();
+        appendForm.append('command', 'APPEND');
+        appendForm.append('media_id', mediaId);
+        appendForm.append('segment_index', String(segmentIndex));
+        appendForm.append('media_data', new Blob([chunk]));
+
+        const appendResponse = await fetch(mediaUploadUrl, {
+            method: 'POST',
+            headers: { Authorization: appendAuth },
+            body: appendForm,
+        });
+        if (!appendResponse.ok) {
+            throw new Error(`X video APPEND failed: ${await appendResponse.text()}`);
+        }
+        segmentIndex++;
+    }
+
+    // Step 3: FINALIZE
+    const finalizeParams = { command: 'FINALIZE', media_id: mediaId };
+    const finalizeAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, finalizeParams);
+    const finalizeResponse = await fetch(mediaUploadUrl, {
+        method: 'POST',
+        headers: { Authorization: finalizeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(finalizeParams),
+    });
+    if (!finalizeResponse.ok) {
+        throw new Error(`X video FINALIZE failed: ${await finalizeResponse.text()}`);
+    }
+    const finalResult = await finalizeResponse.json() as {
+        media_id_string: string;
+        processing_info?: { state: string; check_after_secs?: number; error?: { message: string } };
+    };
+
+    // Step 4: poll STATUS until the video is processed (X requires this before tweeting)
+    if (finalResult.processing_info) {
+        let state = finalResult.processing_info.state;
+        let checkAfterSecs = finalResult.processing_info.check_after_secs || 5;
+        let checkCount = 0;
+        const maxChecks = 30;
+
+        while (state !== 'succeeded' && checkCount < maxChecks) {
+            if (state === 'failed') {
+                throw new Error(`X video processing failed: ${finalResult.processing_info.error?.message || 'unknown'}`);
+            }
+            await new Promise(r => setTimeout(r, Math.min(checkAfterSecs * 1000, 15000)));
+
+            const statusQueryParams = { command: 'STATUS', media_id: mediaId };
+            const statusAuth = await generateOAuthHeader(env, 'GET', mediaUploadUrl, statusQueryParams);
+            const statusResponse = await fetch(`${mediaUploadUrl}?${new URLSearchParams(statusQueryParams)}`, {
+                method: 'GET',
+                headers: { Authorization: statusAuth },
+            });
+            if (!statusResponse.ok) {
+                throw new Error(`X video STATUS failed: ${await statusResponse.text()}`);
+            }
+            const statusResult = await statusResponse.json() as {
+                processing_info?: { state: string; check_after_secs?: number; error?: { message: string } };
+            };
+            if (!statusResult.processing_info) break; // no processing_info => done
+            state = statusResult.processing_info.state;
+            checkAfterSecs = statusResult.processing_info.check_after_secs || 5;
+            if (state === 'failed') {
+                throw new Error(`X video processing failed: ${statusResult.processing_info.error?.message || 'unknown'}`);
+            }
+            checkCount++;
+        }
+
+        if (state !== 'succeeded') {
+            throw new Error('X video processing timed out');
+        }
+    }
+
+    console.log('Uploaded video to X:', mediaId);
+    return mediaId;
+}
+
+/**
  * Delete a tweet
  */
 export async function deleteTweet(env: Env, tweetId: string): Promise<void> {
@@ -566,12 +686,13 @@ export async function getUserTweets(
     env: Env,
     userId: string,
     sinceId?: string,
-    maxResults = 10
-): Promise<{ tweets: XTweet[]; newestId: string | null; media?: XMedia[]; users?: XUserExpansion[] }> {
+    maxResults = 10,
+    paginationToken?: string
+): Promise<{ tweets: XTweet[]; newestId: string | null; media?: XMedia[]; users?: XUserExpansion[]; nextToken: string | null; referencedTweets: XTweet[] }> {
     const baseUrl = `${X_API_V2}/users/${userId}/tweets`;
     const queryParams: Record<string, string> = {
         'tweet.fields': 'id,text,author_id,conversation_id,in_reply_to_user_id,created_at,referenced_tweets,public_metrics,attachments',
-        'expansions': 'author_id,attachments.media_keys',
+        'expansions': 'author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id',
         'user.fields': 'id,name,username,profile_image_url',
         'media.fields': 'media_key,type,url,preview_image_url',
         'max_results': String(Math.min(Math.max(maxResults, 5), 100)),
@@ -580,6 +701,10 @@ export async function getUserTweets(
 
     if (sinceId) {
         queryParams.since_id = sinceId;
+    }
+
+    if (paginationToken) {
+        queryParams.pagination_token = paginationToken;
     }
 
     const queryString = Object.entries(queryParams)
@@ -597,21 +722,23 @@ export async function getUserTweets(
     if (!response.ok) {
         const error = await response.text();
         console.error(`[x] getUserTweets failed for user ${userId}:`, response.status, error);
-        return { tweets: [], newestId: null };
+        return { tweets: [], newestId: null, nextToken: null, referencedTweets: [] };
     }
 
     const data = await response.json() as {
         data?: XTweet[];
-        includes?: { media?: XMedia[]; users?: XUserExpansion[] };
-        meta?: { newest_id?: string; result_count?: number };
+        includes?: { media?: XMedia[]; users?: XUserExpansion[]; tweets?: XTweet[] };
+        meta?: { newest_id?: string; result_count?: number; next_token?: string };
     };
 
     const tweets = data.data || [];
     const newestId = data.meta?.newest_id || (tweets.length > 0 ? tweets[0].id : null);
     const media = data.includes?.media;
     const users = data.includes?.users;
+    const nextToken = data.meta?.next_token ?? null;
+    const referencedTweets = data.includes?.tweets ?? [];
 
-    return { tweets, newestId, media, users };
+    return { tweets, newestId, media, users, nextToken, referencedTweets };
 }
 
 /**
@@ -662,6 +789,9 @@ export interface ClassifiedTweet {
     text: string;
     kind: TweetKind;
     created_at?: string;
+    refText?: string;
+    refAuthorUsername?: string;
+    refAuthorName?: string;
 }
 
 /**
@@ -715,19 +845,87 @@ function classifyTweet(tweet: XTweet): TweetKind {
 /**
  * Fetch the authenticated user's recent tweets for identity analysis.
  * Uses the user's OAuth credentials from the hydrated env.
- * Returns up to 100 tweets with retweets excluded, classified by type.
+ * Paginates across multiple pages (100 per page) up to `count` tweets,
+ * with retweets excluded, classified by type, and reply/quote references
+ * enriched with the referenced tweet's text and author.
  */
-export async function fetchUserTweets(env: Env): Promise<ClassifiedTweet[]> {
+export async function fetchUserTweets(env: Env, count = 200): Promise<ClassifiedTweet[]> {
     const userId = await getMyUserId(env);
     if (!userId) {
         throw new Error('Could not resolve authenticated user ID');
     }
 
-    const { tweets } = await getUserTweets(env, userId, undefined, 100);
+    const allTweets: XTweet[] = [];
+    const allReferencedTweets: XTweet[] = [];
+    const allUsers: XUserExpansion[] = [];
 
-    return tweets.map(t => ({
-        text: t.text,
-        kind: classifyTweet(t),
-        created_at: t.created_at,
-    }));
+    const pageCap = Math.min(8, Math.ceil(count / 100) + 2);
+    let token: string | undefined = undefined;
+
+    for (let page = 0; page < pageCap; page++) {
+        let result: Awaited<ReturnType<typeof getUserTweets>>;
+        try {
+            result = await getUserTweets(env, userId, undefined, 100, token);
+        } catch (err) {
+            console.error('[x] fetchUserTweets page failed, proceeding with collected tweets:', err);
+            break;
+        }
+
+        allTweets.push(...result.tweets);
+        allReferencedTweets.push(...result.referencedTweets);
+        if (result.users) {
+            allUsers.push(...result.users);
+        }
+
+        if (allTweets.length >= count) break;
+        if (!result.nextToken) break;
+        token = result.nextToken;
+    }
+
+    // Trim to at most `count` tweets.
+    const tweets = allTweets.slice(0, count);
+
+    // Build lookup maps across ALL collected pages.
+    const refTweetById = new Map<string, XTweet>();
+    for (const rt of allReferencedTweets) {
+        refTweetById.set(rt.id, rt);
+    }
+    const userById = new Map<string, XUserExpansion>();
+    for (const u of allUsers) {
+        userById.set(u.id, u);
+    }
+
+    return tweets.map(t => {
+        const kind = classifyTweet(t);
+        const result: ClassifiedTweet = {
+            text: t.text,
+            kind,
+            created_at: t.created_at,
+        };
+
+        let refId: string | undefined;
+        if (kind === 'reply') {
+            refId = t.referenced_tweets?.find(r => r.type === 'replied_to')?.id;
+        } else if (kind === 'quote') {
+            refId = t.referenced_tweets?.find(r => r.type === 'quoted')?.id;
+        }
+
+        if (refId) {
+            const refTweet = refTweetById.get(refId);
+            if (refTweet) {
+                const collapsed = refTweet.text.trim().replace(/\s*\n\s*/g, ' ');
+                result.refText = collapsed.length > 200
+                    ? collapsed.slice(0, 200) + '…'
+                    : collapsed;
+
+                const refAuthor = refTweet.author_id ? userById.get(refTweet.author_id) : undefined;
+                if (refAuthor) {
+                    result.refAuthorUsername = refAuthor.username;
+                    result.refAuthorName = refAuthor.name;
+                }
+            }
+        }
+
+        return result;
+    });
 }

@@ -1,9 +1,7 @@
 ## Purpose
 
 Provides the webapp compose page for creating tweet drafts: a thread builder with character counters, per-tweet image uploads, AI Refine / Image Generation / Analyze Images toggles, an optional AI instruction, a per-session language override (with i18n and API support), and a save-as-draft flow.
-
 ## Requirements
-
 ### Requirement: Tweet compose editor
 The system SHALL provide a compose page for creating new drafts with a rich editing experience, mirroring the bot's handwrite flow but with full editing power.
 
@@ -27,15 +25,24 @@ The system SHALL allow composing multi-tweet threads during compose.
 - **THEN** the tweet SHALL be removed and remaining tweets renumbered
 
 ### Requirement: Image upload during compose
-The system SHALL allow attaching images to each tweet during compose via file picker or drag-and-drop.
+The system SHALL allow attaching images or a single video to each tweet during compose via file picker or drag-and-drop, respecting the photo/video exclusivity rule.
 
 #### Scenario: Attach image during compose
-- **WHEN** the user taps "Add image" or drags an image onto a tweet area
+- **WHEN** the user taps "Add image" or drags an image onto a tweet area (with no video attached)
 - **THEN** the image SHALL be uploaded via `POST /api/v1/media/upload` and a thumbnail preview SHALL appear below the tweet text
+
+#### Scenario: Attach video during compose
+- **WHEN** the user taps "Add video" or drags a `video/mp4` onto a tweet area that has no media yet
+- **THEN** the video SHALL be uploaded via `POST /api/v1/media/upload` and a `<video>` preview SHALL appear below the tweet text
 
 #### Scenario: Multiple images per tweet
 - **WHEN** the user attaches multiple images to a single tweet
 - **THEN** up to 4 images SHALL be allowed, and all SHALL display as thumbnails
+
+#### Scenario: Video exclusivity during compose
+- **WHEN** a tweet has a video attached
+- **THEN** no additional media SHALL be addable to that tweet
+- **AND WHEN** a tweet has photos attached, the video option SHALL NOT be offered
 
 ### Requirement: Compose toggles (AI, Image Gen, Analyze)
 The system SHALL provide toggle switches that mirror the bot's compose toggles.
@@ -45,16 +52,20 @@ The system SHALL provide toggle switches that mirror the bot's compose toggles.
 - **THEN** the composed content SHALL be refined by AI when the user saves the draft (pen-down equivalent)
 
 #### Scenario: Image Generation toggle
-- **WHEN** the user enables "Image Generation" toggle (only visible when no images are attached)
+- **WHEN** the user enables "Image Generation" toggle (only visible when no media is attached)
 - **THEN** the system SHALL generate an AI image prompt from the content when saving
 
 #### Scenario: Analyze Images toggle
-- **WHEN** the user enables "Analyze Images" toggle (only visible when images ARE attached)
+- **WHEN** the user enables "Analyze Images" toggle (only visible when one or more images ARE attached)
 - **THEN** the system SHALL include the attached images in the AI refinement context
 
-#### Scenario: Image Gen hides when images attached
+#### Scenario: Image Gen hides when media attached
 - **WHEN** the user attaches at least one image to any tweet
 - **THEN** the "Image Generation" toggle SHALL be replaced by "Analyze Images" toggle
+
+#### Scenario: Analyze Images not offered for video
+- **WHEN** the only media attached is a video (no images)
+- **THEN** the "Analyze Images" toggle SHALL NOT be shown (video frames are not analyzed), and "Image Generation" SHALL be hidden because media is already attached
 
 ### Requirement: Instruction input for AI
 The system SHALL allow an optional instruction to guide AI refinement.
@@ -142,3 +153,4 @@ The `POST /api/v1/compose` endpoint SHALL accept an optional `langOverride` fiel
 #### Scenario: Repost API with langOverride
 - **WHEN** `POST /api/v1/repost` is called with `options.langOverride: 'he'`
 - **THEN** any AI calls in the repost flow SHALL use `'he'` as the language
+

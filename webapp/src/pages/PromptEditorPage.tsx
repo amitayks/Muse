@@ -63,7 +63,7 @@ export function PromptEditorPage() {
   });
 
   if (isLoading) return <PageLoading />;
-  if (error || !data) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error || !data) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   const activePrompt = data.prompts.find(p => p.type === activeTab);
   const currentContent = editedContent ?? activePrompt?.content ?? '';

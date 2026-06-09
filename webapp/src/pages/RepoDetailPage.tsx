@@ -50,7 +50,7 @@ export function RepoDetailPage() {
   });
 
   if (isLoading) return <PageLoading />;
-  if (error || !repo) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error || !repo) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   const config = typeof repo.config === 'string' ? JSON.parse(repo.config) : repo.config;
 

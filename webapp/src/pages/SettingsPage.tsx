@@ -43,7 +43,7 @@ export function SettingsPage() {
   });
 
   if (isLoading) return <PageLoading />;
-  if (error || !settings) return <ErrorBanner message={t('common.error')} onRetry={() => refetch()} />;
+  if (error || !settings) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
 
   function update(field: string, value: unknown) {
     updateMutation.mutate({ [field]: value });

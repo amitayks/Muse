@@ -1,15 +1,25 @@
 import { useState, useRef, type DragEvent } from 'react';
-import { ImagePlus } from 'lucide-react';
+import { ImagePlus, Video, Clapperboard } from 'lucide-react';
 import { useMediaUpload, type UploadedMedia } from '../hooks/useMediaUpload';
 import { useTranslation } from '../i18n';
 import { Spinner } from './ui';
 
+/** What kind of media this drop zone offers to add. */
+export type MediaAccept = 'image' | 'video' | 'both';
+
+const ACCEPT_ATTR: Record<MediaAccept, string> = {
+  image: 'image/jpeg,image/png,image/gif,image/webp',
+  video: 'video/mp4',
+  both: 'image/jpeg,image/png,image/gif,image/webp,video/mp4',
+};
+
 interface Props {
   onUpload: (media: UploadedMedia) => void;
   disabled?: boolean;
+  accept?: MediaAccept;
 }
 
-export function ImageDropZone({ onUpload, disabled }: Props) {
+export function ImageDropZone({ onUpload, disabled, accept = 'both' }: Props) {
   const { t } = useTranslation();
   const { upload, uploading, error, clearError } = useMediaUpload();
   const [dragOver, setDragOver] = useState(false);
@@ -34,6 +44,9 @@ export function ImageDropZone({ onUpload, disabled }: Props) {
     if (!disabled) setDragOver(true);
   }
 
+  const Icon = accept === 'video' ? Video : accept === 'both' ? Clapperboard : ImagePlus;
+  const label = accept === 'video' ? t('editor.addVideo') : accept === 'both' ? t('editor.addMedia') : t('editor.addImage');
+
   return (
     <div
       onDrop={handleDrop}
@@ -54,7 +67,7 @@ export function ImageDropZone({ onUpload, disabled }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp"
+        accept={ACCEPT_ATTR[accept]}
         style={{ display: 'none' }}
         onChange={e => handleFiles(e.target.files)}
       />
@@ -62,7 +75,7 @@ export function ImageDropZone({ onUpload, disabled }: Props) {
         <Spinner size={20} />
       ) : (
         <span style={{ color: 'var(--hint)', fontSize: 'var(--text-sm)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <ImagePlus size={16} /> {t('editor.addImage')}
+          <Icon size={16} /> {label}
         </span>
       )}
       {error && (

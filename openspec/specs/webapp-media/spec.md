@@ -1,9 +1,7 @@
 ## Purpose
 
 Covers webapp image media handling: uploading images to R2 via the Worker API (file picker or drag-and-drop) with progress and error states, previewing existing and new images as thumbnails, removing images from a draft without deleting the R2 object, the webapp R2 key format, media-serving CORS, and file type and size validation.
-
 ## Requirements
-
 ### Requirement: Image upload from webapp
 The system SHALL allow uploading images from the webapp to R2 storage via the Worker API.
 
@@ -60,16 +58,87 @@ The existing `/media/:key` endpoint SHALL include CORS headers for the webapp do
 - **THEN** the response SHALL include `Access-Control-Allow-Origin: <WEBAPP_URL>` so images can be displayed in the webapp
 
 ### Requirement: Supported file types and size limits
-The system SHALL validate uploaded files for type and size.
+The system SHALL validate uploaded files for type and size, accepting both images and video.
 
 #### Scenario: Allowed image types
 - **WHEN** a file is uploaded
-- **THEN** only image files with MIME types `image/jpeg`, `image/png`, `image/gif`, `image/webp` SHALL be accepted
+- **THEN** image files with MIME types `image/jpeg`, `image/png`, `image/gif`, `image/webp` SHALL be accepted
 
-#### Scenario: File size limit
-- **WHEN** a file exceeding 10MB is uploaded
+#### Scenario: Allowed video type
+- **WHEN** a file is uploaded
+- **THEN** video files with MIME type `video/mp4` SHALL be accepted
+
+#### Scenario: Disallowed types rejected
+- **WHEN** a file with any MIME type other than the allowed image types or `video/mp4` is uploaded
+- **THEN** the upload SHALL be rejected (e.g., "Invalid file type")
+
+#### Scenario: Image size limit
+- **WHEN** an image exceeding 10MB is uploaded
 - **THEN** the upload SHALL be rejected with HTTP 413
+
+#### Scenario: Video size limit
+- **WHEN** a video exceeding 50MB is uploaded
+- **THEN** the upload SHALL be rejected with HTTP 413 (e.g., "File too large (max 50MB)")
 
 #### Scenario: Client-side validation
 - **WHEN** the user selects a file in the webapp
-- **THEN** the webapp SHALL validate type and size BEFORE uploading, showing an immediate error if invalid
+- **THEN** the webapp SHALL validate type and size BEFORE uploading, applying the 10MB limit to images and the 50MB limit to video, showing an immediate error if invalid
+
+### Requirement: Video upload from webapp
+The system SHALL allow uploading an `video/mp4` file from the webapp to R2 storage via the Worker API, using the same `POST /api/v1/media/upload` endpoint and key format as images.
+
+#### Scenario: Upload video via file picker
+- **WHEN** the user selects a `video/mp4` file via the file picker on a tweet
+- **THEN** the webapp SHALL upload the file as multipart form data to `POST /api/v1/media/upload` and receive the R2 key and serving URL
+- **AND** the returned media descriptor SHALL have `type: 'video'`
+
+#### Scenario: Upload video via drag-and-drop
+- **WHEN** the user drags a `video/mp4` file onto a tweet's drop zone
+- **THEN** the webapp SHALL upload the file identically to the file picker flow
+
+#### Scenario: Video upload progress and errors
+- **WHEN** a video upload is in progress
+- **THEN** a progress/loading indicator SHALL be displayed on the media slot
+- **AND** if the upload fails (network error, too large, invalid type) an inline error SHALL be shown and the user SHALL be able to retry
+
+### Requirement: Video preview in media grid
+The system SHALL display a video preview for media items of `type: 'video'` attached to a tweet, distinct from image thumbnails.
+
+#### Scenario: Existing video preview
+- **WHEN** the editor loads a tweet that has an attached video
+- **THEN** the video SHALL be loaded from the `/media/:key` endpoint and rendered in a `<video>` element (with a play affordance), not a broken `<img>`
+
+#### Scenario: Newly uploaded video preview
+- **WHEN** a video upload completes successfully
+- **THEN** the video SHALL immediately appear as a preview in the media area
+
+#### Scenario: Consistent preview sizing
+- **WHEN** a video preview renders in the grid
+- **THEN** it SHALL occupy the same consistent slot size as image thumbnails (e.g., 80x80) with object-fit cover
+
+### Requirement: Photo and video media exclusivity
+The shared media grid SHALL enforce the platform rule that a single tweet contains EITHER up to 4 photos OR exactly 1 video, never both and never more than one video.
+
+#### Scenario: Video locks the slot
+- **WHEN** a tweet already has a video attached
+- **THEN** the grid SHALL NOT offer to add any further media (no second video, no photos) to that tweet
+
+#### Scenario: Photos disable video add
+- **WHEN** a tweet already has one or more photos attached
+- **THEN** the add affordance SHALL allow only more photos (up to 4) and SHALL NOT offer to add a video
+
+#### Scenario: Empty tweet offers both
+- **WHEN** a tweet has no media attached
+- **THEN** the add affordance SHALL allow attaching either a photo or a video
+
+#### Scenario: Removing media frees the slot
+- **WHEN** the user removes the attached video (or all photos) from a tweet
+- **THEN** the tweet SHALL again offer to add either a photo or a video
+
+### Requirement: Video media serving
+The existing `/media/:key` endpoint SHALL serve webapp-uploaded video objects with their stored content type so they play in the webapp `<video>` element.
+
+#### Scenario: Serve uploaded video
+- **WHEN** a `/media/:key` request targets a stored `video/mp4` object
+- **THEN** the response SHALL include `Content-Type: video/mp4` and `Accept-Ranges: bytes`, allowing playback in a browser `<video>` element
+

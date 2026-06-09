@@ -1,9 +1,7 @@
 ## Purpose
 
 Provides a single shared `publishDraft()` pipeline (in `core/publish.ts`) used by all publish flows — callback action, publish-all-approved, cron, and `/approve` — that parses content, prepares media once, publishes independently to X (including quote tweets with 403 URL fallback) and Instagram Post/Story/Reel, collects per-platform results into `draft.publish_results`, and updates draft and `published` records, alongside the supporting `source` field, multi-media-per-tweet handling, refinement of handwritten content, and per-record cron notifications.
-
 ## Requirements
-
 ### Requirement: Shared publish pipeline function
 The system SHALL provide a single `publishDraft(env, chatId, draft)` function in `core/publish.ts` that executes the full multi-platform publish flow: parse content → determine targets → prepare media per platform → publish to each target independently → collect results → update DB status → store publish results on draft.
 
@@ -141,25 +139,42 @@ The `drafts` table SHALL have a `source` column (`TEXT DEFAULT 'auto'`) to disti
 - **THEN** it SHALL return only drafts matching the given source value
 
 ### Requirement: Per-tweet media in publish flow
-The `publishDraft()` function SHALL support multiple media attachments per tweet via the `Tweet.media[]` field, uploading each tweet's media individually to X with a maximum of 4 images per tweet.
+The `publishDraft()` function SHALL support media attachments per tweet via the `Tweet.media[]` field, branching by media type — uploading photos via the simple media upload (max 4 per tweet) and uploading a single video via the chunked X upload — and enforcing the platform rule that a tweet carries EITHER up to 4 photos OR exactly 1 video.
 
 #### Scenario: Publish thread with multiple images per tweet
-- **WHEN** `publishDraft()` processes a thread where a tweet has `media: [{key:'a'}, {key:'b'}, {key:'c'}]`
-- **THEN** all 3 media items SHALL be read from R2 and uploaded to X via `uploadMediaFromBuffer`
+- **WHEN** `publishDraft()` processes a thread where a tweet has `media: [{key:'a',type:'photo'}, {key:'b',type:'photo'}, {key:'c',type:'photo'}]`
+- **THEN** all 3 photos SHALL be read from R2 and uploaded to X via `uploadMediaFromBuffer`
 - **AND** all 3 media IDs SHALL be passed to `postTweet` as `mediaIds: ["id_a", "id_b", "id_c"]`
 
+#### Scenario: Publish tweet with a video
+- **WHEN** `publishDraft()` processes a tweet whose media contains an item with `type: 'video'`
+- **THEN** that video SHALL be uploaded to X via the shared chunked uploader (`uploadVideoToX`), and the resulting single media ID SHALL be attached to that tweet
+
+#### Scenario: Video exclusivity at publish
+- **WHEN** a tweet's `media[]` contains a video alongside photos (an invalid combination)
+- **THEN** the video SHALL take precedence — only the video SHALL be uploaded and attached, and the photos on that tweet SHALL be skipped (the UI prevents this combination, but publish enforces it defensively)
+
 #### Scenario: Tweet with more than 4 images truncates for X
-- **WHEN** a tweet has 6 images in `media[]`
+- **WHEN** a tweet has 6 photos in `media[]`
 - **THEN** only the first 4 SHALL be uploaded and attached for X publishing
 - **AND** the remaining 2 SHALL be silently skipped (no error thrown)
 
 #### Scenario: Thread with mixed media counts
-- **WHEN** a thread has tweet 1 with 3 images, tweet 2 with no images, tweet 3 with 1 image
-- **THEN** tweet 1 SHALL have 3 media IDs attached, tweet 2 SHALL have none, tweet 3 SHALL have 1
+- **WHEN** a thread has tweet 1 with 3 photos, tweet 2 with no media, tweet 3 with 1 video
+- **THEN** tweet 1 SHALL have 3 photo media IDs attached, tweet 2 SHALL have none, tweet 3 SHALL have its single video media ID attached
+
+#### Scenario: Video processing failure on X
+- **WHEN** the chunked video upload to X reports a `failed` processing state (e.g., unsupported encoding)
+- **THEN** X publishing for that draft SHALL fail and be recorded in `publish_results.errors.x`, and the draft SHALL not be marked published on the basis of X (other targets remain independent)
 
 #### Scenario: Fallback to draft-level image for auto drafts
 - **WHEN** `publishDraft()` processes a draft with no per-tweet media but with a draft-level `image_url`
 - **THEN** the existing behavior SHALL apply: the draft-level image is attached to the first tweet only
+
+#### Scenario: Repost quote tweet carries per-tweet media
+- **WHEN** `publishDraft()` publishes a repost draft (`source = 'repost'`) whose commentary tweet has per-tweet media (photos or a video)
+- **THEN** that media SHALL be attached to the quote tweet (X supports media on quote tweets via `postQuoteTweet`), preferring the commentary tweet's `perTweetMediaIds[0]` over the legacy draft-level `image_url`
+- **AND** if the quote tweet falls back to a URL-appended regular tweet on a 403, the media SHALL still be attached
 
 #### Scenario: Instagram collects all images across tweets
 - **WHEN** `publishToIGPost()` processes a thread with multi-image tweets
@@ -324,3 +339,34 @@ When publishing a repost draft as a quote tweet, if the X API returns 403 (quoti
 #### Scenario: Non-403 errors
 - **WHEN** `postQuoteTweet` is called and the X API returns any error other than 403
 - **THEN** the system SHALL throw the error as before
+
+### Requirement: Shared chunked video upload to X
+The system SHALL provide a reusable `uploadVideoToX(env, r2Key)` function (alongside the other X upload helpers in `integrations/x.ts`) that performs the full chunked INIT/APPEND/FINALIZE upload and post-FINALIZE STATUS polling, returning an X `media_id`. The existing `publishVideoToTwitter` (Video Studio) and the per-tweet publish flow SHALL both use this single function rather than duplicating the chunked-upload logic.
+
+#### Scenario: Reusable uploader returns media ID
+- **WHEN** `uploadVideoToX(env, r2Key)` is called with an R2 key of a stored `video/mp4`
+- **THEN** it SHALL read the object from R2, run INIT → APPEND (5MB chunks) → FINALIZE with `media_category: 'tweet_video'`, poll STATUS until `succeeded`, and return the resulting `media_id`
+
+#### Scenario: Video Studio reuses the shared uploader
+- **WHEN** `publishVideoToTwitter` publishes a Video Studio draft
+- **THEN** it SHALL obtain the media ID via `uploadVideoToX` and then create its tweet, preserving its existing externally observable behavior
+
+#### Scenario: Upload failure surfaces to caller
+- **WHEN** any step of the chunked upload fails or STATUS returns `failed`
+- **THEN** `uploadVideoToX` SHALL signal failure to its caller (so the caller can record a per-platform error) rather than silently returning a tweet
+
+### Requirement: has_video recomputed on content update
+When a draft's content is updated (e.g., via the webapp `PUT /api/v1/drafts/:id` save), the system SHALL recompute the draft's `has_video` flag from the new content so downstream consumers (the Instagram-Reel publish branch and the drafts-list video badge) stay consistent with the actual attached media.
+
+#### Scenario: Adding a video sets has_video
+- **WHEN** `updateDraftContent` saves content in which at least one tweet has a media item of `type: 'video'`
+- **THEN** the draft's `has_video` column SHALL be set to `1` in the same update
+
+#### Scenario: Removing the last video clears has_video
+- **WHEN** `updateDraftContent` saves content that no longer contains any `type: 'video'` media
+- **THEN** the draft's `has_video` column SHALL be set to `0`
+
+#### Scenario: Reel branch sees webapp-added video
+- **WHEN** a draft with a webapp-added video targets Instagram Reel and is published
+- **THEN** because `has_video = 1`, the Instagram-Reel branch SHALL run and publish the video as a Reel
+

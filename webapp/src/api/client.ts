@@ -44,10 +44,17 @@ async function request<T>(
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const url = `${BASE_URL}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch {
+    // fetch rejected before any response — network, DNS, or CORS failure
+    throw new ApiError(0, `Network error reaching the API (${url}). Check your connection, or the API URL configuration.`);
+  }
 
   if (response.status === 401) {
     let detail = 'Session expired';
@@ -72,7 +79,23 @@ async function request<T>(
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  // Guard against non-JSON success responses — e.g. an SPA/HTML fallback served when
+  // VITE_API_URL is misconfigured. Surface a clear, actionable error instead of a
+  // cryptic "Unexpected token '<'" JSON parse crash.
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const snippet = (await response.text()).slice(0, 80).replace(/\s+/g, ' ').trim();
+    throw new ApiError(
+      response.status,
+      `Expected JSON from ${path} but received "${contentType || 'unknown'}" (HTTP ${response.status}). The API URL may be misconfigured. Response began: ${snippet}`,
+    );
+  }
+
+  try {
+    return await response.json() as T;
+  } catch {
+    throw new ApiError(response.status, `Invalid JSON received from ${path} (HTTP ${response.status}).`);
+  }
 }
 
 export const api = {

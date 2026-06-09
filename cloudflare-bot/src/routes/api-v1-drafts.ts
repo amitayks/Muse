@@ -206,22 +206,32 @@ async function publishDraftAction(ctx: ApiContext, draftId: string): Promise<Res
         return errorResponse('Can only publish approved or scheduled drafts', 400);
     }
 
-    // Mark as publishing
+    const priorStatus = draft.status; // 'approved' | 'scheduled' — restored on full failure
+
+    // Mark as publishing immediately so the UI reflects the pending state
     await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'publishing');
 
-    // Hydrate env with user keys
-    const { hydrateEnv } = await import('../data/user-keys');
-    const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
+    // Run the (potentially slow — video upload + X processing) publish pipeline in the
+    // background and return right away, instead of blocking the request. publishDraft()
+    // transitions the draft to 'published' on any success; on full failure we restore the
+    // prior status. syncBotMessage then updates the Telegram message to reflect the outcome.
+    ctx.ctx.waitUntil((async () => {
+        try {
+            const { hydrateEnv } = await import('../data/user-keys');
+            const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
+            const result = await publishDraft(userEnv, ctx.chatId, { ...draft, status: 'publishing' });
+            if (!result.success) {
+                await updateDraftStatus(ctx.env, draftId, ctx.chatId, priorStatus);
+            }
+        } catch (err) {
+            console.error('[api] background publish failed:', err instanceof Error ? err.message : String(err));
+            await updateDraftStatus(ctx.env, draftId, ctx.chatId, priorStatus);
+        } finally {
+            await syncBotMessage(ctx.env, ctx.chatId, draftId);
+        }
+    })());
 
-    const result = await publishDraft(userEnv, ctx.chatId, { ...draft, status: 'publishing' });
-
-    ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
-
-    return jsonResponse({
-        success: result.success,
-        results: result.results,
-        url: result.url,
-    });
+    return jsonResponse({ status: 'publishing' });
 }
 
 // ==================== Schedule ====================

@@ -1,9 +1,7 @@
 ## Purpose
 
 Provides the per-draft editing screen where users edit tweet/thread text with live character counters and auto-save, manage thread tweets and per-tweet media, run AI refine instructions, set platform targets and schedule date/time, and approve, publish, or delete the draft while viewing source metadata and per-platform publish results.
-
 ## Requirements
-
 ### Requirement: Inline text editing per tweet
 The system SHALL display each tweet in the thread as an editable textarea with no character limit for input, but a live character counter showing proximity to X's 280-character limit.
 
@@ -47,23 +45,36 @@ The system SHALL allow users to add, remove, and reorder tweets within a thread.
 - **THEN** the tweets SHALL be reordered and renumbered accordingly
 
 ### Requirement: Media management per tweet
-The system SHALL allow users to attach, preview, and remove media (images) for each tweet.
+The system SHALL allow users to attach, preview, and remove media (images and video) for each tweet, respecting the platform rule that a tweet holds EITHER up to 4 photos OR exactly 1 video.
 
 #### Scenario: Attach image via file picker
-- **WHEN** the user taps "Add image" on a tweet
+- **WHEN** the user taps "Add image" on a tweet with no video attached
 - **THEN** a file picker opens allowing selection of image files (jpg, png, gif, webp), and the selected image is uploaded to R2 and attached to the tweet
 
 #### Scenario: Attach image via drag-and-drop
-- **WHEN** the user drags an image file onto a tweet's media area
+- **WHEN** the user drags an image file onto a tweet's media area (with no video attached)
 - **THEN** the image is uploaded to R2 and attached to the tweet
+
+#### Scenario: Attach video via file picker or drag-and-drop
+- **WHEN** the user taps "Add video" (or drags a `video/mp4` file) onto a tweet that has no media yet
+- **THEN** the video is uploaded to R2 and attached to the tweet as a single video media item
 
 #### Scenario: Image preview
 - **WHEN** a tweet has attached images
 - **THEN** thumbnail previews SHALL be displayed below the tweet text, showing up to 4 images per tweet (X's limit)
 
-#### Scenario: Remove image
-- **WHEN** the user taps the "X" button on an image thumbnail
-- **THEN** the image SHALL be removed from the tweet's media list (R2 object is NOT deleted — just unlinked from the tweet)
+#### Scenario: Video preview
+- **WHEN** a tweet has an attached video
+- **THEN** the video SHALL be displayed below the tweet text in a `<video>` preview with a play affordance
+
+#### Scenario: Remove media
+- **WHEN** the user taps the "X" button on an image or video preview
+- **THEN** the media SHALL be removed from the tweet's media list (R2 object is NOT deleted — just unlinked from the tweet)
+
+#### Scenario: Photo/video exclusivity
+- **WHEN** a tweet has a video attached
+- **THEN** no further media (photo or second video) SHALL be addable until the video is removed
+- **AND WHEN** a tweet has one or more photos attached, the video option SHALL NOT be offered (only up to 4 photos)
 
 #### Scenario: Max 4 images per tweet
 - **WHEN** a tweet already has 4 images attached
@@ -135,7 +146,7 @@ The system SHALL provide action buttons based on the draft's current status.
 
 #### Scenario: Publish draft
 - **WHEN** the user taps "Publish" on an approved or scheduled draft
-- **THEN** a confirmation dialog SHALL appear. On confirm, the draft SHALL be published via API (`POST /api/v1/drafts/:id/publish`), a loading state SHALL be shown, and upon completion, the results SHALL display with links to published posts on each platform
+- **THEN** a confirmation dialog SHALL appear. On confirm, the publish SHALL be kicked off via API (`POST /api/v1/drafts/:id/publish`), which returns immediately with a "publishing" state; the editor SHALL show the draft as publishing and SHALL reflect the final per-platform results once the background pipeline completes (via status refresh / bot-message sync), rather than blocking on a long upload
 
 #### Scenario: Delete draft from editor
 - **WHEN** the user taps "Delete" on the draft editor
@@ -162,3 +173,4 @@ The system SHALL display per-platform publish results for published drafts.
 #### Scenario: Published draft is read-only
 - **WHEN** the draft editor opens for a published draft
 - **THEN** the tweet textareas SHALL be read-only (not editable), and action buttons (approve, schedule, delete) SHALL be hidden
+
