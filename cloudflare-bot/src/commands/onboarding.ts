@@ -7,6 +7,7 @@ import type { Env, TelegramUpdate, TelegramCallbackQuery, ViewResult } from '../
 import { sendMessage, deleteMessage, editMessage } from '../integrations/telegram';
 import { encrypt } from '../infra/crypto';
 import { getUser, updateUser, storeEncryptedKey } from '../data/user-db';
+import { getIdentityTweetCount, setIdentityTweetCount } from '../data/db';
 import {
     buildProgressBar,
     renderWelcome,
@@ -45,7 +46,11 @@ async function sendStepView(
     switch (step) {
         case 'x_keys': view = renderXKeysPrompt(lang); break;
         case 'instagram': view = renderInstagramPrompt(lang); break;
-        case 'identity': view = renderIdentityStep(50, lang); break;
+        case 'identity': {
+            const d = await getIdentityTweetCount(env, chatId);
+            view = renderIdentityStep(d, lang);
+            break;
+        }
         case 'gemini_key': view = renderGeminiKeyPrompt(lang); break;
         case 'github_token': view = renderGitHubTokenPrompt(lang); break;
         default: view = renderXKeysPrompt(lang); break;
@@ -182,6 +187,14 @@ export async function handleOnboardingCallback(
         const nextStep = hasX ? 'identity' : 'gemini_key';
         await updateUser(env, chatId, { onboarding_step: nextStep });
         await sendStepView(env, chatId, telegramChatId, messageId, nextStep, lang);
+        return;
+    }
+
+    // ─── Identity: Depth selector ─────────────────────────────────────
+    if (data.startsWith('onboard:identity_depth:')) {
+        const n = parseInt(data.split(':')[2] || '200', 10);
+        if ([100, 200, 400].includes(n)) await setIdentityTweetCount(env, chatId, n);
+        await sendStepView(env, chatId, telegramChatId, messageId, 'identity', lang);
         return;
     }
 

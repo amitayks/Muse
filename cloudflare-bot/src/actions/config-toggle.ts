@@ -2,14 +2,15 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage } from '../data/db';
+import { getRepo, updateRepo, parseRepoConfig, setTimezone, getTimezone, setPageSize, getPageSize, updateChatState, getRepoOverview, getUserLanguage, setUserLanguage, getIdentityTweetCount, setIdentityTweetCount } from '../data/db';
 import { getUser, updateUser } from '../data/user-db';
 import { renderRepoDetail, renderError } from '../views';
-import { renderSettingsGeneral, renderIdentityLangNotification } from '../views/settings';
+import { renderSettingsGeneral, renderIdentityLangNotification, renderSettingsSkills } from '../views/settings';
 import { cancelRow } from '../ui/components';
 import { isValidTimezone } from '../infra/timezone';
 import { isAdmin } from '../infra/security';
 import { getIdentityStatus } from '../ai/identity';
+import { countStalePrompts } from '../ai/prompts';
 import { sendMessage } from '../integrations/telegram';
 
 export async function configToggleAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult | void> {
@@ -26,6 +27,16 @@ export async function configToggleAction(ctx: HandlerContext & { value: string; 
         const tz = await getTimezone(env, chatId);
         const ps = await getPageSize(env, chatId);
         return renderSettingsGeneral(tz, ps, lang);
+    }
+
+    // Handle identity analysis depth configuration: config:identity_depth:N
+    if (setting === 'identity_depth') {
+        const depth = parseInt(extra || '200', 10);
+        if ([100, 200, 400].includes(depth)) await setIdentityTweetCount(env, chatId, depth);
+        const staleCount = await countStalePrompts(env, chatId);
+        const isAdminUser = isAdmin(chatId, env);
+        const d = await getIdentityTweetCount(env, chatId);
+        return renderSettingsSkills(lang, env.WORKER_URL, staleCount, isAdminUser, d);
     }
 
     // Handle language toggle: config:language

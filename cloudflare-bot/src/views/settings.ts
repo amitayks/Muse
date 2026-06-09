@@ -100,7 +100,7 @@ ${t(lang, 'settings.pageSize')} ${t(lang, 'common.arrow')} <code>${pageSize} ${t
 
 // ==================== SKILLS SUB-PAGE ====================
 
-export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount = 0, isAdminUser = false): ViewResult {
+export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount = 0, isAdminUser = false, identityDepth = 200): ViewResult {
     const keyboard: InlineButton[][] = [];
 
     if (workerUrl) {
@@ -115,6 +115,7 @@ export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount 
     }
 
     keyboard.push([{ text: t(lang, 'settings.btnAnalyzeIdentity'), callback_data: 'settings:reanalyze_identity' }]);
+    keyboard.push([{ text: t(lang, 'settings.btnTweetDepth'), callback_data: 'view:identity_depth_select' }]);
     keyboard.push([backButton('view:settings', lang)]);
 
     const text = `${t(lang, 'settings.subSkillsTitle')}
@@ -123,7 +124,10 @@ export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount 
 <i>${t(lang, 'settings.descSystemPrompts')}</i>
 
 🪞 <b>${t(lang, 'settings.btnAnalyzeIdentity')}</b>
-<i>${t(lang, 'settings.descAnalyzeIdentity')}</i>`;
+<i>${t(lang, 'settings.descAnalyzeIdentity')}</i>
+
+${t(lang, 'settings.tweetDepth')} ${t(lang, 'common.arrow')} <code>${identityDepth}</code>
+<i>${t(lang, 'settings.descTweetDepth')}</i>`;
 
     return { text, keyboard };
 }
@@ -254,6 +258,26 @@ export function renderPageSizeSelect(currentSize = 5, lang: Lang = 'en'): ViewRe
 ${t(lang, 'settings.pageSizeDesc')}
 
 ${t(lang, 'settings.pageSizeCurrent')} ${t(lang, 'common.arrow')} <code>${currentSize}</code>`,
+        keyboard: buttons,
+    };
+}
+
+export function renderIdentityDepthSelect(currentDepth = 200, lang: Lang = 'en'): ViewResult {
+    const depths = [100, 200, 400];
+    const buttons: InlineButton[][] = [
+        depths.map(n => ({
+            text: selectedItemLabel(`${n}`, n === currentDepth),
+            callback_data: `config:identity_depth:${n}`,
+        })),
+        [backButton('settings:sub:skills', lang)],
+    ];
+
+    return {
+        text: `${t(lang, 'settings.tweetDepthTitle')}
+
+${t(lang, 'settings.tweetDepthDesc')}
+
+${t(lang, 'settings.tweetDepthCurrent')} ${t(lang, 'common.arrow')} <code>${currentDepth}</code>`,
         keyboard: buttons,
     };
 }

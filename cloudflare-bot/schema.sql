@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS users (
   ai_provider TEXT DEFAULT 'gemini',
   timezone TEXT DEFAULT 'UTC',
   page_size INTEGER DEFAULT 5,
+  -- Identity language notification tracking (comma-separated lang codes)
+  identity_lang_notified TEXT DEFAULT '',
+  -- Identity analysis depth: how many tweets to analyze (100, 200, or 400)
+  identity_tweet_count INTEGER DEFAULT 200,
   video_settings TEXT,
   -- Multi-platform publish defaults
   default_publish_targets TEXT DEFAULT '{"x":true}',

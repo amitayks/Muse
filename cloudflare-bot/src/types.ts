@@ -113,6 +113,9 @@ export interface User {
     // Identity language notification tracking
     identity_lang_notified: string; // comma-separated lang codes, e.g. 'he' or 'en,he'
 
+    // Identity analysis depth: number of tweets to analyze (100, 200, or 400)
+    identity_tweet_count: number;
+
     // Timestamps
     created_at: string;
     last_active_at: string | null;

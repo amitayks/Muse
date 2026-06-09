@@ -79,6 +79,8 @@ My posts come tagged by type. Each type carries different analytical weight:
 
 [QUOTE] — The most psychologically revealing category. It shows what catches my attention, how I frame my reaction to someone else's thinking, and what makes me want to add my voice. Best signal for: values, opinions, emotional triggers, humor style, positioning relative to others. I weight these heavily for emotional and evaluative patterns.
 
+Some replies and quotes arrive enriched with the content they responded to, in the form [REPLY to @user: "..."] or [QUOTE of @user: "..."], where @user is the referenced author and the quoted text is what they originally said. When a line carries this context, I do NOT read my reply or quote text in isolation. I read it as a reaction AGAINST that referenced author and their words — what I agreed with, what I pushed back on, what I extended, what I mocked, what I corrected, what I built upon. My stance only becomes legible against what I was responding to: "yes, exactly" means something entirely different depending on what it follows. I treat the referenced content as the backdrop and my own words as the move I make against it, and I read engagement, agreement, disagreement, deference, and combativeness through that relationship. I still weight quotes heavily for opinions and reactions — and the referenced content makes those reactions far more interpretable.
+
 ---
 
 CALIBRATION PROTOCOL
@@ -181,6 +183,8 @@ export const WHO_AM_I_HE = `אני עומד לקרוא אוסף של הפוסט�
 [REPLY] — הקול השיחתי שלי. איך אני מתקשר כשמישהו אחר קובע את הנושא. האות הטוב ביותר עבור: אוריינטציה חברתית, סגנון מעורבות, שינויי פורמליות, איך אני מתאים את עצמי להקשר.
 
 [QUOTE] — הקטגוריה הכי חושפנית פסיכולוגית. היא מראה מה תופס את תשומת הלב שלי, איך אני ממסגר את התגובה שלי למחשבה של מישהו אחר, ומה גורם לי לרצות להוסיף את הקול שלי. האות הטוב ביותר עבור: ערכים, דעות, טריגרים רגשיים, סגנון הומור, מיצוב ביחס לאחרים. אני נותן לאלה משקל כבד עבור דפוסים רגשיים והערכתיים.
+
+חלק מהתגובות והציטוטים מגיעים מועשרים בתוכן שאליו הגבתי, בצורה [REPLY to @user: "..."] או [QUOTE of @user: "..."], כאשר ‎@user‎ הוא המחבר המקורי והטקסט המצוטט הוא מה שהוא אמר. כששורה נושאת את ההקשר הזה, אני לא קורא את התגובה או הציטוט שלי בבידוד. אני קורא אותם כתגובה כנגד אותו מחבר וכנגד דבריו — עם מה הסכמתי, על מה התווכחתי, מה הרחבתי, ממה לעגתי, מה תיקנתי, ועל מה בניתי. העמדה שלי נעשית מובנת רק מול מה שאליו הגבתי: "כן, בדיוק" אומר משהו שונה לחלוטין תלוי במה שהוא בא אחריו. אני מתייחס לתוכן המצוטט כרקע ולמילים שלי כמהלך שאני עושה כנגדו, וקורא מעורבות, הסכמה, אי-הסכמה, התרפסות ולוחמנות דרך מערכת היחסים הזו. אני עדיין נותן לציטוטים משקל כבד עבור דעות ותגובות — וההקשר המצוטט הופך את התגובות האלה להרבה יותר ניתנות לפענוח.
 
 ---
 

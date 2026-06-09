@@ -249,6 +249,14 @@ export const he: StringsMap = {
         pageSizeDesc: 'בחר כמה פריטים להציג בכל עמוד:',
         pageSizeCurrent: 'נוכחי:',
 
+        // Identity analysis depth
+        btnTweetDepth: '🔍 עומק ניתוח',
+        tweetDepth: '🔍 עומק ניתוח',
+        descTweetDepth: 'כמה פוסטים אחרונים לנתח בעת בניית הזהות שלך.',
+        tweetDepthTitle: '🔍 <b>עומק ניתוח זהות</b>',
+        tweetDepthDesc: 'בחר כמה מהפוסטים האחרונים שלך Muse קורא כדי לבנות את הזהות שלך. יותר פוסטים = ניתוח עשיר יותר, אך זה לוקח קצת יותר זמן.',
+        tweetDepthCurrent: 'נוכחי',
+
         // AI Provider
         aiProvider: 'ספק AI',
         descAiProvider: 'בחר איזה מודל AI יוצר את התוכן שלך.',
@@ -458,6 +466,8 @@ export const he: StringsMap = {
         identityAspectInterests: '• התחומי עניין והפרספקטיבה שלך',
         identityFoundation: 'זה יוצר את מסמך הזהות שלך — הבסיס לכל מה שאכתוב.',
         identityCost: '📊 ~{count} ציוצים מנותחים · קריאת AI אחת',
+        identityDepthLabel: 'כמה פוסטים לנתח?',
+        identityDepthHint: '⏳ בחירה גדולה יותר לוקחת קצת יותר זמן.',
         btnUnderstandMe: '🔍 תבין אותי',
         btnUseDefault: '📝 השתמש בברירת מחדל',
         identityAnalyzing: '🔍 מנתח את הציוצים שלך... זה עשוי לקחת רגע.',

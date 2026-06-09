@@ -5,7 +5,7 @@
  */
 
 import type { ViewResult, InlineButton } from '../types';
-import { homeButton } from '../ui/components';
+import { homeButton, selectedItemLabel } from '../ui/components';
 import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
 
@@ -145,22 +145,35 @@ export function renderInstagramSuccess(lang: Lang = 'en'): ViewResult {
 
 // ─── Identity (Unlock Your Identity) ───────────────────────────────────────
 
-export function renderIdentityStep(tweetCount: number = 50, lang: Lang = 'en'): ViewResult {
+export function renderIdentityStep(currentDepth: number = 200, lang: Lang = 'en'): ViewResult {
+    const textLines = [
+        t(lang, 'onboarding.identityTitle'),
+        '',
+        t(lang, 'onboarding.identityDesc'),
+        t(lang, 'onboarding.identityAspectStyle'),
+        t(lang, 'onboarding.identityAspectVocab'),
+        t(lang, 'onboarding.identityAspectEmotion'),
+        t(lang, 'onboarding.identityAspectInterests'),
+        '',
+        t(lang, 'onboarding.identityFoundation'),
+        '',
+        t(lang, 'onboarding.identityDepthLabel'),
+        t(lang, 'onboarding.identityCost').replace('{count}', String(currentDepth)),
+    ];
+
+    if (currentDepth >= 200) {
+        textLines.push(t(lang, 'onboarding.identityDepthHint'));
+    }
+
+    const depthRow: InlineButton[] = [100, 200, 400].map(n => ({
+        text: selectedItemLabel(String(n), n === currentDepth),
+        callback_data: 'onboard:identity_depth:' + n,
+    }));
+
     return {
-        text: [
-            t(lang, 'onboarding.identityTitle'),
-            '',
-            t(lang, 'onboarding.identityDesc'),
-            t(lang, 'onboarding.identityAspectStyle'),
-            t(lang, 'onboarding.identityAspectVocab'),
-            t(lang, 'onboarding.identityAspectEmotion'),
-            t(lang, 'onboarding.identityAspectInterests'),
-            '',
-            t(lang, 'onboarding.identityFoundation'),
-            '',
-            t(lang, 'onboarding.identityCost').replace('{count}', String(tweetCount)),
-        ].join('\n'),
+        text: textLines.join('\n'),
         keyboard: [
+            depthRow,
             [{ text: t(lang, 'onboarding.btnUnderstandMe'), callback_data: 'onboard:identity_analyze', style: 'primary' }],
             [{ text: t(lang, 'onboarding.btnUseDefault'), callback_data: 'onboard:identity_default' }],
         ],

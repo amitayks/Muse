@@ -47,15 +47,19 @@ After X keys, the onboarding flow SHALL include an Instagram credentials step wh
 - **THEN** the system SHALL show an actionable error explaining which value is wrong (token vs. account ID vs. app secret) and SHALL NOT mark Instagram as connected
 
 ### Requirement: Step 3 — Identity analysis after Instagram step
-When X is connected, the identity analysis step SHALL be shown after the Instagram step. The step SHALL display what the analysis does, list the aspects it examines (writing style, vocabulary, tone, emotional patterns, interests), and show cost transparency indicating the approximate number of tweets and AI calls used. If X was skipped, this step SHALL NOT be shown at all.
+When X is connected, the identity analysis step SHALL be shown after the Instagram step. The step SHALL display what the analysis does, list the aspects it examines (writing style, vocabulary, tone, emotional patterns, interests), present an analysis-depth selector (presets 100 / 200 / 400, default 200; see the `identity-tweet-depth` capability) with the current selection highlighted, and show cost transparency that reflects the **selected** number of posts (not a hardcoded count) along with a hint that larger selections take a bit longer. If X was skipped, this step SHALL NOT be shown at all.
 
 #### Scenario: Identity step shown after X connection
 - **WHEN** X keys are validated and stored, and onboarding advances to `onboarding_step = 'identity'`
-- **THEN** the identity step screen is displayed with analysis description, aspects list, cost transparency line, and buttons for "Analyze" and "Use default"
+- **THEN** the identity step screen is displayed with analysis description, aspects list, a 100/200/400 depth selector with the current depth highlighted, a cost transparency line reflecting the selected depth, and buttons for "Analyze" and "Use default"
+
+#### Scenario: User changes analysis depth on the identity step
+- **WHEN** user taps a depth option (callback `onboard:identity_depth:<N>`) on the identity step
+- **THEN** the system SHALL persist the selected depth to the shared `identity_tweet_count` setting and re-render the identity step with the new depth highlighted and the cost line updated
 
 #### Scenario: User clicks Analyze
 - **WHEN** user clicks the analyze button on the identity step
-- **THEN** the system shows an "Analyzing..." message, runs `analyzeIdentity()`, stores the result as `user_prompts(chatId, 'identity', currentLang)` and upon success displays the identity success screen with a short snippet (first ~200 chars) of the generated identity document, then advances to `onboarding_step = 'gemini_key'`
+- **THEN** the system shows an "Analyzing..." message, runs `analyzeIdentity()` which fetches up to the user's selected depth, stores the result as `user_prompts(chatId, 'identity', currentLang)` and upon success displays the identity success screen with a short snippet (first ~200 chars) of the generated identity document, then advances to `onboarding_step = 'gemini_key'`
 
 #### Scenario: Identity analysis fails
 - **WHEN** `analyzeIdentity()` returns null or throws an error

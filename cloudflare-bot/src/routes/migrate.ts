@@ -554,6 +554,19 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('image_drafts.source_image_keys migration note:', String(sourceImageKeysError));
         }
 
+        // Migration: Add identity_tweet_count column to users table (019)
+        try {
+            const usersInfo7 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasIdentityTweetCount = usersInfo7.results?.some((col: any) => col.name === 'identity_tweet_count');
+
+            if (!hasIdentityTweetCount) {
+                await env.DB.prepare(`ALTER TABLE users ADD COLUMN identity_tweet_count INTEGER DEFAULT 200;`).run();
+                logInfo('Added identity_tweet_count column to users table');
+            }
+        } catch (identityTweetCountError) {
+            logInfo('identity_tweet_count migration note:', String(identityTweetCountError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

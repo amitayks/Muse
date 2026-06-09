@@ -3,9 +3,10 @@ import type { ViewResult } from '../types';
 import { homeButton } from '../ui/components';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
-import { updateChatState, getTimezone, getPageSize, getVideoDraft } from '../data/db';
+import { updateChatState, getTimezone, getPageSize, getVideoDraft, getIdentityTweetCount } from '../data/db';
 import { isAdmin } from '../infra/security';
 import { renderHome, renderHelp, renderDraftCategories, renderDraftsList, renderGeneratePrompt, renderSchedulePrompt, renderDeletePrompt, renderReposList, renderCompose, renderSettings, renderPageSizeSelect, renderTimezoneSelect, renderVideoStudioHome, renderVideoRepoHome, renderVideoList, renderVideoDetail, renderAccountsList, renderAddAccount } from '../views';
+import { renderIdentityDepthSelect } from '../views/settings';
 
 export async function viewChangeAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
     const { env, chatId, value, extra } = ctx;
@@ -93,6 +94,11 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             await updateChatState(env, chatId, { current_view: 'page_size_select', context: null });
             const currentPs = await getPageSize(env, chatId);
             return renderPageSizeSelect(currentPs, lang);
+        }
+        case 'identity_depth_select': {
+            await updateChatState(env, chatId, { current_view: 'identity_depth_select', context: null });
+            const d = await getIdentityTweetCount(env, chatId);
+            return renderIdentityDepthSelect(d, lang);
         }
         case 'timezone_select':
             await updateChatState(env, chatId, { current_view: 'timezone_select', context: null });

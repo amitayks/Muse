@@ -7,7 +7,7 @@ import type { ViewResult, PublishTargets } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { getUser, updateDefaultPublishTargets } from '../data/user-db';
-import { updateChatState, getTimezone, getPageSize } from '../data/db';
+import { updateChatState, getTimezone, getPageSize, getIdentityTweetCount } from '../data/db';
 import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault, getRepoDefaults, setRepoDefault, getAiProvider, setAiProvider } from '../data/user-settings-db';
 import { renderApiKeys, renderSettings, renderSettingsGeneral, renderSettingsSkills, renderSettingsPlatforms, renderSettingsRepost, renderSettingsCommits, renderSettingsRepos } from '../views/settings';
 import { analyzeIdentity } from '../ai/identity';
@@ -199,7 +199,8 @@ async function handleSubPage(
         case 'skills': {
             const staleCount = await countStalePrompts(env, chatId);
             const isAdminUser = isAdmin(chatId, env);
-            return renderSettingsSkills(lang, env.WORKER_URL, staleCount, isAdminUser);
+            const d = await getIdentityTweetCount(env, chatId);
+            return renderSettingsSkills(lang, env.WORKER_URL, staleCount, isAdminUser, d);
         }
         case 'platforms': {
             const user = await getUser(env, chatId);

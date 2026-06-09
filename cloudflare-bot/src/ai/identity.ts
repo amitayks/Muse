@@ -6,6 +6,7 @@ import type { Env } from '../types';
 import type { ClassifiedTweet } from '../integrations/x';
 import { fetchUserTweets, getMyProfile } from '../integrations/x';
 import { updateOwnProfileData } from '../data/user-db';
+import { getIdentityTweetCount } from '../data/db';
 import { getDefaultPromptText, saveUserPrompt } from './prompts';
 import { callLLMText } from './gemini';
 
@@ -19,10 +20,11 @@ import { callLLMText } from './gemini';
  * Returns the generated Identity Document text, or null on failure.
  */
 export async function analyzeIdentity(env: Env, chatId: string, lang: string): Promise<{ document: string; tweetCount: number } | null> {
-    // 1. Fetch tweets
+    // 1. Fetch tweets (depth configured per-user: 100, 200, or 400)
+    const count = await getIdentityTweetCount(env, chatId);
     let tweets: ClassifiedTweet[];
     try {
-        tweets = await fetchUserTweets(env);
+        tweets = await fetchUserTweets(env, count);
     } catch (error) {
         console.error('[identity] Failed to fetch tweets:', error);
         return null;
@@ -50,8 +52,20 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
 
     // 2. Build the user prompt with classified tweets
     const tweetLines = tweets.map((t, i) => {
-        const tag = t.kind === 'quote' ? '[QUOTE]' : t.kind === 'reply' ? '[REPLY]' : '[POST]';
-        return `${i + 1}. ${tag} ${t.text}`;
+        const n = i + 1;
+        let tag: string;
+        if (t.kind === 'reply') {
+            tag = t.refAuthorUsername !== undefined && t.refText !== undefined
+                ? `[REPLY to @${t.refAuthorUsername}: "${t.refText}"]`
+                : '[REPLY]';
+        } else if (t.kind === 'quote') {
+            tag = t.refAuthorUsername !== undefined && t.refText !== undefined
+                ? `[QUOTE of @${t.refAuthorUsername}: "${t.refText}"]`
+                : '[QUOTE]';
+        } else {
+            tag = '[POST]';
+        }
+        return `${n}. ${tag} ${t.text}`;
     }).join('\n');
 
     const userPrompt = `Here are ${tweets.length} of my recent tweets. Analyze them and build my Identity Document.\n\n${tweetLines}`;

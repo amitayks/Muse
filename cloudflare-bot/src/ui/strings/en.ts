@@ -248,6 +248,14 @@ export const en = {
         pageSizeDesc: 'Choose how many items to show per page:',
         pageSizeCurrent: 'Current:',
 
+        // Identity analysis depth
+        btnTweetDepth: '🔍 Analysis Depth',
+        tweetDepth: '🔍 Analysis Depth',
+        descTweetDepth: 'How many recent posts to analyze when building your identity.',
+        tweetDepthTitle: '🔍 <b>Identity Analysis Depth</b>',
+        tweetDepthDesc: 'Choose how many of your recent posts Muse reads to build your identity. More posts = a richer read, but it takes a little longer.',
+        tweetDepthCurrent: 'Current',
+
         // AI Provider
         aiProvider: 'AI Provider',
         descAiProvider: 'Choose which AI model generates your text content.',
@@ -480,6 +488,8 @@ export const en = {
         identityAspectInterests: '• Your interests and perspective',
         identityFoundation: 'This creates your Identity Document — the foundation for everything I write.',
         identityCost: '📊 ~{count} tweets analyzed · 1 AI call',
+        identityDepthLabel: 'How many posts should I analyze?',
+        identityDepthHint: '⏳ Larger selections take a bit longer.',
         btnUnderstandMe: '🔍 Understand Me',
         btnUseDefault: '📝 Use default',
         identityAnalyzing: '🔍 Analyzing your tweets... This may take a moment.',

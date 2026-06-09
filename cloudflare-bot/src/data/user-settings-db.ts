@@ -150,6 +150,38 @@ export async function setPageSize(env: Env, chatId: string, size: number): Promi
         .run();
 }
 
+// ==================== IDENTITY TWEET DEPTH ====================
+
+/**
+ * Get identity analysis depth (number of tweets to analyze) for a chat.
+ * Allowed values: 100, 200, 400. Defaults to 200.
+ * Gracefully handles missing column (pre-migration).
+ */
+export async function getIdentityTweetCount(env: Env, chatId: string): Promise<number> {
+    try {
+        const result = await env.DB.prepare('SELECT identity_tweet_count FROM users WHERE chat_id = ?')
+            .bind(chatId)
+            .first<{ identity_tweet_count: number | null }>();
+        const count = result?.identity_tweet_count;
+        return count === 100 || count === 200 || count === 400 ? count : 200;
+    } catch {
+        return 200;
+    }
+}
+
+/**
+ * Set identity analysis depth for a chat.
+ * Only persists when count is one of the allowed values (100, 200, 400).
+ */
+export async function setIdentityTweetCount(env: Env, chatId: string, count: number): Promise<void> {
+    if (count !== 100 && count !== 200 && count !== 400) return;
+    await env.DB.prepare(
+        "UPDATE users SET identity_tweet_count = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    )
+        .bind(count, chatId)
+        .run();
+}
+
 // ==================== AI PROVIDER ====================
 
 /**
