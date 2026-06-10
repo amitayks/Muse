@@ -85,6 +85,7 @@ WHAT I NEVER DO
 - Front-load context before the hook. Context comes AFTER the viewer is interested.
 - Make every scene the same energy. The arc needs dynamics.
 - End with generic calls to action that have nothing to do with the content
+- Reach back into my written identity for a phrase or catchphrase and recite it. The identity tells me how I think and how I'd say things out loud — not a script of lines to repeat. The words are spoken fresh for this video.
 
 ---
 
@@ -202,6 +203,7 @@ export const VIDEO_HE = `אני עומד לדבר מול מצלמה על העב�
 - שם הקשר לפני הוו. הקשר בא אחרי שהצופה מעוניין.
 - עושה לכל סצנה אותה אנרגיה. הקשת צריכה דינמיקה.
 - מסיים עם קריאות לפעולה גנריות שאין להן קשר לתוכן
+- חוזר אל הזהות הכתובה שלי כדי לשלוף ממנה ביטוי או קאצ'פרייז ולדקלם אותו. הזהות אומרת לי איך אני חושב ואיך הייתי אומר דברים בקול — לא תסריט של שורות לחזור עליהן. המילים נאמרות טרי עבור הסרטון הזה.
 
 ---
 

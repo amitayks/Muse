@@ -14,16 +14,23 @@ import { getDefaultPromptTexts } from '../skills';
 
 // ==================== TYPES & CONSTANTS ====================
 
-export type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen' | 'thumbnail';
+export type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen' | 'voice-protocol' | 'thumbnail';
 
 /** Prompt types that users can customize (identity = their identity doc, editable in webapp) */
 export const USER_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'identity', 'thumbnail'];
 
 /** All prompt types */
-export const ALL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen', 'thumbnail'];
+export const ALL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen', 'voice-protocol', 'thumbnail'];
 
 /** Skills that receive identity injection in assembleSystemInstruction */
 export const IDENTITY_ATTACHED_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'what-i-like', 'image-gen'];
+
+/**
+ * Skills that generate posts in my own voice and therefore receive the voice protocol —
+ * the doctrine for how to USE the injected identity (think from it, don't copy phrases out of it).
+ * Welded to the identity injection: the protocol travels wherever identity travels for these skills.
+ */
+export const VOICE_PROTOCOL_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video'];
 
 export interface UserPromptStatus {
     isCustom: boolean;
@@ -86,6 +93,14 @@ export async function assembleSystemInstruction(
     if (IDENTITY_ATTACHED_SKILLS.includes(type)) {
         const identity = await getPrompt(env, chatId, 'identity', lang);
         parts.push(identity);
+
+        // Voice protocol — paired with identity for voice-generating skills.
+        // Governs HOW to use the identity (think from it, never copy its phrases out verbatim).
+        // Sits right after the identity so its anti-mimicry rules are the freshest thing read.
+        if (VOICE_PROTOCOL_SKILLS.includes(type)) {
+            const voiceProtocol = await getPrompt(env, chatId, 'voice-protocol', lang);
+            if (voiceProtocol) parts.push(voiceProtocol);
+        }
     }
 
     // Optional image-gen attachment
@@ -94,7 +109,7 @@ export async function assembleSystemInstruction(
         parts.push(imageGen);
     }
 
-    return parts.join('\n\n');
+    return parts.filter(Boolean).join('\n\n');
 }
 
 // ==================== USER PROMPT CRUD ====================
@@ -168,8 +183,8 @@ export async function getDefaultPromptVersion(
 
 // ==================== ADMIN PROMPT TYPES ====================
 
-/** Prompt types that admins can edit (all 10 types including identity skeleton) */
-export const ADMIN_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen', 'thumbnail'];
+/** Prompt types that admins can edit (all types including identity skeleton and voice protocol) */
+export const ADMIN_EDITABLE_SKILLS: PromptType[] = ['work-progress', 'refine', 'quote', 'video', 'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen', 'voice-protocol', 'thumbnail'];
 
 // ==================== STALE PROMPT DETECTION ====================
 

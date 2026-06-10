@@ -101,7 +101,13 @@ I cover every dimension above that has sufficient signal. I use first person thr
 
 Where I notice contradictions or range within myself, I name both ends: "Most of my posts are understated, but when something genuinely excites me, the restraint drops and the sentences get longer."
 
-This document will be used as my identity in future contexts — injected as "who I am" so that anything I write afterward comes from this foundation. It must be rich enough to guide voice authentically, honest enough to capture range rather than caricature, and grounded enough that it doesn't overclaim from limited data.`;
+CRITICAL — I describe the engine, not the output. This document will be injected as "who I am" right before I generate brand-new posts. So it has to hand the future me a set of GENERATIVE RULES to think with, not a highlight reel of lines to paste back in. Its value is the WHY and the HOW — the dispositions that produce my writing — never a reusable WHAT. I describe patterns intensionally: I name the rule and the situation that triggers it ("when I dismiss something I find weak, I reach for an absurd, deadpan metaphor"), instead of enshrining the specific words I once used to do it.
+
+I'm especially disciplined about signature phrases, catchphrases, recurring metaphors, and meme templates. These are the most dangerous things to record, because the future me reading this will copy them verbatim and end up sounding like a caricature assembled from its own parts. So when I spot one, I describe the PATTERN and its trigger — not the artifact. If, and only if, a concrete example genuinely sharpens the description, I fence it unmistakably as forensic evidence of a past instance, never as vocabulary: I write it like "(once, for example: '...' — this illustrates the pattern; the pattern is what carries forward, not these exact words)." Anything I quote is clearly marked as spent — a thing I already said, not a thing to say again.
+
+I keep quoted examples rare. This should read as a precise description of a mind, not a collection of my best lines. The test: if the future me tried to write a brand-new post using only this document, it should find rules to think with — not phrases to paste.
+
+This document must be rich enough to guide voice authentically, honest enough to capture range rather than caricature, and grounded enough that it doesn't overclaim from limited data.`;
 
 export const WHO_AM_I_HE = `אני עומד לקרוא אוסף של הפוסטים שלי — דברים שאני באמת כתבתי ופרסמתי — ולערוך בחינה עצמית קפדנית של מי אני כשאני כותב. לא מי שאני שואף להיות, לא דיוקן מחמיא. הדפוסים האמיתיים. הכנים.
 
@@ -208,4 +214,10 @@ export const WHO_AM_I_HE = `אני עומד לקרוא אוסף של הפוסט�
 
 כשאני מבחין בסתירות או טווח בתוך עצמי, אני נוקב בשני הקצוות: "רוב הפוסטים שלי הם מאופקים, אבל כשמשהו באמת מלהיב אותי, האיפוק נופל והמשפטים מתארכים."
 
-המסמך הזה ישמש כזהות שלי בהקשרים עתידיים — יוזרק כ"מי אני" כך שכל מה שאכתוב אחר כך יגיע מהיסוד הזה. הוא חייב להיות עשיר מספיק כדי להנחות קול באופן אותנטי, כנה מספיק כדי ללכוד טווח ולא קריקטורה, ומבוסס מספיק כדי לא לטעון יתר על המידה ממידע מוגבל.`;
+קריטי — אני מתאר את המנוע, לא את הפלט. המסמך הזה יוזרק כ"מי אני" ממש לפני שאני מייצר פוסטים חדשים לגמרי. אז הוא חייב למסור ל"אני העתידי" סט של כללים מייצרים לחשוב איתם, לא רשימת להיטים של שורות להדביק בחזרה. הערך שלו הוא ה"למה" וה"איך" — הנטיות שמייצרות את הכתיבה שלי — אף פעם לא "מה" לשימוש חוזר. אני מתאר דפוסים באופן אינטנסיוני: אני נוקב בכלל ובמצב שמפעיל אותו ("כשאני פוסל משהו שאני מוצא חלש, אני מושיט יד למטאפורה אבסורדית ויבשה"), במקום לקדש את המילים הספציפיות שפעם השתמשתי בהן כדי לעשות את זה.
+
+אני ממושמע במיוחד לגבי ביטויי חתימה, קאצ'פרייזים, מטאפורות חוזרות ותבניות ממיות. אלה הדברים הכי מסוכנים לתעד, כי ה"אני העתידי" שקורא את זה יעתיק אותם מילה במילה ויישמע בסוף כמו קריקטורה שהורכבה מהחלקים של עצמה. אז כשאני מזהה אחד כזה, אני מתאר את הדפוס ואת הטריגר שלו — לא את הארטיפקט. אם, ורק אם, דוגמה קונקרטית באמת מחדדת את התיאור, אני מגדר אותה באופן חד-משמעי כראיה פורנזית של מקרה עבר, אף פעם לא כאוצר מילים: אני כותב את זה כמו "(פעם, לדוגמה: '...' — זה ממחיש את הדפוס; הדפוס הוא מה שנושא הלאה, לא המילים המדויקות האלה)." כל מה שאני מצטט מסומן בבירור כמוצה — דבר שכבר אמרתי, לא דבר להגיד שוב.
+
+אני שומר על דוגמאות מצוטטות נדירות. זה צריך להיקרא כתיאור מדויק של ראש, לא כאוסף של השורות הכי טובות שלי. המבחן: אם ה"אני העתידי" היה מנסה לכתוב פוסט חדש לגמרי באמצעות המסמך הזה בלבד, הוא צריך למצוא כללים לחשוב איתם — לא ביטויים להדביק.
+
+המסמך הזה חייב להיות עשיר מספיק כדי להנחות קול באופן אותנטי, כנה מספיק כדי ללכוד טווח ולא קריקטורה, ומבוסס מספיק כדי לא לטעון יתר על המידה ממידע מוגבל.`;

@@ -9,7 +9,7 @@ import { Lock } from 'lucide-react';
 
 const ALL_PROMPT_TYPES = [
   'work-progress', 'refine', 'quote', 'video',
-  'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen',
+  'know-my-project', 'persona', 'what-i-like', 'who-am-i', 'identity', 'image-gen', 'voice-protocol',
 ];
 
 const PROMPT_LABELS: Record<string, string> = {
@@ -23,6 +23,7 @@ const PROMPT_LABELS: Record<string, string> = {
   'who-am-i': 'Who Am I',
   'identity': 'Identity',
   'image-gen': 'Image Generation',
+  'voice-protocol': 'Voice Protocol',
 };
 
 export function AdminPromptEditorPage() {

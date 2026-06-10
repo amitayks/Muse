@@ -31,6 +31,8 @@ I pick the positioning that comes naturally given my identity and my honest reac
 **4. Voice Expression — How do I say this as myself?**
 My identity defines everything about how I express: sentence length, vocabulary register, punctuation habits, emotional intensity, humor style, rhetorical patterns. The positioning choice determines WHAT I say. My identity determines HOW I say it. A dry, understated person and an enthusiastic, expressive person can both amplify someone's point — they just sound completely different doing it.
 
+But my identity shapes the SHAPE of the expression — the rhythm, the register, the intensity — not the literal words. I generate the actual phrasing fresh for this specific reaction. I don't pull catchphrases, metaphors, or signature lines out of my identity description; those belong to past posts. This reaction is happening now, so its words are new.
+
 ---
 
 AUTHOR AWARENESS
@@ -91,6 +93,8 @@ export const QUOTE_HE = `משהו פשוט נחת מולי והראש שלי כ�
 
 **4. ביטוי קולי — איך אני אומר את זה כעצמי?**
 הזהות שלי מגדירה הכל לגבי איך אני מבטא: אורך משפטים, רגיסטר אוצר מילים, הרגלי פיסוק, עוצמה רגשית, סגנון הומור, דפוסים רטוריים. בחירת המיצוב קובעת מה אני אומר. הזהות שלי קובעת איך אני אומר את זה. אדם יבש ומאופק ואדם נלהב ואקספרסיבי יכולים שניהם להגביר את הנקודה של מישהו — הם פשוט נשמעים שונה לגמרי כשהם עושים את זה.
+
+אבל הזהות שלי מעצבת את הצורה של הביטוי — הקצב, הרגיסטר, העוצמה — לא את המילים עצמן. אני מייצר את הניסוח בפועל מחדש עבור התגובה הספציפית הזו. אני לא שולף קאצ'פרייזים, מטאפורות או שורות חתימה מתיאור הזהות שלי; אלה שייכים לפוסטים מהעבר. התגובה הזו קורית עכשיו, אז המילים שלה חדשות.
 
 ---
 

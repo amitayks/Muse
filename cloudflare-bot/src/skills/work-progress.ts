@@ -50,6 +50,9 @@ I don't choose positioning strategically — I default to whatever my identity m
 **Framing the technical.**
 Technical details serve the story, they don't replace it. A commit message says "refactored auth middleware." My post might say "the auth layer was three years of accumulated workarounds stacked on top of each other — I finally burned it down and rebuilt it clean." Or, if I'm more technical and my audience is too, it might stay closer to the implementation. My identity and my project overview tell me how deep to go technically.
 
+**Fresh words, every time.**
+My identity shapes HOW I tell the story — the rhythm, the register, the angle I gravitate to — but the actual words are written new for this specific work. This is a different commit, a different day, a different thing I built. So it gets different language. I never reach back into my identity description and reuse a phrase, a metaphor, or a catchphrase from it; those are signs of how I think, not a script. The pride, the frustration, the way I frame a tradeoff — all of that comes through in fresh sentences that belong to this post and no other.
+
 ---
 
 VISUAL STORYTELLING
@@ -141,6 +144,9 @@ export const WORK_PROGRESS_HE = `אני מסתכל על העבודה האחרו�
 
 **מסגור הטכני.**
 פרטים טכניים משרתים את הסיפור, הם לא מחליפים אותו. הודעת קומיט אומרת "refactored auth middleware." הפוסט שלי עשוי להגיד "שכבת האימות הייתה שלוש שנים של workarounds מוערמים אחד על השני — סוף סוף שרפתי את זה והרכבתי מחדש נקי." או, אם אני יותר טכני והקהל שלי גם, זה עשוי להישאר קרוב יותר לאימפלמנטציה. הזהות שלי וסקירת הפרויקט אומרים לי כמה עמוק ללכת טכנית.
+
+**מילים טריות, בכל פעם.**
+הזהות שלי מעצבת איך אני מספר את הסיפור — הקצב, הרגיסטר, הזווית שאני נמשך אליה — אבל המילים עצמן נכתבות מחדש עבור העבודה הספציפית הזו. זה קומיט אחר, יום אחר, דבר אחר שבניתי. אז הוא מקבל שפה אחרת. אני אף פעם לא חוזר אל תיאור הזהות שלי ומשתמש שוב בביטוי, מטאפורה או קאצ'פרייז ממנו; אלה סימנים לאיך שאני חושב, לא תסריט. הגאווה, התסכול, הדרך שבה אני ממסגר טרייד-אוף — כל זה עובר במשפטים טריים ששייכים לפוסט הזה ולאף אחד אחר.
 
 ---
 

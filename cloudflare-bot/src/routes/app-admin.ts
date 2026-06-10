@@ -143,6 +143,7 @@ export function handleAdminPromptEditorPage(): Response {
         <option value="who-am-i">/who-am-i — Identity analysis skill</option>
         <option value="identity">/identity — Default identity skeleton</option>
         <option value="image-gen">/image-gen — Visual direction module</option>
+        <option value="voice-protocol">/voice-protocol — How to wield identity (anti-mimicry)</option>
         <option value="thumbnail">/thumbnail — Video thumbnail generation</option>
       </select>
     </div>

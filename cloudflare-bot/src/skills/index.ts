@@ -8,6 +8,7 @@ export { PERSONA_EN, PERSONA_HE } from './persona';
 export { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
 export { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
 export { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
+export { VOICE_PROTOCOL_EN, VOICE_PROTOCOL_HE } from './voice-protocol';
 export { THUMBNAIL_EN } from './thumbnail';
 
 import { WHO_AM_I_EN, WHO_AM_I_HE } from './who-am-i';
@@ -20,9 +21,10 @@ import { PERSONA_EN, PERSONA_HE } from './persona';
 import { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
 import { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
 import { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
+import { VOICE_PROTOCOL_EN, VOICE_PROTOCOL_HE } from './voice-protocol';
 import { THUMBNAIL_EN } from './thumbnail';
 
-type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen' | 'thumbnail';
+type PromptType = 'work-progress' | 'refine' | 'quote' | 'video' | 'know-my-project' | 'persona' | 'what-i-like' | 'who-am-i' | 'identity' | 'image-gen' | 'voice-protocol' | 'thumbnail';
 
 export function getDefaultPromptTexts(): Array<{ type: PromptType; language: string; content: string }> {
     return [
@@ -36,6 +38,7 @@ export function getDefaultPromptTexts(): Array<{ type: PromptType; language: str
         { type: 'what-i-like', language: 'en', content: WHAT_I_LIKE_EN },
         { type: 'image-gen', language: 'en', content: IMAGE_GEN_EN },
         { type: 'identity', language: 'en', content: IDENTITY_DEFAULT_EN },
+        { type: 'voice-protocol', language: 'en', content: VOICE_PROTOCOL_EN },
         { type: 'who-am-i', language: 'he', content: WHO_AM_I_HE },
         { type: 'work-progress', language: 'he', content: WORK_PROGRESS_HE },
         { type: 'refine', language: 'he', content: REFINE_HE },
@@ -46,6 +49,7 @@ export function getDefaultPromptTexts(): Array<{ type: PromptType; language: str
         { type: 'what-i-like', language: 'he', content: WHAT_I_LIKE_HE },
         { type: 'image-gen', language: 'he', content: IMAGE_GEN_HE },
         { type: 'identity', language: 'he', content: IDENTITY_DEFAULT_HE },
+        { type: 'voice-protocol', language: 'he', content: VOICE_PROTOCOL_HE },
         { type: 'thumbnail', language: 'en', content: THUMBNAIL_EN },
     ];
 }
