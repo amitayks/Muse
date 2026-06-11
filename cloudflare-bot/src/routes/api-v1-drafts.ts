@@ -220,7 +220,10 @@ async function publishDraftAction(ctx: ApiContext, draftId: string): Promise<Res
             const { hydrateEnv } = await import('../data/user-keys');
             const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
             const result = await publishDraft(userEnv, ctx.chatId, { ...draft, status: 'publishing' });
-            if (!result.success) {
+            // Don't revert on a deferred X video post: publishDraft left the draft in 'publishing'
+            // and the every-minute cron processor (core/x-pending.ts) will finalize it
+            // (published / errors.x).
+            if (!result.success && !result.deferredX) {
                 await updateDraftStatus(ctx.env, draftId, ctx.chatId, priorStatus);
             }
         } catch (err) {

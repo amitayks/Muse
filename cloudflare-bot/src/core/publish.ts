@@ -7,8 +7,9 @@
  */
 
 import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '../types';
-import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia, uploadVideoToX } from '../integrations/x';
+import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia, uploadVideoToX, XReconnectError } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
+import { enqueuePendingXPost, type PendingXPayload } from '../data/x-pending-db';
 import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
 // Lazy-imported to avoid loading satori/yoga wasm at module evaluation time (breaks CF Workers)
@@ -25,6 +26,20 @@ export interface PublishResult {
     results: PublishResults;
     /** Primary URL for backward compat (X URL or first successful platform URL) */
     url: string;
+    /**
+     * Set when the X target is a video and its tweet-creation was deferred to the every-minute
+     * cron processor (core/x-pending.ts). The draft is left in 'publishing' with a row in
+     * x_pending_posts; the processor finalizes status, creates the published record, and sends
+     * the success/failure notification when the freshly-uploaded video media becomes attachable.
+     * Inline callers should treat this as "X posting…" (not a failure) and MUST NOT revert the
+     * draft status.
+     */
+    deferredX?: boolean;
+}
+
+/** True iff any tweet in the draft carries media of type 'video' (X-video target). */
+export function hasVideoTarget(content: DraftContent): boolean {
+    return content.tweets.some(t => t.media?.some(m => m.type === 'video'));
 }
 
 /**
@@ -42,17 +57,40 @@ export async function publishDraft(
     const results: PublishResults = {};
     let primaryUrl = '';
 
+    // X video posts are deferred: X video media needs ~10–60s after upload before
+    // POST /2/tweets accepts it (see add-x-oauth2-media/design-deferred-video-post.md).
+    // We upload the media inline (fits the budget) but DEFER the tweet-creation to the
+    // every-minute cron processor (core/x-pending.ts). Text/image-only X posts and ALL
+    // Instagram stay inline.
+    const xIsVideo = targets.x && hasVideoTarget(content);
+    let xMedia: ResolvedXMedia | undefined;
+
     // ==================== X (Twitter) Publishing ====================
 
     if (targets.x) {
         try {
-            const xResult = await publishToX(env, chatId, draft, content);
-            results.x = xResult;
-            primaryUrl = xResult.url;
+            // Upload all media up-front (video chunked upload + photos). Always inline —
+            // this fits the ~25s budget; only the tweet-creation step is ever deferred.
+            xMedia = await resolveXMedia(env, draft, content);
+            if (!xIsVideo) {
+                // Text/image X: post inline exactly as before.
+                const xResult = await postResolvedX(env, content, draft, xMedia);
+                results.x = xResult;
+                primaryUrl = xResult.url;
+            }
+            // xIsVideo: media is uploaded; the deferred post is enqueued AFTER the Instagram
+            // branches below so the IG results are available to carry into its payload.
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             console.error('[publish] X publishing failed:', msg);
-            results.errors = { ...results.errors, x: msg };
+            if (error instanceof XReconnectError) {
+                results.errors = { ...results.errors, x: 'needs_x_reconnect' };
+                results.needsXReconnect = true;
+            } else {
+                results.errors = { ...results.errors, x: msg };
+            }
+            // Upload failed → nothing to defer.
+            xMedia = undefined;
         }
     }
 
@@ -106,6 +144,23 @@ export async function publishDraft(
         }
     }
 
+    // ==================== Deferred X video post ====================
+
+    // X target is a video and its media uploaded successfully → enqueue a pending row so the
+    // every-minute cron processor (core/x-pending.ts) posts the tweet once the media becomes
+    // attachable. Instagram (if any) has already published inline above; its results are carried
+    // into the payload so the processor can build the final published record. The draft stays in
+    // 'publishing' until the processor resolves it.
+    if (xIsVideo && xMedia) {
+        results.x_pending = true; // UI badge: "X posting…" while the cron processor retries
+        await updateDraftPublishResults(env, draft.id, chatId, results);
+        await enqueueDeferredXPost(env, chatId, draft, content, xMedia, results);
+        // Leave the draft in 'publishing' (already set by callers); success=true so inline callers
+        // render "X posting…" rather than a failure. The cron processor sends the final
+        // notification and creates the published record on X success.
+        return { success: true, results, url: primaryUrl, deferredX: true };
+    }
+
     // ==================== Status Transition ====================
 
     const anySuccess = !!(results.x || results.instagram_post || results.instagram_story || results.instagram_reel);
@@ -138,12 +193,29 @@ export async function publishDraft(
 
 // ==================== X (Twitter) Branch ====================
 
-async function publishToX(
+/**
+ * Resolved X media ready to attach to POST /2/tweets — the output of the upload step,
+ * separated from the post step so the post can be deferred (for video) while the upload
+ * always runs inline within the publish budget.
+ */
+export interface ResolvedXMedia {
+    /** Per-tweet media id arrays (handwritten drafts). null entries = no media for that tweet. */
+    perTweetMediaIds?: (string[] | null)[];
+    /** Single draft-level media id (legacy auto-generated drafts). */
+    mediaId?: string;
+}
+
+/**
+ * Upload all X media for a draft and return the resolved media ids.
+ * Photo uploads are best-effort (skip failures); a VIDEO upload failure throws.
+ * This is the slow step (video chunked upload + processing poll, ~25s) but it fits the
+ * publish budget — only the subsequent tweet-creation is deferred for video posts.
+ */
+export async function resolveXMedia(
     env: Env,
-    chatId: string,
     draft: Draft,
     content: DraftContent
-): Promise<{ tweet_ids: string[]; url: string }> {
+): Promise<ResolvedXMedia> {
     // Handle media upload
     const hasPerTweetMedia = content.tweets.some(t => t.media?.length);
     let mediaId: string | undefined;
@@ -201,6 +273,22 @@ async function publishToX(
         }
     }
 
+    return { perTweetMediaIds, mediaId };
+}
+
+/**
+ * Post the X thread / quote-tweet using ALREADY-RESOLVED media ids.
+ * Pure tweet-creation — no uploads. Used inline for text/image X posts and by the every-minute
+ * cron processor (core/x-pending.ts) for deferred video posts (the media ids stay valid for hours).
+ */
+export async function postResolvedX(
+    env: Env,
+    content: DraftContent,
+    draft: Pick<Draft, 'source' | 'original_tweet_id' | 'original_tweet_url'>,
+    media: ResolvedXMedia
+): Promise<{ tweet_ids: string[]; url: string }> {
+    const { perTweetMediaIds, mediaId } = media;
+
     // Quote tweet for reposts
     if (draft.source === 'repost' && draft.original_tweet_id) {
         const firstTweetText = content.tweets[0]?.text || '';
@@ -215,6 +303,44 @@ async function publishToX(
     // Regular thread post
     const { tweetIds, url } = await postThread(env, content, mediaId, perTweetMediaIds);
     return { tweet_ids: tweetIds, url };
+}
+
+/**
+ * Enqueue a pending row so the every-minute cron processor (core/x-pending.ts) posts a deferred
+ * X video tweet once the uploaded media becomes attachable. Carries the resolved media ids +
+ * content + quote info + any already-published Instagram results so the processor can build the
+ * final published record. INSERT OR REPLACE on draft_id makes the enqueue idempotent.
+ */
+async function enqueueDeferredXPost(
+    env: Env,
+    chatId: string,
+    draft: Draft,
+    content: DraftContent,
+    media: ResolvedXMedia,
+    igResults: PublishResults
+): Promise<void> {
+    const payload: PendingXPayload = {
+        draftId: draft.id,
+        chatId,
+        prNumber: draft.pr_number,
+        prTitle: draft.pr_title,
+        source: draft.source,
+        originalTweetId: draft.original_tweet_id,
+        originalTweetUrl: draft.original_tweet_url,
+        content,
+        media,
+        // Only the Instagram portion already produced inline (X is not yet posted).
+        igResults: {
+            instagram_post: igResults.instagram_post,
+            instagram_story: igResults.instagram_story,
+            instagram_reel: igResults.instagram_reel,
+            errors: igResults.errors,
+            needsInstagramReconnect: igResults.needsInstagramReconnect,
+        },
+    };
+
+    await enqueuePendingXPost(env, payload);
+    console.log(`[publish] Deferred X video post enqueued for draft ${draft.id}`);
 }
 
 // ==================== Instagram Post Branch ====================

@@ -242,58 +242,21 @@ async function handleXKeysInput(
     chatId: string,
     telegramChatId: number,
     messageId: number,
-    text: string,
+    _text: string,
     lang: Lang
 ): Promise<void> {
-    // Delete the key message immediately
+    // OAuth 1.0a key entry is retired — X connects via OAuth 2.0 in the web app. Ignore any pasted
+    // text and re-show the X step (which now points to the web app); the user taps "Connect X" in
+    // the app, or Skip to continue onboarding. has_x is set by the OAuth callback on success.
     try { await deleteMessage(env, telegramChatId, messageId); } catch { }
 
-    // Retrieve stored step prompt message_id for edit-in-place
     const user = await getUser(env, chatId);
     const stepMessageId = user?.onboarding_message_id ?? undefined;
-
-    // Parse 4 lines
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length !== 4) {
-        const view = renderKeyError('X', `Expected 4 lines (API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET), got ${lines.length}.`, lang);
-        if (stepMessageId) {
-            await editMessage(env, telegramChatId, stepMessageId, view.text, view.keyboard);
-        } else {
-            await sendMessage(env, telegramChatId, view.text, view.keyboard);
-        }
-        return;
-    }
-
-    const [apiKey, apiSecret, accessToken, accessSecret] = lines;
-
-    try {
-        const valid = await verifyXCredentials(apiKey, apiSecret, accessToken, accessSecret);
-        if (!valid.ok) {
-            const view = renderKeyError('X', valid.error || 'Credentials verification failed.', lang);
-            if (stepMessageId) {
-                await editMessage(env, telegramChatId, stepMessageId, view.text, view.keyboard);
-            } else {
-                await sendMessage(env, telegramChatId, view.text, view.keyboard);
-            }
-            return;
-        }
-
-        // Encrypt and store all 4 keys
-        await storeEncryptedKey(env, chatId, 'x_api_key_enc', await encrypt(env, apiKey));
-        await storeEncryptedKey(env, chatId, 'x_api_secret_enc', await encrypt(env, apiSecret));
-        await storeEncryptedKey(env, chatId, 'x_access_token_enc', await encrypt(env, accessToken));
-        await storeEncryptedKey(env, chatId, 'x_access_secret_enc', await encrypt(env, accessSecret));
-        await updateUser(env, chatId, { has_x: 1, onboarding_step: 'instagram' });
-
-        // Edit step prompt in-place to show next step (no separate success message)
-        await sendStepView(env, chatId, telegramChatId, stepMessageId, 'instagram', lang);
-    } catch (error) {
-        const view = renderKeyError('X', 'Could not validate credentials. Please try again.', lang);
-        if (stepMessageId) {
-            await editMessage(env, telegramChatId, stepMessageId, view.text, view.keyboard);
-        } else {
-            await sendMessage(env, telegramChatId, view.text, view.keyboard);
-        }
+    const view = renderXKeysPrompt(lang);
+    if (stepMessageId) {
+        await editMessage(env, telegramChatId, stepMessageId, view.text, view.keyboard);
+    } else {
+        await sendMessage(env, telegramChatId, view.text, view.keyboard);
     }
 }
 

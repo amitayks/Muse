@@ -74,8 +74,15 @@ export async function listPublishAction(
     const draft = await getDraft(ctx.env, draftId, ctx.chatId);
     if (!draft) return renderError('Draft not found.', lang);
 
+    // Mark 'publishing' before handing off (caller-owned transition; also satisfies the
+    // deferred-X-video processor's status === 'publishing' idempotency guard). The in-memory
+    // draft keeps its status so publishDraft's scheduled→approved revert is unaffected.
+    await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'publishing');
+
     const result = await publishDraft(ctx.env, ctx.chatId, draft);
-    if (!result.success) {
+    if (!result.success && !result.deferredX) {
+        // Full failure → restore 'approved' so the user can retry (we forced 'publishing').
+        await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'approved');
         const errorMessages = Object.entries(result.results.errors || {})
             .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${msg}`)
             .join('\n');

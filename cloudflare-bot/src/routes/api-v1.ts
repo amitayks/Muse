@@ -16,6 +16,7 @@ import { handleAccountsApi } from './api-v1-accounts';
 import { handleMediaUploadApi } from './api-v1-media';
 import { handleComposeApi } from './api-v1-compose';
 import { handlePromptsApi } from './api-v1-prompts';
+import { handleXOAuthStart } from './x-oauth';
 
 /** CORS headers for webapp origin */
 function corsHeaders(env: Env): Record<string, string> {
@@ -125,6 +126,8 @@ export async function handleApiV1(
             response = await handleTweetFetch(apiCtx);
         } else if (path.startsWith('/prompts')) {
             response = await handlePromptsApi(apiCtx, path);
+        } else if (path === '/x/oauth/start') {
+            response = await handleXOAuthStart(apiCtx);
         } else {
             response = errorResponse('Not Found', 404);
         }

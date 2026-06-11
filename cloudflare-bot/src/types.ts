@@ -15,6 +15,11 @@ export interface Env {
     X_API_SECRET: string;
     X_ACCESS_TOKEN: string;
     X_ACCESS_SECRET: string;
+    // X OAuth2 (PKCE) public client credentials
+    X_OAUTH2_CLIENT_ID?: string;
+    X_OAUTH2_REDIRECT_URI?: string;
+    // Resolved per-request bearer access token, set by hydrateEnv
+    X_OAUTH2_ACCESS_TOKEN?: string;
     // Google API key for Gemini image generation
     GOOGLE_API_KEY: string;
     // Claude API key for Claude text generation
@@ -123,6 +128,9 @@ export interface User {
 }
 
 // Draft status
+// A draft whose X target is a video stays in 'publishing' (not a new status) while its
+// tweet-creation is deferred to the every-minute cron processor (core/x-pending.ts) — the
+// x_pending_posts row is the source of truth for that "X deferred" state.
 export type DraftStatus = 'draft' | 'approved' | 'publishing' | 'published' | 'scheduled';
 
 // Draft format
@@ -218,6 +226,15 @@ export interface PublishResults {
     errors?: Record<string, string>;
     /** Set when an Instagram failure was an auth error (expired/invalid token) — drives the "Reconnect Instagram" affordance */
     needsInstagramReconnect?: boolean;
+    /** Set when an X failure requires (re)connecting the OAuth 2.0 token — drives the "Reconnect X" affordance */
+    needsXReconnect?: boolean;
+    /**
+     * Set while an X VIDEO post has been deferred to the every-minute cron processor
+     * (core/x-pending.ts): media is uploaded inline, the postThread/postQuoteTweet step retries
+     * until the media is attachable. `results.x` and `results.errors.x` are both absent until the
+     * processor resolves it; the draft sits in 'publishing'. Cleared once X succeeds or gives up.
+     */
+    x_pending?: boolean;
 }
 
 // Draft record from D1

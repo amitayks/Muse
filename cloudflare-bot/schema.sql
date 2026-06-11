@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS users (
   instagram_token_enc TEXT,
   instagram_account_id_enc TEXT,
   instagram_app_secret_enc TEXT,
+  -- X OAuth 2.0 (PKCE public client) user-context tokens
+  x_oauth2_access_enc TEXT,
+  x_oauth2_refresh_enc TEXT,
   claude_key_enc TEXT,
   -- Feature flags
   has_gemini INTEGER DEFAULT 0,
@@ -69,6 +72,8 @@ CREATE TABLE IF NOT EXISTS users (
   default_publish_targets TEXT DEFAULT '{"x":true}',
   -- Instagram long-lived token expiry (ISO 8601; NULL until exchanged/refreshed)
   instagram_token_expires_at TEXT,
+  -- X OAuth 2.0 access token expiry (ISO 8601; NULL until connected/refreshed)
+  x_oauth2_expires_at TEXT,
   -- Repo defaults (for newly added repos)
   repo_auto_overview INTEGER DEFAULT 0,
   repo_default_watch_pushes INTEGER DEFAULT 1,
@@ -87,6 +92,15 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Transient PKCE state for the X OAuth 2.0 authorize <-> callback handshake.
+-- Rows are single-use (deleted on callback) and swept after a short TTL (~10 min).
+CREATE TABLE IF NOT EXISTS x_oauth_state (
+  state TEXT PRIMARY KEY,
+  chat_id TEXT,
+  code_verifier TEXT,
+  created_at TEXT
+);
+
 -- Published posts archive
 CREATE TABLE IF NOT EXISTS published (
   id TEXT PRIMARY KEY,
@@ -100,6 +114,27 @@ CREATE TABLE IF NOT EXISTS published (
   instagram_url TEXT,
   published_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Deferred X video post — schedule store (source of truth). An X video media object needs
+-- ~10-60s after STATUS=succeeded before POST /2/tweets accepts it. Media is uploaded inline
+-- (ids valid for hours); the tweet-creation step is deferred — a row is enqueued here and the
+-- every-minute cron processor (core/x-pending.ts) retries postThread/postQuoteTweet on
+-- "Your media IDs are invalid" / transient 5xx until it works or the attempt budget runs out.
+-- One row per draft (idempotency). (migration 021)
+CREATE TABLE IF NOT EXISTS x_pending_posts (
+  draft_id        TEXT PRIMARY KEY,
+  chat_id         TEXT NOT NULL,
+  payload         TEXT NOT NULL,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  max_attempts    INTEGER NOT NULL DEFAULT 6,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  last_error      TEXT,
+  next_attempt_at TEXT NOT NULL,
+  created_at      TEXT DEFAULT (datetime('now')),
+  updated_at      TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_x_pending_due  ON x_pending_posts(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_x_pending_chat ON x_pending_posts(chat_id);
 
 -- Watched repos for auto-detection
 CREATE TABLE IF NOT EXISTS repos (

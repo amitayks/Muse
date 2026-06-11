@@ -38,16 +38,25 @@ export async function handleMediaUploadApi(ctx: ApiContext): Promise<Response> {
         return errorResponse(`File too large (max ${limitMb}MB)`, 413);
     }
 
-    // Generate R2 key (same format for images and video)
-    const ext = file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
+    // Generate R2 key. Video always lands as .mp4 (the browser normalizes to H.264/AAC MP4).
+    const ext = isVideo ? 'mp4' : (file.name.split('.').pop() || 'jpg');
     const random = crypto.randomUUID().substring(0, 8);
     const key = `webapp/${ctx.chatId}/${Date.now()}-${random}.${ext}`;
 
-    // Stream the body into R2 instead of buffering the whole file in memory
-    // (important for video near the Worker memory ceiling). Size was validated above.
-    await ctx.env.IMAGES.put(key, file.stream(), {
-        httpMetadata: { contentType: file.type },
-    });
+    if (isVideo) {
+        // The webapp transcodes to X tweet-video spec client-side (ffmpeg.wasm) before upload,
+        // so the Worker just stores the already-normalized MP4. Stream the body into R2 as-is —
+        // streaming avoids buffering the ~50 MB file in memory; size was validated above.
+        await ctx.env.IMAGES.put(key, file.stream(), {
+            httpMetadata: { contentType: 'video/mp4' },
+        });
+    } else {
+        // Image branch: stream the body into R2 as-is (no transcode). Streaming avoids
+        // buffering the whole file in memory; size was validated above.
+        await ctx.env.IMAGES.put(key, file.stream(), {
+            httpMetadata: { contentType: file.type },
+        });
+    }
 
     const workerUrl = ctx.env.WORKER_URL || '';
     return jsonResponse({

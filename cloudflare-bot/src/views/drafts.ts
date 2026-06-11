@@ -21,7 +21,7 @@ export const shortToListType: Record<string, DraftListType> = { a: 'auto', h: 'h
 const statusEmoji: Record<string, string> = {
     draft: '📝',
     approved: '✅',
-    publishing: '⏳',
+    publishing: '⏳', // also covers a deferred X video post in flight (draft stays 'publishing')
     scheduled: '📅',
     published: '📤',
 };

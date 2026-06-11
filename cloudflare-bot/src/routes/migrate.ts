@@ -567,6 +567,60 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('identity_tweet_count migration note:', String(identityTweetCountError));
         }
 
+        // Migration: X OAuth 2.0 token columns + transient PKCE state table (020)
+        try {
+            const usersInfo8 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasXOAuth2 = usersInfo8.results?.some((col: any) => col.name === 'x_oauth2_access_enc');
+
+            if (!hasXOAuth2) {
+                await execStatements(env.DB, [
+                    `ALTER TABLE users ADD COLUMN x_oauth2_access_enc TEXT;`,
+                    `ALTER TABLE users ADD COLUMN x_oauth2_refresh_enc TEXT;`,
+                    `ALTER TABLE users ADD COLUMN x_oauth2_expires_at TEXT;`,
+                ]);
+                logInfo('Added x_oauth2_* columns to users table');
+            }
+            await env.DB.prepare(
+                `CREATE TABLE IF NOT EXISTS x_oauth_state (
+                    state TEXT PRIMARY KEY,
+                    chat_id TEXT,
+                    code_verifier TEXT,
+                    created_at TEXT
+                );`
+            ).run();
+            logInfo('Ensured x_oauth_state table exists');
+        } catch (xOAuth2Error) {
+            logInfo('x_oauth2 migration note:', String(xOAuth2Error));
+        }
+
+        // Migration: Deferred X video post — schedule store (source of truth) (021)
+        // An X video media object needs ~10-60s after STATUS=succeeded before POST /2/tweets
+        // accepts it. Media is uploaded inline (ids valid for hours); the tweet-creation step is
+        // deferred — a row is enqueued here and the every-minute cron processor (core/x-pending.ts)
+        // retries postThread/postQuoteTweet until the media is attachable or the attempt budget
+        // runs out. One row per draft (idempotency).
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS x_pending_posts (
+                    draft_id        TEXT PRIMARY KEY,
+                    chat_id         TEXT NOT NULL,
+                    payload         TEXT NOT NULL,
+                    attempts        INTEGER NOT NULL DEFAULT 0,
+                    max_attempts    INTEGER NOT NULL DEFAULT 6,
+                    status          TEXT NOT NULL DEFAULT 'pending',
+                    last_error      TEXT,
+                    next_attempt_at TEXT NOT NULL,
+                    created_at      TEXT DEFAULT (datetime('now')),
+                    updated_at      TEXT DEFAULT (datetime('now'))
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_x_pending_due ON x_pending_posts(status, next_attempt_at);`,
+                `CREATE INDEX IF NOT EXISTS idx_x_pending_chat ON x_pending_posts(chat_id);`,
+            ]);
+            logInfo('Ensured x_pending_posts table exists');
+        } catch (pendingXError) {
+            logInfo('x_pending_posts migration note:', String(pendingXError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

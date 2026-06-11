@@ -3,9 +3,13 @@
  */
 
 import type { Env, DraftContent } from '../types';
+import { getValidXAccessToken } from '../data/user-keys';
 
 const X_API_V2 = 'https://api.twitter.com/2';
-const X_UPLOAD_API = 'https://upload.twitter.com/1.1';
+// v2 media upload (command-based INIT/APPEND/FINALIZE/STATUS). The legacy v1.1 endpoint
+// (upload.twitter.com/1.1/media/upload.json) was sunset 2025-06-09; media IDs minted there are
+// rejected by POST /2/tweets with "Your media IDs are invalid", so all uploads use v2.
+const X_MEDIA_UPLOAD = 'https://api.twitter.com/2/media/upload';
 
 // ==================== X API Types (used by poller) ====================
 
@@ -70,6 +74,54 @@ export function getMediaUrl(media: XMedia[] | undefined, tweet: XTweet): string 
     if (videoOrGif?.preview_image_url) return videoOrGif.preview_image_url;
 
     return null;
+}
+
+/**
+ * Sentinel error: the user must (re)connect their X account via OAuth 2.0.
+ * Thrown when no usable bearer token is available (none stored, or refresh failed).
+ * Callers surface this as a "needs_x_reconnect" signal instead of a generic failure.
+ */
+export class XReconnectError extends Error {
+    constructor(message = 'X account must be reconnected') {
+        super(message);
+        this.name = 'XReconnectError';
+    }
+}
+
+/**
+ * OAuth 2.0 bearer-authenticated fetch wrapper for all X API calls.
+ *
+ * Sets `Authorization: Bearer <env.X_OAUTH2_ACCESS_TOKEN>`. If no access token is
+ * present on the hydrated env, throws XReconnectError. On a 401, attempts a single
+ * refresh via getValidXAccessToken (rotation-aware, persists the new tokens), updates
+ * env.X_OAUTH2_ACCESS_TOKEN, and retries the request once; if refresh yields no token,
+ * throws XReconnectError.
+ */
+async function xFetch(env: Env, url: string, init: RequestInit = {}): Promise<Response> {
+    if (!env.X_OAUTH2_ACCESS_TOKEN) {
+        throw new XReconnectError();
+    }
+
+    const buildInit = (token: string): RequestInit => ({
+        ...init,
+        headers: {
+            ...(init.headers as Record<string, string> | undefined),
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    let response = await fetch(url, buildInit(env.X_OAUTH2_ACCESS_TOKEN));
+
+    if (response.status === 401) {
+        const refreshed = await getValidXAccessToken(env, env.TELEGRAM_CHAT_ID);
+        if (!refreshed) {
+            throw new XReconnectError();
+        }
+        env.X_OAUTH2_ACCESS_TOKEN = refreshed;
+        response = await fetch(url, buildInit(refreshed));
+    }
+
+    return response;
 }
 
 /**
@@ -190,12 +242,10 @@ export async function postTweet(
     }
 
     const url = `${X_API_V2}/tweets`;
-    const authHeader = await generateOAuthHeader(env, 'POST', url);
 
-    const response = await fetch(url, {
+    const response = await xFetch(env, url, {
         method: 'POST',
         headers: {
-            Authorization: authHeader,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -275,32 +325,15 @@ export async function uploadMedia(env: Env, imageUrl: string): Promise<string> {
  * Upload media to X from ArrayBuffer (for R2 images)
  */
 export async function uploadMediaFromBuffer(env: Env, imageBuffer: ArrayBuffer): Promise<string> {
+    // v2 simple upload: multipart/form-data with the raw binary in the `media` field. v2 returns
+    // the media id at `data.id` (not the v1.1 top-level `media_id_string`).
+    const form = new FormData();
+    form.append('media', new Blob([imageBuffer]), 'media');
+    form.append('media_category', 'tweet_image');
 
-    // Convert to base64 without stack overflow (chunked approach)
-    const bytes = new Uint8Array(imageBuffer);
-    let binary = '';
-    const chunkSize = 8192;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.subarray(i, i + chunkSize);
-        binary += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    const base64Data = btoa(binary);
-
-    const url = `${X_UPLOAD_API}/media/upload.json`;
-    // Include media_data in OAuth signature - Twitter requires this
-    const authHeader = await generateOAuthHeader(env, 'POST', url, { media_data: base64Data });
-
-    const body = new URLSearchParams({
-        media_data: base64Data,
-    });
-
-    const response = await fetch(url, {
+    const response = await xFetch(env, X_MEDIA_UPLOAD, {
         method: 'POST',
-        headers: {
-            Authorization: authHeader,
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
+        body: form,
     });
 
     if (!response.ok) {
@@ -309,9 +342,14 @@ export async function uploadMediaFromBuffer(env: Env, imageBuffer: ArrayBuffer):
         throw new Error(`X Media Upload error: ${error}`);
     }
 
-    const data = await response.json() as { media_id_string: string };
-    console.log('Uploaded media:', data.media_id_string);
-    return data.media_id_string;
+    const data = await response.json() as { data?: { id: string; media_key?: string } };
+    const mediaId = data.data?.id;
+    if (!mediaId) {
+        throw new Error(`X Media Upload returned no media id: ${JSON.stringify(data)}`);
+    }
+    // /2/tweets media.media_ids requires the bare numeric id (^[0-9]{1,19}$), not the media_key.
+    console.log('Uploaded media:', mediaId, 'media_key:', data.data?.media_key ?? 'none');
+    return mediaId;
 }
 
 /**
@@ -329,108 +367,133 @@ export async function uploadVideoToX(env: Env, r2Key: string): Promise<string> {
 
     const videoData = await obj.arrayBuffer();
     const totalBytes = videoData.byteLength;
-    const mediaUploadUrl = `${X_UPLOAD_API}/media/upload.json`;
 
-    // Step 1: INIT — initialize chunked upload
-    const initBodyParams = {
-        command: 'INIT',
-        total_bytes: String(totalBytes),
-        media_type: 'video/mp4',
-        media_category: 'tweet_video',
-    };
-    const initAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, initBodyParams);
-    const initResponse = await fetch(mediaUploadUrl, {
+    // X's command-based `POST /2/media/upload` is the single-shot IMAGE endpoint (its schema rejects
+    // `command`/`total_bytes` and only allows image media types). Chunked VIDEO uses the dedicated
+    // path-based endpoints: POST .../initialize (JSON) → POST .../{id}/append (multipart) → POST
+    // .../{id}/finalize → GET /2/media/upload?command=STATUS. All authenticate with the OAuth 2.0
+    // user-context bearer (media.write scope) via xFetch.
+
+    // Step 1: INITIALIZE — JSON body; returns the media id at data.id.
+    const initUrl = `${X_MEDIA_UPLOAD}/initialize`;
+    const initResponse = await xFetch(env, initUrl, {
         method: 'POST',
-        headers: { Authorization: initAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(initBodyParams),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            media_type: 'video/mp4',
+            total_bytes: totalBytes,
+            // 'tweet_video' is the correct category for an organic post. 'amplify_video' is for ads
+            // and requires X Ads/Amplify partner permissions (it uploads but is not a valid organic
+            // post media). Whether POST /2/tweets accepts the resulting media is then governed by the
+            // posting account's video eligibility (Premium/verified/standing), not by the API code.
+            media_category: 'tweet_video',
+        }),
     });
     if (!initResponse.ok) {
-        throw new Error(`X video INIT failed: ${await initResponse.text()}`);
+        throw new Error(`X video INIT failed (${initResponse.status} ${initResponse.statusText}): ${await initResponse.text() || '<empty body>'}`);
     }
-    const initResult = await initResponse.json() as { media_id_string: string };
-    const mediaId = initResult.media_id_string;
+    const initResult = await initResponse.json() as { data?: { id: string; media_key?: string } };
+    const mediaId = initResult.data?.id;
+    const mediaKey = initResult.data?.media_key;
+    if (!mediaId) {
+        throw new Error(`X video INIT returned no media id: ${JSON.stringify(initResult)}`);
+    }
+    console.log(`X video INIT ok: media_id=${mediaId} media_key=${mediaKey ?? 'none'} total_bytes=${totalBytes}`);
 
-    // Step 2: APPEND — upload 5MB chunks
-    const chunkSize = 5 * 1024 * 1024;
+    // Step 2: APPEND — POST .../{id}/append (media id is in the PATH). Multipart body with the raw
+    // chunk in `media` and the `segment_index`. Raw `media` (not base64 `media_data`) keeps each
+    // segment's byte count exact so they sum to total_bytes at finalize (and avoids base64 overhead).
+    const appendUrl = `${X_MEDIA_UPLOAD}/${mediaId}/append`;
+    // The v2 /append endpoint caps each chunk at ~1MB (a 5MB chunk — the old v1.1 size — returns
+    // 413 Payload Too Large). segment_index allows 0–999, so 1MB chunks cover videos up to ~1GB;
+    // ours are ≤50MB (≤50 segments).
+    const chunkSize = 1024 * 1024;
     let segmentIndex = 0;
     for (let offset = 0; offset < totalBytes; offset += chunkSize) {
         const chunk = videoData.slice(offset, Math.min(offset + chunkSize, totalBytes));
-        const appendParams = { command: 'APPEND', media_id: mediaId, segment_index: String(segmentIndex) };
-        const appendAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, appendParams);
 
         const appendForm = new FormData();
-        appendForm.append('command', 'APPEND');
-        appendForm.append('media_id', mediaId);
         appendForm.append('segment_index', String(segmentIndex));
-        appendForm.append('media_data', new Blob([chunk]));
+        appendForm.append('media', new Blob([chunk]), 'chunk');
 
-        const appendResponse = await fetch(mediaUploadUrl, {
+        const appendResponse = await xFetch(env, appendUrl, {
             method: 'POST',
-            headers: { Authorization: appendAuth },
             body: appendForm,
         });
         if (!appendResponse.ok) {
-            throw new Error(`X video APPEND failed: ${await appendResponse.text()}`);
+            const body = await appendResponse.text();
+            const ct = appendResponse.headers.get('content-type') || '';
+            throw new Error(`X video APPEND failed (${appendResponse.status} ${appendResponse.statusText}; ct=${ct}; url=${appendUrl}; seg=${segmentIndex}; chunkBytes=${chunk.byteLength}): ${body || '<empty body>'}`);
         }
         segmentIndex++;
     }
 
-    // Step 3: FINALIZE
-    const finalizeParams = { command: 'FINALIZE', media_id: mediaId };
-    const finalizeAuth = await generateOAuthHeader(env, 'POST', mediaUploadUrl, finalizeParams);
-    const finalizeResponse = await fetch(mediaUploadUrl, {
+    // Step 3: FINALIZE — POST .../{id}/finalize, no body. Returns data.processing_info.
+    const finalizeUrl = `${X_MEDIA_UPLOAD}/${mediaId}/finalize`;
+    const finalizeResponse = await xFetch(env, finalizeUrl, {
         method: 'POST',
-        headers: { Authorization: finalizeAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(finalizeParams),
     });
     if (!finalizeResponse.ok) {
-        throw new Error(`X video FINALIZE failed: ${await finalizeResponse.text()}`);
+        throw new Error(`X video FINALIZE failed (${finalizeResponse.status} ${finalizeResponse.statusText}): ${await finalizeResponse.text() || '<empty body>'}`);
     }
     const finalResult = await finalizeResponse.json() as {
-        media_id_string: string;
-        processing_info?: { state: string; check_after_secs?: number; error?: { message: string } };
+        data?: { id: string; processing_info?: { state: string; check_after_secs?: number; error?: { message: string } } };
     };
+    const finalizeProcessing = finalResult.data?.processing_info;
+    console.log(`X video FINALIZE ok: state=${finalizeProcessing?.state ?? 'none'} check_after=${finalizeProcessing?.check_after_secs ?? '-'}`);
 
-    // Step 4: poll STATUS until the video is processed (X requires this before tweeting)
-    if (finalResult.processing_info) {
-        let state = finalResult.processing_info.state;
-        let checkAfterSecs = finalResult.processing_info.check_after_secs || 5;
-        let checkCount = 0;
-        const maxChecks = 30;
+    // Step 4: poll STATUS until processing reports `succeeded`. Attaching a still-processing video
+    // to POST /2/tweets fails with "Your media IDs are invalid", so unless FINALIZE already reported
+    // `succeeded` we MUST poll (even when FINALIZE returns no processing_info — we do not assume
+    // "missing => ready"). Status uses the base endpoint with command=STATUS (GET → params signed).
+    let state = finalizeProcessing?.state ?? 'pending';
+    let checkAfterSecs = finalizeProcessing?.check_after_secs ?? 1;
+    let checkCount = 0;
+    const maxChecks = 30;
 
-        while (state !== 'succeeded' && checkCount < maxChecks) {
-            if (state === 'failed') {
-                throw new Error(`X video processing failed: ${finalResult.processing_info.error?.message || 'unknown'}`);
-            }
-            await new Promise(r => setTimeout(r, Math.min(checkAfterSecs * 1000, 15000)));
-
-            const statusQueryParams = { command: 'STATUS', media_id: mediaId };
-            const statusAuth = await generateOAuthHeader(env, 'GET', mediaUploadUrl, statusQueryParams);
-            const statusResponse = await fetch(`${mediaUploadUrl}?${new URLSearchParams(statusQueryParams)}`, {
-                method: 'GET',
-                headers: { Authorization: statusAuth },
-            });
-            if (!statusResponse.ok) {
-                throw new Error(`X video STATUS failed: ${await statusResponse.text()}`);
-            }
-            const statusResult = await statusResponse.json() as {
-                processing_info?: { state: string; check_after_secs?: number; error?: { message: string } };
-            };
-            if (!statusResult.processing_info) break; // no processing_info => done
-            state = statusResult.processing_info.state;
-            checkAfterSecs = statusResult.processing_info.check_after_secs || 5;
-            if (state === 'failed') {
-                throw new Error(`X video processing failed: ${statusResult.processing_info.error?.message || 'unknown'}`);
-            }
-            checkCount++;
+    while (state !== 'succeeded' && checkCount < maxChecks) {
+        if (state === 'failed') {
+            throw new Error(`X video processing failed: ${finalizeProcessing?.error?.message || 'unknown'}`);
         }
+        await new Promise(r => setTimeout(r, Math.min(Math.max(checkAfterSecs, 1) * 1000, 15000)));
 
-        if (state !== 'succeeded') {
-            throw new Error('X video processing timed out');
+        const statusQueryParams = { command: 'STATUS', media_id: mediaId };
+        const statusResponse = await xFetch(env, `${X_MEDIA_UPLOAD}?${new URLSearchParams(statusQueryParams)}`, {
+            method: 'GET',
+        });
+        if (!statusResponse.ok) {
+            throw new Error(`X video STATUS failed (${statusResponse.status} ${statusResponse.statusText}): ${await statusResponse.text() || '<empty body>'}`);
         }
+        const statusResult = await statusResponse.json() as {
+            data?: { processing_info?: { state: string; check_after_secs?: number; error?: { message: string } } };
+        };
+        const statusProcessing = statusResult.data?.processing_info;
+        if (!statusProcessing) {
+            // STATUS reports no processing info → media is finished and ready to attach.
+            state = 'succeeded';
+            break;
+        }
+        state = statusProcessing.state;
+        checkAfterSecs = statusProcessing.check_after_secs || 5;
+        if (state === 'failed') {
+            throw new Error(`X video processing failed: ${statusProcessing.error?.message || 'unknown'}`);
+        }
+        checkCount++;
     }
 
-    console.log('Uploaded video to X:', mediaId);
+    if (state !== 'succeeded') {
+        throw new Error('X video processing timed out');
+    }
+
+    // NOTE: X media needs ~10–60s after `succeeded` before it is attachable to POST /2/tweets
+    // (images are instant). We cannot wait inline here — the publish runs in a Cloudflare
+    // `waitUntil` task whose ~30s budget is already mostly consumed by the upload+processing poll,
+    // and a longer sleep gets the whole task cancelled. A proper delayed post needs decoupling
+    // (Durable Object alarm / Queue / cron retry). See the add-x-oauth2-media design notes.
+
+    // /2/tweets media.media_ids requires the bare numeric id (^[0-9]{1,19}$) — the media_key
+    // ("7_<id>") fails that regex. Return the id.
+    console.log('Uploaded video to X:', mediaId, 'media_key:', mediaKey ?? 'none', 'final state:', state);
     return mediaId;
 }
 
@@ -439,11 +502,9 @@ export async function uploadVideoToX(env: Env, r2Key: string): Promise<string> {
  */
 export async function deleteTweet(env: Env, tweetId: string): Promise<void> {
     const url = `${X_API_V2}/tweets/${tweetId}`;
-    const authHeader = await generateOAuthHeader(env, 'DELETE', url);
 
-    const response = await fetch(url, {
+    const response = await xFetch(env, url, {
         method: 'DELETE',
-        headers: { Authorization: authHeader },
     });
 
     // 404 means already deleted - that's ok
@@ -474,12 +535,10 @@ export async function postQuoteTweet(
     }
 
     const url = `${X_API_V2}/tweets`;
-    const authHeader = await generateOAuthHeader(env, 'POST', url);
 
-    const response = await fetch(url, {
+    const response = await xFetch(env, url, {
         method: 'POST',
         headers: {
-            Authorization: authHeader,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -515,12 +574,10 @@ async function postTweetWithUrl(
     }
 
     const url = `${X_API_V2}/tweets`;
-    const authHeader = await generateOAuthHeader(env, 'POST', url);
 
-    const response = await fetch(url, {
+    const response = await xFetch(env, url, {
         method: 'POST',
         headers: {
-            Authorization: authHeader,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -556,11 +613,8 @@ export async function lookupUserByUsername(
         .join('&');
     const fullUrl = `${baseUrl}?${queryString}`;
 
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
-
-    const response = await fetch(fullUrl, {
+    const response = await xFetch(env, fullUrl, {
         method: 'GET',
-        headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
@@ -636,11 +690,8 @@ export async function getTweetById(env: Env, tweetId: string): Promise<TweetWith
         .join('&');
     const fullUrl = `${baseUrl}?${queryString}`;
 
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
-
-    const response = await fetch(fullUrl, {
+    const response = await xFetch(env, fullUrl, {
         method: 'GET',
-        headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
@@ -712,11 +763,8 @@ export async function getUserTweets(
         .join('&');
     const fullUrl = `${baseUrl}?${queryString}`;
 
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
-
-    const response = await fetch(fullUrl, {
+    const response = await xFetch(env, fullUrl, {
         method: 'GET',
-        headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
@@ -764,11 +812,8 @@ export async function searchConversation(
         .join('&');
     const fullUrl = `${baseUrl}?${queryString}`;
 
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
-
-    const response = await fetch(fullUrl, {
+    const response = await xFetch(env, fullUrl, {
         method: 'GET',
-        headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {
@@ -816,11 +861,8 @@ export async function getMyProfile(env: Env): Promise<XUser | null> {
         .join('&');
     const fullUrl = `${baseUrl}?${queryString}`;
 
-    const authHeader = await generateOAuthHeader(env, 'GET', baseUrl, queryParams);
-
-    const response = await fetch(fullUrl, {
+    const response = await xFetch(env, fullUrl, {
         method: 'GET',
-        headers: { Authorization: authHeader },
     });
 
     if (!response.ok) {

@@ -84,17 +84,9 @@ export function renderXKeysPrompt(lang: Lang = 'en'): ViewResult {
             t(lang, 'onboarding.xFeatureFollow'),
             t(lang, 'onboarding.xFeatureIdentity'),
             '',
-            t(lang, 'onboarding.xFormat'),
-            '',
-            t(lang, 'onboarding.xKey'),
-            t(lang, 'onboarding.xSecret'),
-            t(lang, 'onboarding.xAccessToken'),
-            t(lang, 'onboarding.xAccessSecret'),
-            '',
-            t(lang, 'onboarding.xDeleteNote'),
+            t(lang, 'onboarding.xConnectViaApp'),
         ].join('\n'),
         keyboard: [
-            [{ text: t(lang, 'onboarding.btnHowToGetThem'), url: 'https://developer.x.com/en/portal/dashboard' }],
             [{ text: t(lang, 'onboarding.btnSkipForNow'), callback_data: 'onboard:skip_x' }],
         ],
     };

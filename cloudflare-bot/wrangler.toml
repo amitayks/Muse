@@ -1,6 +1,6 @@
 name = "content-bot"
 main = "src/index.ts"
-compatibility_date = "2024-12-18"
+compatibility_date = "2025-06-01"
 
 # Replace satori's bare process.env references at build time (Workers don't have process)
 [define]
@@ -18,9 +18,30 @@ database_id = "4bd535da-8924-4bf2-bb50-19d25f483236"
 binding = "IMAGES"
 bucket_name = "content-bot-images"
 
-# Cron triggers for scheduled publishing
+# Cron triggers.
+#   */15 * * * * — the per-user coordinator (poll, publish scheduled drafts, refresh tokens, …).
+#   *   * * * * — the deferred X video-post processor only (core/x-pending.ts). An X video media
+#                 object needs ~10-60s after upload before POST /2/tweets accepts it ("Your media
+#                 IDs are invalid" otherwise); the publish flow uploads inline, enqueues a row in
+#                 x_pending_posts, and this minute tick retries the tweet-creation until it works.
+#                 index.ts scheduled() dispatches on event.cron so this tick never runs the
+#                 heavy 15-min coordinator.
 [triggers]
-crons = ["*/15 * * * *"]  # Every 15 minutes
+crons = ["*/15 * * * *", "* * * * *"]
+
+# Durable Object migrations.
+# v1: an earlier (aborted) container deploy registered the VideoTranscoder DO class on the
+#     account. v2: delete it — video normalization moved to client-side ffmpeg.wasm, so the
+#     class no longer exists in code. Deleting a DO class requires an explicit delete-class
+#     migration (removing the code alone fails deploy with "depended on by existing Durable
+#     Objects"). After this lands cleanly the whole [[migrations]] block can be dropped.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["VideoTranscoder"]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["VideoTranscoder"]
 
 # ===========================================
 # SECRETS CONFIGURATION (set via wrangler secret put)

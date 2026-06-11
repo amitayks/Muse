@@ -185,6 +185,14 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
     logInfo(`[cron] Publishing ${drafts.length} scheduled drafts for chat ${chatId}`);
 
     for (const draft of drafts) {
+        // Mark 'publishing' before handing off — callers own this transition (mirrors
+        // actions/publish.ts and api-v1-drafts.ts). It also satisfies the deferred-X-video
+        // processor's idempotency guard (core/x-pending.ts requires status === 'publishing'),
+        // so a scheduled video draft is finalized by that processor rather than dropped.
+        // The in-memory draft keeps status 'scheduled', so publishDraft's full-failure path
+        // still reverts a scheduled draft to 'approved'.
+        await updateDraftStatus(env, draft.id, chatId, 'publishing');
+
         const publishResult = await publishDraft(env, chatId, draft);
 
         if (!publishResult.success) {
@@ -213,6 +221,15 @@ export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = '
             } catch (notifyError) {
                 logError('Failed to send error notification:', notifyError);
             }
+            continue;
+        }
+
+        // Deferred X video post: media uploaded + a row enqueued in x_pending_posts; the draft
+        // stays in 'publishing' and the every-minute cron processor (core/x-pending.ts) posts the
+        // tweet once the media is attachable and sends the final published/failed notification.
+        // Don't notify here (it isn't published yet) — that would be premature and duplicate.
+        if (publishResult.deferredX) {
+            logInfo(`[cron] Scheduled draft ${draft.id}: X video post deferred to x-pending processor`);
             continue;
         }
 

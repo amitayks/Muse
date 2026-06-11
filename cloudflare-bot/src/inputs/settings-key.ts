@@ -55,24 +55,14 @@ export async function settingsKeyInput(
         await storeEncryptedKey(env, chatId, 'gemini_key_enc', await encrypt(env, text));
         await updateUser(env, chatId, { has_gemini: 1 });
     } else if (service === 'x') {
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        if (lines.length !== 4) {
-            return failWithRetry(t(lang, 'settingsKeys.xExpectedLines').replace('{count}', String(lines.length)));
-        }
-        const [apiKey, apiSecret, accessToken, accessSecret] = lines;
-
-        // Validate with OAuth 1.0a verifyCredentials
-        const { verifyXCredentials } = await import('../commands/onboarding');
-        const result = await verifyXCredentials(apiKey, apiSecret, accessToken, accessSecret);
-        if (!result.ok) {
-            return failWithRetry(t(lang, 'settingsKeys.xValidationFailed').replace('{error}', result.error || 'Unknown error'));
-        }
-
-        await storeEncryptedKey(env, chatId, 'x_api_key_enc', await encrypt(env, apiKey));
-        await storeEncryptedKey(env, chatId, 'x_api_secret_enc', await encrypt(env, apiSecret));
-        await storeEncryptedKey(env, chatId, 'x_access_token_enc', await encrypt(env, accessToken));
-        await storeEncryptedKey(env, chatId, 'x_access_secret_enc', await encrypt(env, accessSecret));
-        await updateUser(env, chatId, { has_x: 1 });
+        // X now connects via OAuth 2.0 in the web app (the OAuth 1.0a key-paste flow is retired).
+        // Don't store pasted keys — point the user to the in-app "Connect X" button.
+        const appUrl = env.WEBAPP_URL;
+        const openApp = appUrl ? [[{ text: t(lang, 'settingsKeys.openAppConnectX'), url: appUrl }]] : [];
+        return {
+            text: t(lang, 'settingsKeys.xConnectViaApp'),
+            keyboard: [...openApp, [backButton]],
+        };
     } else if (service === 'github') {
         let githubUsername: string | undefined;
         try {

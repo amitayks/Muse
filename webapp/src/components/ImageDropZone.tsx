@@ -1,6 +1,7 @@
 import { useState, useRef, type DragEvent } from 'react';
 import { ImagePlus, Video, Clapperboard } from 'lucide-react';
 import { useMediaUpload, type UploadedMedia } from '../hooks/useMediaUpload';
+import { validateVideoForX } from '../lib/validateVideo';
 import { useTranslation } from '../i18n';
 import { Spinner } from './ui';
 
@@ -13,6 +14,8 @@ const ACCEPT_ATTR: Record<MediaAccept, string> = {
   both: 'image/jpeg,image/png,image/gif,image/webp,video/mp4',
 };
 
+const VIDEO_TYPE = 'video/mp4';
+
 interface Props {
   onUpload: (media: UploadedMedia) => void;
   disabled?: boolean;
@@ -21,14 +24,36 @@ interface Props {
 
 export function ImageDropZone({ onUpload, disabled, accept = 'both' }: Props) {
   const { t } = useTranslation();
-  const { upload, uploading, error, clearError } = useMediaUpload();
+  const { upload, uploading, error, setError, clearError } = useMediaUpload();
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return;
     clearError();
-    const result = await upload(files[0]);
+    const file = files[0];
+
+    // For videos, check X (Twitter) tweet-video spec BEFORE uploading — X rejects
+    // out-of-spec media at publish time. fps can't be detected in the browser, so the
+    // message still spells out the full spec so users convert high-fps recordings too.
+    if (file.type === VIDEO_TYPE) {
+      const check = await validateVideoForX(file);
+      if (!check.ok) {
+        if (check.reason === 'duration') {
+          setError(t('editor.videoTooLong', { seconds: String(Math.round(check.durationSec ?? 0)) }));
+        } else if (check.reason === 'unreadable') {
+          setError(t('editor.videoUnreadable'));
+        } else {
+          setError(t('editor.videoOutOfSpec', {
+            width: String(check.width ?? '?'),
+            height: String(check.height ?? '?'),
+          }));
+        }
+        return;
+      }
+    }
+
+    const result = await upload(file);
     if (result) onUpload(result);
   }
 

@@ -18,9 +18,12 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
         return renderError('Draft not found.', lang);
     }
 
-    // Guard: prevent duplicate publishes (Telegram webhook retries)
+    // Guard: prevent duplicate publishes (Telegram webhook retries).
+    // 'publishing' also covers a deferred X video post in flight (the draft stays 'publishing'
+    // while the every-minute cron processor retries the tweet-creation).
     if (draft.status === 'publishing' || draft.status === 'published') {
-        return { text: `⏳ ${draft.status === 'publishing' ? 'Already publishing...' : 'Already published.'}`, keyboard: [] };
+        const label = draft.status === 'published' ? 'Already published.' : 'Already publishing...';
+        return { text: `⏳ ${label}`, keyboard: [] };
     }
 
     // Mark as publishing immediately to prevent duplicates
@@ -57,7 +60,12 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
                 const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
 
                 const hasErrors = result.results.errors && Object.keys(result.results.errors).length > 0;
-                if (hasErrors) {
+                if (result.deferredX) {
+                    // X video is uploaded but its tweet-creation is deferred to the every-minute
+                    // cron processor (core/x-pending.ts); the user gets a follow-up notification
+                    // when X resolves.
+                    view.text = `⏳ <b>X video posting…</b>\n\nThe video uploaded; X needs a moment before the post goes live. You'll be notified when it's done.\n\n${view.text}`;
+                } else if (hasErrors) {
                     const summary = formatPlatformSummary(result.results, lang);
                     view.text = `⚠️ <b>${t(lang, 'notifications.scheduledPostPartial')}</b>\n${summary}\n\n${view.text}`;
                     if (result.results.needsInstagramReconnect) {

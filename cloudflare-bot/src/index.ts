@@ -6,6 +6,7 @@
 
 import type { Env } from './types';
 import { cronCoordinator } from './handlers/cron';
+import { processPendingXPosts } from './core/x-pending';
 import {
     addSecurityHeaders,
     secureErrorResponse,
@@ -31,7 +32,7 @@ import { handlePromptEditorPage } from './routes/app';
 import { handleAdminPromptEditorPage } from './routes/app-admin';
 import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi, handleIdentityApi } from './routes/api-prompt';
 import { handleApiV1 } from './routes/api-v1';
-
+import { handleXOAuthCallback } from './routes/x-oauth';
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -137,6 +138,19 @@ export default {
                 return response;
             }
 
+            // X OAuth 2.0 callback — path must equal X_OAUTH2_REDIRECT_URI's path
+            // (falls back to /x/oauth/callback). Top-level so it matches the URI
+            // registered with X exactly.
+            const xOAuthCallbackPath = env.X_OAUTH2_REDIRECT_URI
+                ? new URL(env.X_OAUTH2_REDIRECT_URI).pathname
+                : '/x/oauth/callback';
+            if (url.pathname === xOAuthCallbackPath && request.method === 'GET') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleXOAuthCallback(request, env);
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+            }
+
             // Webapp API v1 routes
             if (url.pathname.startsWith('/api/v1/')) {
                 const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
@@ -234,8 +248,15 @@ export default {
     },
 
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-        logInfo('Cron triggered at:', new Date(event.scheduledTime).toISOString());
+        logInfo('Cron triggered at:', new Date(event.scheduledTime).toISOString(), 'cron:', event.cron);
         try {
+            // The frequent "* * * * *" tick ONLY runs the deferred-X-video-post processor on its
+            // own fresh ~30s budget — it must NOT run the heavy 15-min coordinator. All other cron
+            // schedules ("*/15 * * * *") run the full coordinator.
+            if (event.cron === '* * * * *') {
+                await processPendingXPosts(env);
+                return;
+            }
             await cronCoordinator(env, ctx);
         } catch (error) {
             logError('Cron error:', sanitizeError(error));

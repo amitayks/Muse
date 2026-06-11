@@ -42,22 +42,28 @@ export function useMediaUpload() {
       return null;
     }
 
-    setState({ uploading: true, error: null });
+    const isVideo = file.type === VIDEO_TYPE;
 
     try {
+      setState({ uploading: true, error: null });
+
       const formData = new FormData();
       formData.append('file', file);
 
       const result = await api.upload<{ key: string; url: string }>('/api/v1/media/upload', formData);
       setState({ uploading: false, error: null });
-      const type = file.type === VIDEO_TYPE ? 'video' : 'photo';
-      return { key: result.key, url: result.url, type };
+      return { key: result.key, url: result.url, type: isVideo ? 'video' : 'photo' };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       setState({ uploading: false, error: message });
       return null;
     }
   }, [validate]);
+
+  /** Surface an externally-detected error (e.g. a failed pre-upload video spec check). */
+  const setError = useCallback((message: string) => {
+    setState({ uploading: false, error: message });
+  }, []);
 
   const clearError = useCallback(() => {
     setState(s => ({ ...s, error: null }));
@@ -68,6 +74,7 @@ export function useMediaUpload() {
     validate,
     uploading: state.uploading,
     error: state.error,
+    setError,
     clearError,
   };
 }

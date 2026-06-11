@@ -92,6 +92,7 @@ export async function storeEncryptedKey(
         'x_access_token_enc', 'x_access_secret_enc',
         'github_token_enc', 'heygen_api_key_enc',
         'instagram_token_enc', 'instagram_account_id_enc', 'instagram_app_secret_enc',
+        'x_oauth2_access_enc', 'x_oauth2_refresh_enc',
         'claude_key_enc'
     ];
     if (!allowedFields.includes(keyField)) {
@@ -116,6 +117,9 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
     instagram_token_enc: string | null;
     instagram_account_id_enc: string | null;
     instagram_app_secret_enc: string | null;
+    x_oauth2_access_enc: string | null;
+    x_oauth2_refresh_enc: string | null;
+    x_oauth2_expires_at: string | null;
     claude_key_enc: string | null;
 } | null> {
     return env.DB.prepare(`
@@ -123,6 +127,7 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
                x_access_token_enc, x_access_secret_enc,
                github_token_enc, heygen_api_key_enc,
                instagram_token_enc, instagram_account_id_enc, instagram_app_secret_enc,
+               x_oauth2_access_enc, x_oauth2_refresh_enc, x_oauth2_expires_at,
                claude_key_enc
         FROM users WHERE chat_id = ?
     `).bind(chatId).first();
@@ -152,4 +157,66 @@ export async function updateOwnProfileData(
     await env.DB.prepare(
         "UPDATE users SET own_profile_image_url = ?, own_username_x = ?, own_display_name_x = ?, updated_at = datetime('now') WHERE chat_id = ?"
     ).bind(data.profileImageUrl, data.username, data.displayName, chatId).run();
+}
+
+/**
+ * Set the X OAuth 2.0 access-token expiry (ISO 8601, plaintext — mirrors
+ * instagram_token_expires_at). NULL is allowed to clear it.
+ */
+export async function setXOAuth2ExpiresAt(
+    env: Env,
+    chatId: string,
+    expiresAt: string | null
+): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET x_oauth2_expires_at = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(expiresAt, chatId).run();
+}
+
+// ==================== X OAUTH 2.0 PKCE STATE STORE ====================
+
+// Transient PKCE state rows older than this are treated as expired.
+const X_OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Persist the in-flight PKCE handshake state for the authorize → callback round-trip.
+ * `state` is the CSRF token bound to the user; `codeVerifier` is the PKCE secret.
+ */
+export async function putXOAuthState(
+    env: Env,
+    state: string,
+    chatId: string,
+    codeVerifier: string
+): Promise<void> {
+    await env.DB.prepare(
+        "INSERT OR REPLACE INTO x_oauth_state (state, chat_id, code_verifier, created_at) VALUES (?, ?, ?, datetime('now'))"
+    ).bind(state, chatId, codeVerifier).run();
+}
+
+/**
+ * Single-use lookup of a PKCE state row: deletes the row on read and returns its
+ * bound chat_id + code_verifier. Returns null if the state is unknown, already used,
+ * or older than the TTL (~10 min).
+ */
+export async function takeXOAuthState(
+    env: Env,
+    state: string
+): Promise<{ chatId: string; codeVerifier: string } | null> {
+    const row = await env.DB.prepare(
+        'SELECT chat_id, code_verifier, created_at FROM x_oauth_state WHERE state = ?'
+    ).bind(state).first<{ chat_id: string | null; code_verifier: string | null; created_at: string | null }>();
+
+    // Single-use: delete the row regardless of validity so it can never be replayed.
+    await env.DB.prepare('DELETE FROM x_oauth_state WHERE state = ?').bind(state).run();
+
+    if (!row || !row.chat_id || !row.code_verifier || !row.created_at) {
+        return null;
+    }
+
+    const createdAtMs = Date.parse(`${row.created_at} UTC`);
+    if (!Number.isNaN(createdAtMs) && Date.now() - createdAtMs > X_OAUTH_STATE_TTL_MS) {
+        return null;
+    }
+
+    return { chatId: row.chat_id, codeVerifier: row.code_verifier };
 }

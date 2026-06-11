@@ -121,4 +121,11 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
+
+  /**
+   * Start the X (Twitter) OAuth 2.0 connect flow.
+   * Returns the X authorize URL the user must be redirected to.
+   */
+  startXOAuth: () =>
+    request<{ authorizeUrl: string }>('/api/v1/x/oauth/start'),
 };

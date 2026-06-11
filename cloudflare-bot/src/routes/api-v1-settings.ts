@@ -2,7 +2,7 @@
  * /api/v1/settings — User settings CRUD
  */
 
-import { getUser, updateUser } from '../data/user-db';
+import { getUser, updateUser, getUserEncryptedKeys } from '../data/user-db';
 import type { ApiContext } from './api-v1';
 import { jsonResponse, errorResponse } from './api-v1';
 
@@ -22,6 +22,11 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
             getRepoDefaults(env, chatId),
         ]);
 
+        // X "connected" now means an OAuth 2.0 token is stored (not the legacy 1.0a flag).
+        // Users who had X via 1.0a (has_x=1) but no OAuth token need to (re)connect via the app.
+        const xKeys = await getUserEncryptedKeys(env, chatId);
+        const hasXOAuth = !!xKeys?.x_oauth2_access_enc;
+
         return jsonResponse({
             language: user.language,
             timezone: user.timezone,
@@ -32,7 +37,8 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
             commit_defaults: commitDefaults,
             repo_defaults: repoDefaults,
             has_gemini: user.has_gemini === 1,
-            has_x: user.has_x === 1,
+            has_x: hasXOAuth,
+            needs_x_reconnect: user.has_x === 1 && !hasXOAuth,
             has_github: user.has_github === 1,
             has_heygen: user.has_heygen === 1,
             has_instagram: user.has_instagram === 1,

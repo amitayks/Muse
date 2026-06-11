@@ -20,6 +20,7 @@ import {
     createTwitterTweet,
     updateTwitterTweet,
 } from '../data/db';
+import { getValidXAccessToken } from '../data/user-keys';
 
 const ACCOUNTS_PER_CYCLE = 10;
 const BACKOFF_MIN_MINUTES = 30;
@@ -53,6 +54,14 @@ export async function pollUserAccounts(env: Env, chatId: string): Promise<void> 
     const allAccounts = await getWatchingTwitterAccountsByUser(env, chatId);
     if (allAccounts.length === 0) {
         console.log(`[poller] No watching accounts for chat ${chatId}, skipping`);
+        return;
+    }
+
+    // Skip users without a valid X OAuth 2.0 token — every poll call hits the X API,
+    // so without a usable bearer the whole cycle would just error. They must (re)connect X.
+    const xAccessToken = await getValidXAccessToken(env, chatId);
+    if (!xAccessToken) {
+        console.log(`[poller] No valid X token for chat ${chatId}, skipping (needs X reconnect)`);
         return;
     }
 

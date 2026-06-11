@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useTranslation } from '../i18n';
@@ -19,6 +20,8 @@ interface UserSettings {
   has_heygen: boolean;
   has_instagram: boolean;
   has_claude: boolean;
+  /** Set by the backend when a stored X OAuth 2.0 token is missing/expired and the user must reconnect. */
+  needs_x_reconnect?: boolean;
 }
 
 const TIMEZONES = ['UTC-5', 'UTC-4', 'UTC-3', 'UTC-2', 'UTC-1', 'UTC', 'UTC+1', 'UTC+2', 'UTC+3', 'UTC+4', 'UTC+5', 'UTC+5:30', 'UTC+6', 'UTC+7', 'UTC+8', 'UTC+9', 'UTC+10', 'UTC+12'];
@@ -41,6 +44,33 @@ export function SettingsPage() {
       showToast(t('common.saved'), 'success');
     },
   });
+
+  // Start the X OAuth 2.0 connect flow: fetch the authorize URL, then redirect the browser to X.
+  const connectXMutation = useMutation({
+    mutationFn: () => api.startXOAuth(),
+    onSuccess: ({ authorizeUrl }) => {
+      window.location.assign(authorizeUrl);
+    },
+    onError: (err) => showToast(err instanceof Error ? err.message : t('common.error'), 'error'),
+  });
+
+  // Handle the post-callback return: the backend redirects back with ?x_connected=1 (or =0 on failure).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('x_connected');
+    if (connected === null) return;
+    if (connected === '1') {
+      showToast(t('settings.xConnected'), 'success');
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    } else {
+      showToast(t('settings.xConnectFailed'), 'error');
+    }
+    // Strip the param so a refresh doesn't re-trigger the toast (preserve the hash route).
+    params.delete('x_connected');
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (isLoading) return <PageLoading />;
   if (error || !settings) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
@@ -142,9 +172,18 @@ export function SettingsPage() {
         {services.map(svc => (
           <div key={svc.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-xs) 0' }}>
             <span style={{ fontSize: 'var(--text-sm)' }}>{svc.label}</span>
-            <span className={`badge ${svc.connected ? 'badge-approved' : 'badge-draft'}`}>
-              {svc.connected ? t('settings.connected') : t('settings.notConnected')}
-            </span>
+            {svc.key === 'x' ? (
+              <XConnectControl
+                connected={settings.has_x}
+                needsReconnect={settings.needs_x_reconnect ?? false}
+                pending={connectXMutation.isPending}
+                onConnect={() => connectXMutation.mutate()}
+              />
+            ) : (
+              <span className={`badge ${svc.connected ? 'badge-approved' : 'badge-draft'}`}>
+                {svc.connected ? t('settings.connected') : t('settings.notConnected')}
+              </span>
+            )}
           </div>
         ))}
       </Section>
@@ -181,6 +220,28 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span style={{ fontSize: 'var(--text-sm)' }}>{label}</span>
       {children}
     </div>
+  );
+}
+
+function XConnectControl({
+  connected, needsReconnect, pending, onConnect,
+}: {
+  connected: boolean;
+  needsReconnect: boolean;
+  pending: boolean;
+  onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  // Connected and healthy -> just show the badge.
+  if (connected && !needsReconnect) {
+    return <span className="badge badge-approved">{t('settings.connected')}</span>;
+  }
+  // Either never connected, or the stored token went stale -> offer a (re)connect action.
+  const label = needsReconnect ? t('settings.reconnectX') : t('settings.connectX');
+  return (
+    <button className="btn btn-primary" onClick={onConnect} disabled={pending}>
+      {label}
+    </button>
   );
 }
 
