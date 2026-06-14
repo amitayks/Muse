@@ -2,9 +2,9 @@ import type { HandlerContext } from '../core/router';
 import type { ViewResult, DraftContent } from '../types';
 import type { Lang } from '../ui/strings';
 import { getDraft, getChatState, parseContext, updateChatState, getTimezone } from '../data/db';
-import { editMessage, editMessageCaption, deleteMessage, sendPhoto, sendMediaGroup } from '../integrations/telegram';
+import { sendMediaGroup } from '../integrations/telegram';
 import { renderDraftDetail, renderError } from '../views';
-import { truncateHtml } from '../ui/utils';
+import { getDraftPrimaryImageUrl, reconcileDraftBotMessage } from '../services/draft-message';
 import { sanitizeError } from '../infra/security';
 
 /**
@@ -45,15 +45,8 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
         ? extractPerTweetMediaUrls(content, env.WORKER_URL)
         : [];
 
-    let imageUrl: string | null = null;
-
-    if (perTweetMediaUrls.length > 0) {
-        // Per-tweet media takes priority — use first image as primary
-        imageUrl = perTweetMediaUrls[0];
-    } else if (draft.image_url && env.WORKER_URL) {
-        // Use existing image if one was generated at creation time
-        imageUrl = `${env.WORKER_URL}/image/${draft.image_url}`;
-    }
+    // Primary image URL — single source of truth shared with the webapp sync.
+    const imageUrl = getDraftPrimaryImageUrl(content, draft, env.WORKER_URL);
 
     // Capture origin list info before overwriting state
     const currentState = await getChatState(env, chatId);
@@ -76,8 +69,6 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
     });
 
     if (imageUrl && messageId) {
-        const caption = truncateHtml(view.text, 1000);
-
         // Send additional images as album first (if multiple per-tweet media)
         if (perTweetMediaUrls.length >= 2) {
             const albumUrls = perTweetMediaUrls.slice(1, 10); // images 2–10
@@ -96,18 +87,14 @@ export async function draftDetailAction(ctx: HandlerContext & { value: string })
             });
         }
 
-        // If message is already a photo, update caption in place
-        try {
-            await editMessageCaption(env, chatId, messageId, caption, view.keyboard);
-            return; // void — photo preserved, caption updated
-        } catch {
-            // Not a photo message — transition from text to photo
-            try {
-                await deleteMessage(env, chatId, messageId);
-            } catch { /* ignore */ }
-            await sendPhoto(env, chatId, imageUrl, caption, view.keyboard);
-            return; // void — handled sending ourselves
+        // Media-aware edit-or-resend (shared with the webapp sync). Persist the new id when the
+        // message is resent (text→photo transition) so a later webapp sync edits the live photo
+        // message in place rather than a deleted one.
+        const newId = await reconcileDraftBotMessage(env, chatId, messageId, imageUrl, view);
+        if (newId !== messageId) {
+            await updateChatState(env, chatId, { message_id: newId });
         }
+        return; // void — handled sending ourselves
     }
 
     return view; // let router handle editMessage
