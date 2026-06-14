@@ -26,7 +26,9 @@ import { logInfo, logError, sanitizeError } from '../infra/security';
 import { validateGeminiKey } from '../ai/gemini';
 import { connectInstagram } from '../services/instagram-token';
 import { analyzeIdentity } from '../ai/identity';
+import { XReconnectError } from '../integrations/x';
 import { hydrateEnv } from '../data/user-keys';
+import { t } from '../ui/strings';
 import type { Lang } from '../ui/strings';
 
 // ─── Step rendering with progress bar ─────────────────────────────────────
@@ -481,8 +483,17 @@ async function handleIdentityAnalyze(
         }
         logError('Identity analysis failed:', sanitizeError(error));
         // User falls through to default skeleton — no storage needed
-        const failed = renderIdentityFailed(lang);
-        await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
+        if (error instanceof XReconnectError) {
+            // Dead/missing OAuth 2.0 bearer — show an honest reconnect prompt instead of a generic failure.
+            const keyboard: Array<Array<{ text: string; web_app?: { url: string } }>> = [];
+            if (env.WEBAPP_URL) {
+                keyboard.push([{ text: t(lang, 'notifications.btnReconnectX'), web_app: { url: `${env.WEBAPP_URL}/#/settings` } }]);
+            }
+            await sendMessage(env, telegramChatId, t(lang, 'settings.identityReconnectX'), keyboard.length ? keyboard : undefined);
+        } else {
+            const failed = renderIdentityFailed(lang);
+            await sendMessage(env, telegramChatId, failed.text, failed.keyboard);
+        }
         // Advance to Gemini (with progress bar)
         await updateUser(env, chatId, { onboarding_step: 'gemini_key' });
         await sendStepView(env, chatId, telegramChatId, undefined, 'gemini_key', lang);
@@ -517,70 +528,5 @@ async function completeOnboarding(
     logInfo(`User ${chatId} completed onboarding`);
 }
 
-/**
- * Verify X credentials using OAuth 1.0a signature for account/verify_credentials
- */
-export async function verifyXCredentials(
-    apiKey: string,
-    apiSecret: string,
-    accessToken: string,
-    accessSecret: string
-): Promise<{ ok: boolean; username?: string; error?: string }> {
-    try {
-        const url = 'https://api.x.com/1.1/account/verify_credentials.json';
-        const method = 'GET';
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const nonce = crypto.randomUUID().replace(/-/g, '');
-
-        const params: Record<string, string> = {
-            oauth_consumer_key: apiKey,
-            oauth_nonce: nonce,
-            oauth_signature_method: 'HMAC-SHA1',
-            oauth_timestamp: timestamp,
-            oauth_token: accessToken,
-            oauth_version: '1.0',
-        };
-
-        // Create signature base string
-        const paramString = Object.keys(params)
-            .sort()
-            .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-            .join('&');
-
-        const baseString = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(paramString)}`;
-        const signingKey = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(accessSecret)}`;
-
-        // HMAC-SHA1 signature
-        const encoder = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-            'raw',
-            encoder.encode(signingKey),
-            { name: 'HMAC', hash: 'SHA-1' },
-            false,
-            ['sign']
-        );
-        const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(baseString));
-        const signature = btoa(String.fromCharCode(...new Uint8Array(sig)));
-
-        params.oauth_signature = signature;
-
-        const authHeader = 'OAuth ' + Object.keys(params)
-            .sort()
-            .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(params[k])}"`)
-            .join(', ');
-
-        const response = await fetch(url, {
-            method,
-            headers: { 'Authorization': authHeader },
-        });
-
-        if (!response.ok) {
-            return { ok: false, error: `X API returned status ${response.status}` };
-        }
-
-        const data = await response.json() as { screen_name?: string };
-        return { ok: true, username: data.screen_name };
-    } catch (error) {
-        return { ok: false, error: 'Failed to verify X credentials' };
-    }
-}
+// X credentials are connected via OAuth 2.0 (PKCE) in the web app — the legacy OAuth 1.0a
+// `verify_credentials` paste-and-verify flow has been removed (see services/x-oauth.ts).

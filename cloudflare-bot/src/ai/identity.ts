@@ -4,7 +4,7 @@
 
 import type { Env } from '../types';
 import type { ClassifiedTweet } from '../integrations/x';
-import { fetchUserTweets, getMyProfile } from '../integrations/x';
+import { fetchUserTweets, getMyProfile, XReconnectError } from '../integrations/x';
 import { updateOwnProfileData } from '../data/user-db';
 import { getIdentityTweetCount } from '../data/db';
 import { getDefaultPromptText, saveUserPrompt } from './prompts';
@@ -26,6 +26,9 @@ export async function analyzeIdentity(env: Env, chatId: string, lang: string): P
     try {
         tweets = await fetchUserTweets(env, count);
     } catch (error) {
+        // A missing/dead OAuth 2.0 bearer surfaces as XReconnectError — propagate it so
+        // callers can show an honest "reconnect your X" prompt instead of "no tweets".
+        if (error instanceof XReconnectError) throw error;
         console.error('[identity] Failed to fetch tweets:', error);
         return null;
     }

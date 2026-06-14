@@ -23,7 +23,6 @@ import { handleTelegramWebhook } from './routes/webhook';
 import { handleGitHubWebhookEndpoint } from './routes/github';
 import { handleSetup } from './routes/setup';
 import { handleMigrate, handleWipeUser } from './routes/migrate';
-import { handleTestX } from './routes/test-x';
 import { handleTestGenerate } from './routes/test-generate';
 import { handleImageRequest } from './routes/image';
 import { handleHeyGenWebhook } from './routes/heygen-webhook';
@@ -76,13 +75,6 @@ export default {
                 const rateLimit = checkRateLimit(`admin:${clientIP}`, RATE_LIMITS.admin);
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
                 const response = await handleWipeUser(request, url, env);
-                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
-            }
-
-            if (url.pathname === '/test-x') {
-                const rateLimit = checkRateLimit(`admin:${clientIP}`, RATE_LIMITS.admin);
-                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
-                const response = await handleTestX(request, env);
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.admin.maxRequests);
             }
 

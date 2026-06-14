@@ -11,6 +11,7 @@ import { updateChatState, getTimezone, getPageSize, getIdentityTweetCount } from
 import { getRepostDefaults, setRepostDefault, getCommitDefaults, setCommitDefault, getRepoDefaults, setRepoDefault, getAiProvider, setAiProvider } from '../data/user-settings-db';
 import { renderApiKeys, renderSettings, renderSettingsGeneral, renderSettingsSkills, renderSettingsPlatforms, renderSettingsRepost, renderSettingsCommits, renderSettingsRepos } from '../views/settings';
 import { analyzeIdentity } from '../ai/identity';
+import { XReconnectError } from '../integrations/x';
 import { hydrateEnv } from '../data/user-keys';
 import { renderPlatformBadges, parsePublishTargets } from '../views/platform-toggle';
 import { editMessage, answerCallback } from '../integrations/telegram';
@@ -84,6 +85,17 @@ export async function settingsKeysAction(
                 };
             }
         } catch (error) {
+            if (error instanceof XReconnectError) {
+                const keyboard: ViewResult['keyboard'] = [];
+                if (env.WEBAPP_URL) {
+                    keyboard.push([{ text: t(lang, 'notifications.btnReconnectX'), web_app: { url: `${env.WEBAPP_URL}/#/settings` } }]);
+                }
+                keyboard.push([{ text: t(lang, 'common.back'), callback_data: 'settings:sub:skills' }]);
+                return {
+                    text: t(lang, 'settings.identityReconnectX'),
+                    keyboard,
+                };
+            }
             console.error('[settings] Identity re-analysis failed:', error);
             return {
                 text: t(lang, 'settings.identityAnalyzeFailedRetry'),

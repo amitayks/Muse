@@ -187,6 +187,7 @@ export const he: StringsMap = {
         identityAnalyzeFailed: '⚠️ הניתוח נכשל. הזהות הקיימת שלך נשארת ללא שינוי.',
         identityAnalyzeFailedRetry: '⚠️ הניתוח נכשל. נסה שוב מאוחר יותר.\n\nהזהות הקיימת שלך נשארת ללא שינוי.',
         identityAnalyzeFailedNoTweets: '⚠️ הניתוח נכשל. לא נמצאו ציוצים או שאירעה שגיאה.\n\nהזהות הקיימת שלך נשארת ללא שינוי.',
+        identityReconnectX: '⚠️ החיבור ל-X פג. חבר מחדש את חשבון ה-X שלך באפליקציית הווב, ואז נסה שוב לנתח זהות.\n\nהזהות הקיימת שלך נשארת ללא שינוי.',
 
         // Repost defaults
         repostDefaults: '🔄 <b>ברירות מחדל ריפוסט</b>',
@@ -719,6 +720,8 @@ export const he: StringsMap = {
         btnViewDrafts: '📝 צפה בטיוטות',
         btnReconnectInstagram: '🔁 חבר מחדש את אינסטגרם',
         instagramReconnectNeeded: '⚠️ <b>צריך לחבר מחדש את אינסטגרם</b>\n\nטוקן הגישה של אינסטגרם פג ולא ניתן היה לרענן אותו אוטומטית. חבר מחדש כדי להמשיך לפרסם.',
+        btnReconnectX: '🔁 חבר מחדש את X',
+        xReconnectNeeded: '⚠️ <b>צריך לחבר מחדש את X</b>\n\nהחיבור ל-X פג ולא ניתן היה לרענן אותו אוטומטית. חבר מחדש כדי להמשיך לפרסם ולנתח זהות.',
         scheduledPostPublished: '📤 <b>פוסט מתוזמן פורסם!</b>',
         scheduledPostPartial: '⚠️ <b>פוסט מתוזמן פורסם חלקית</b>',
         publishedAt: '🕐 פורסם ב-{time}',

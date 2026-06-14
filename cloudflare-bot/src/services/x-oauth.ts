@@ -22,6 +22,19 @@ export const X_OAUTH_SCOPES = 'tweet.read tweet.write users.read media.write off
 export const X_AUTHORIZE_URL = 'https://x.com/i/oauth2/authorize';
 export const X_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
 
+/**
+ * Thrown when the token endpoint definitively rejects the refresh token (the token is
+ * dead and unrecoverable — e.g. HTTP 400 `invalid_grant` / "token was invalid").
+ * Distinct from the generic Error thrown for transient failures (network/5xx/429), so
+ * callers can clear credentials only on a genuine dead-token signal.
+ */
+export class XRefreshInvalidError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'XRefreshInvalidError';
+    }
+}
+
 export interface XTokenSet {
     accessToken: string;
     refreshToken: string;
@@ -118,6 +131,15 @@ async function requestToken(env: Env, fields: Record<string, string>): Promise<X
 
     if (!res.ok || !body.access_token || !body.refresh_token) {
         const message = body.error_description || body.error || `X token request failed (HTTP ${res.status})`;
+        // Definitive dead-token signal: a 4xx whose body indicates an invalid token.
+        // Everything else (network, 5xx, 429) stays a generic Error → treated as transient.
+        const isInvalidToken =
+            res.status >= 400 && res.status < 500 &&
+            (body.error === 'invalid_grant' || body.error === 'invalid_request' ||
+                /token was invalid/i.test(body.error_description || ''));
+        if (isInvalidToken) {
+            throw new XRefreshInvalidError(message);
+        }
         throw new Error(message);
     }
 

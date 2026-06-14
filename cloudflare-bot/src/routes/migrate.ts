@@ -593,6 +593,20 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('x_oauth2 migration note:', String(xOAuth2Error));
         }
 
+        // Migration: X OAuth 2.0 single-flight refresh lock (022)
+        // A per-user CAS lock so only one refresher rotates the token at a time (prevents the
+        // concurrent-rotation race that can strand or wrongly clear a healthy connection).
+        try {
+            const usersInfo9 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasRefreshLock = usersInfo9.results?.some((col: any) => col.name === 'x_oauth2_refresh_lock');
+            if (!hasRefreshLock) {
+                await env.DB.prepare(`ALTER TABLE users ADD COLUMN x_oauth2_refresh_lock TEXT;`).run();
+                logInfo('Added x_oauth2_refresh_lock column to users table');
+            }
+        } catch (refreshLockError) {
+            logInfo('x_oauth2_refresh_lock migration note:', String(refreshLockError));
+        }
+
         // Migration: Deferred X video post — schedule store (source of truth) (021)
         // An X video media object needs ~10-60s after STATUS=succeeded before POST /2/tweets
         // accepts it. Media is uploaded inline (ids valid for hours); the tweet-creation step is

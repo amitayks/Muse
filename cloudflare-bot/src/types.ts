@@ -11,10 +11,6 @@ export interface Env {
     GITHUB_TOKEN: string;
     GITHUB_OWNER?: string;
     GITHUB_WEBHOOK_SECRET?: string;
-    X_API_KEY: string;
-    X_API_SECRET: string;
-    X_ACCESS_TOKEN: string;
-    X_ACCESS_SECRET: string;
     // X OAuth2 (PKCE) public client credentials
     X_OAUTH2_CLIENT_ID?: string;
     X_OAUTH2_REDIRECT_URI?: string;

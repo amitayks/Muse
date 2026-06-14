@@ -184,6 +184,7 @@ export const en = {
         identityAnalyzeFailed: '⚠️ Analysis failed. Your existing identity remains unchanged.',
         identityAnalyzeFailedRetry: '⚠️ Re-analysis failed. Please try again later.\n\nYour existing identity remains unchanged.',
         identityAnalyzeFailedNoTweets: '⚠️ Re-analysis failed. No tweets were found or an error occurred.\n\nYour existing identity remains unchanged.',
+        identityReconnectX: '⚠️ Your X connection expired. Reconnect your X account in the web app, then try identity analysis again.\n\nYour existing identity remains unchanged.',
 
         // Repost defaults
         repostDefaults: '🔄 <b>Repost Defaults</b>',
@@ -762,6 +763,8 @@ export const en = {
         btnViewDrafts: '📝 View Drafts',
         btnReconnectInstagram: '🔁 Reconnect Instagram',
         instagramReconnectNeeded: '⚠️ <b>Instagram needs reconnecting</b>\n\nYour Instagram access token expired and could not be refreshed automatically. Reconnect to resume publishing.',
+        btnReconnectX: '🔁 Reconnect X',
+        xReconnectNeeded: '⚠️ <b>X needs reconnecting</b>\n\nYour X connection expired and could not be refreshed automatically. Reconnect to resume posting and identity analysis.',
         scheduledPostPublished: '📤 <b>Scheduled Post Published!</b>',
         scheduledPostPartial: '⚠️ <b>Scheduled Post Partially Published</b>',
         publishedAt: '🕐 Published {time}',

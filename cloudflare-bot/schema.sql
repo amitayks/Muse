@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS users (
   instagram_token_expires_at TEXT,
   -- X OAuth 2.0 access token expiry (ISO 8601; NULL until connected/refreshed)
   x_oauth2_expires_at TEXT,
+  -- X OAuth 2.0 single-flight refresh lock (ISO 8601 claim time; NULL when free; stale after 30s)
+  x_oauth2_refresh_lock TEXT,
   -- Repo defaults (for newly added repos)
   repo_auto_overview INTEGER DEFAULT 0,
   repo_default_watch_pushes INTEGER DEFAULT 1,

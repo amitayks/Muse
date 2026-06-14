@@ -195,6 +195,7 @@ export const en: Record<string, string> = {
   'settings.notConnected': 'Not Connected',
   'settings.connectX': 'Connect X',
   'settings.reconnectX': 'Reconnect X',
+  'settings.refreshXConnection': 'Reconnect',
   'settings.xConnected': 'X connected',
   'settings.xConnectFailed': 'Failed to connect X. Please try again.',
   'settings.update': 'Update',

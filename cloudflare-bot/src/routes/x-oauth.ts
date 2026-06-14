@@ -13,8 +13,8 @@
 import type { Env } from '../types';
 import { logError } from '../infra/security';
 import { generatePkce, buildAuthorizeUrl, exchangeCode } from '../services/x-oauth';
-import { putXOAuthState, takeXOAuthState, updateUser } from '../data/user-db';
-import { storeXOAuth2Tokens } from '../data/user-keys';
+import { putXOAuthState, takeXOAuthState, updateUser, getUser } from '../data/user-db';
+import { storeXOAuth2Tokens, getValidXAccessToken } from '../data/user-keys';
 import type { ApiContext } from './api-v1';
 import { jsonResponse, errorResponse } from './api-v1';
 
@@ -38,6 +38,29 @@ export async function handleXOAuthStart(ctx: ApiContext): Promise<Response> {
 
     const authorizeUrl = buildAuthorizeUrl(env, state, challenge);
     return jsonResponse({ authorizeUrl });
+}
+
+/**
+ * GET /api/v1/x/oauth/status — authenticated.
+ *
+ * Live connection-health probe: resolves a usable bearer via `getValidXAccessToken`,
+ * which performs a live refresh and, on a confirmed dead token, runs the dead-token
+ * invalidation path (clear + notify). Returns the current health rather than a stale
+ * DB-presence read.
+ *   - `connected`: a valid bearer could be resolved.
+ *   - `needsReconnect`: no bearer, but the user intended to connect X (`has_x === 1`).
+ */
+export async function handleXOAuthStatus(ctx: ApiContext): Promise<Response> {
+    const { env, chatId, request } = ctx;
+    if (request.method !== 'GET') return errorResponse('Method Not Allowed', 405);
+
+    const bearer = await getValidXAccessToken(env, chatId);
+    const user = await getUser(env, chatId);
+    const hasIntent = user?.has_x === 1;
+
+    const connected = !!bearer;
+    const needsReconnect = !bearer && hasIntent;
+    return jsonResponse({ connected, needsReconnect });
 }
 
 /**

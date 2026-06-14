@@ -173,6 +173,43 @@ export async function setXOAuth2ExpiresAt(
     ).bind(expiresAt, chatId).run();
 }
 
+/**
+ * Clear the X OAuth 2.0 credentials (access + refresh + expiry) in one atomic write.
+ * Used when a refresh token is confirmed dead. Does NOT touch `has_x` — the user's
+ * connect intent is preserved so the settings API derives `needs_x_reconnect`.
+ */
+export async function clearXOAuth2Tokens(env: Env, chatId: string): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET x_oauth2_access_enc = NULL, x_oauth2_refresh_enc = NULL, x_oauth2_expires_at = NULL, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(chatId).run();
+}
+
+// A held refresh lock older than this is treated as stale (its holder crashed) and may be reclaimed,
+// so a single hung refresh can never deadlock token resolution for a user.
+const X_REFRESH_LOCK_STALE_SECONDS = 30;
+
+/**
+ * Single-flight refresh lock (compare-and-swap). Atomically stamps `x_oauth2_refresh_lock` with
+ * `now` for this user, but only if the lock is currently free (NULL) or stale (older than
+ * `X_REFRESH_LOCK_STALE_SECONDS`). Returns true iff THIS caller claimed it — exactly one concurrent
+ * refresher wins, the rest get false and reuse the current token instead of racing on rotation.
+ */
+export async function tryClaimXRefreshLock(env: Env, chatId: string): Promise<boolean> {
+    const res = await env.DB.prepare(
+        `UPDATE users SET x_oauth2_refresh_lock = datetime('now')
+         WHERE chat_id = ?
+           AND (x_oauth2_refresh_lock IS NULL OR x_oauth2_refresh_lock <= datetime('now', '-${X_REFRESH_LOCK_STALE_SECONDS} seconds'))`
+    ).bind(chatId).run();
+    return (res.meta?.changes ?? 0) > 0;
+}
+
+/** Release the single-flight refresh lock (clears `x_oauth2_refresh_lock`). Best-effort. */
+export async function releaseXRefreshLock(env: Env, chatId: string): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET x_oauth2_refresh_lock = NULL WHERE chat_id = ?"
+    ).bind(chatId).run();
+}
+
 // ==================== X OAUTH 2.0 PKCE STATE STORE ====================
 
 // Transient PKCE state rows older than this are treated as expired.

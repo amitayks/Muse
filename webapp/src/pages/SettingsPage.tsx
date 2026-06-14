@@ -232,12 +232,51 @@ function XConnectControl({
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
-  // Connected and healthy -> just show the badge.
-  if (connected && !needsReconnect) {
-    return <span className="badge badge-approved">{t('settings.connected')}</span>;
+
+  // Live token-health probe. The settings query reports DB-presence; this asks the backend
+  // to actually resolve a bearer (refreshing / clearing a dead token), so we can flip into
+  // the reconnect state even when the cached settings still say "connected".
+  // Resilient: any fetch error is ignored — it must never crash the page.
+  const statusQuery = useQuery({
+    queryKey: ['x-oauth-status'],
+    queryFn: () => api.getXOAuthStatus(),
+    enabled: connected,
+    retry: false,
+    staleTime: 30_000,
+  });
+
+  // Merge the live probe with the prop: needsReconnect wins if either source flags it.
+  const liveNeedsReconnect = statusQuery.data?.needsReconnect ?? false;
+  const effectiveNeedsReconnect = needsReconnect || liveNeedsReconnect;
+
+  // Connected and healthy -> show the badge plus a subtle, always-available reconnect affordance.
+  if (connected && !effectiveNeedsReconnect) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-sm)' }}>
+        <span className="badge badge-approved">{t('settings.connected')}</span>
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={pending}
+          title={t('settings.refreshXConnection')}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: pending ? 'default' : 'pointer',
+            color: 'var(--link)',
+            fontSize: '12px',
+            textDecoration: 'underline',
+            opacity: pending ? 0.5 : 1,
+          }}
+        >
+          {t('settings.refreshXConnection')}
+        </button>
+      </span>
+    );
   }
-  // Either never connected, or the stored token went stale -> offer a (re)connect action.
-  const label = needsReconnect ? t('settings.reconnectX') : t('settings.connectX');
+  // Either never connected, or the stored/live token went stale -> offer a prominent (re)connect action.
+  const label = effectiveNeedsReconnect ? t('settings.reconnectX') : t('settings.connectX');
   return (
     <button className="btn btn-primary" onClick={onConnect} disabled={pending}>
       {label}

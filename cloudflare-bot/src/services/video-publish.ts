@@ -3,7 +3,7 @@
  */
 
 import type { Env, VideoDraft } from '../types';
-import { generateOAuthHeader, uploadVideoToX } from '../integrations/x';
+import { postTweet, uploadVideoToX } from '../integrations/x';
 import { logInfo, logError } from '../infra/security';
 import { InstagramPublishError, parseGraphError } from './instagram-publish';
 
@@ -32,30 +32,19 @@ export async function publishVideoToTwitter(
             return null;
         }
 
-        // Create tweet with media
+        // Create tweet with media via OAuth 2.0 (postTweet → xFetch). The video media was minted
+        // under OAuth 2.0 (uploadVideoToX); posting the tweet under OAuth 1.0a would be rejected
+        // with "Your media IDs are invalid" (the V1/V2 auth mismatch) and also requires legacy
+        // 1.0a creds an OAuth2-only account no longer has.
         const caption = videoDraft.twitter_caption || videoDraft.title || 'New video!';
-        const tweetUrl = 'https://api.twitter.com/2/tweets';
-        const tweetAuth = await generateOAuthHeader(env, 'POST', tweetUrl, {});
-
-        const tweetResponse = await fetch(tweetUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': tweetAuth,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                text: caption,
-                media: { media_ids: [mediaId] },
-            }),
-        });
-
-        if (!tweetResponse.ok) {
-            logError('Twitter tweet creation failed:', await tweetResponse.text());
+        let tweetId: string;
+        try {
+            tweetId = await postTweet(env, caption, { mediaIds: [mediaId] });
+        } catch (tweetError) {
+            logError('Twitter tweet creation failed:', tweetError instanceof Error ? tweetError.message : String(tweetError));
             return null;
         }
 
-        const tweetResult = await tweetResponse.json() as { data: { id: string } };
-        const tweetId = tweetResult.data.id;
         const url = `https://twitter.com/i/status/${tweetId}`;
         logInfo('Published video to Twitter:', url);
         return url;

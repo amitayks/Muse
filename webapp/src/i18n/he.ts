@@ -195,6 +195,7 @@ export const he: Record<string, string> = {
   'settings.notConnected': 'לא מחובר',
   'settings.connectX': 'התחבר ל-X',
   'settings.reconnectX': 'התחבר מחדש ל-X',
+  'settings.refreshXConnection': 'התחבר מחדש',
   'settings.xConnected': 'X מחובר',
   'settings.xConnectFailed': 'החיבור ל-X נכשל. נסה שוב.',
   'settings.update': 'עדכן',

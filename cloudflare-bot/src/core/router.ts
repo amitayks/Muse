@@ -229,6 +229,7 @@ export const callbackHandlers: Record<string, ActionHandler> = {
         if (value === 'reanalyze') {
             const { getUser } = await import('../data/user-db');
             const { analyzeIdentity } = await import('../ai/identity');
+            const { XReconnectError } = await import('../integrations/x');
             const { hydrateEnv } = await import('../data/user-keys');
             const { t } = await import('../ui/strings');
             const user = await getUser(env, chatId);
@@ -251,7 +252,18 @@ export const callbackHandlers: Record<string, ActionHandler> = {
                     text: t(lang, 'settings.identityAnalyzeFailed'),
                     keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],
                 };
-            } catch {
+            } catch (error) {
+                if (error instanceof XReconnectError) {
+                    const keyboard: ViewResult['keyboard'] = [];
+                    if (env.WEBAPP_URL) {
+                        keyboard.push([{ text: t(lang, 'notifications.btnReconnectX'), web_app: { url: `${env.WEBAPP_URL}/#/settings` } }]);
+                    }
+                    keyboard.push([{ text: t(lang, 'common.home'), callback_data: 'view:home' }]);
+                    return {
+                        text: t(lang, 'settings.identityReconnectX'),
+                        keyboard,
+                    };
+                }
                 return {
                     text: t(lang, 'settings.identityAnalyzeFailedRetry'),
                     keyboard: [[{ text: t(lang, 'common.home'), callback_data: 'view:home' }]],

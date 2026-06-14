@@ -28,6 +28,8 @@ The system SHALL provide a `/who-am-i` skill that accepts the user's tweets and 
 ### Requirement: Tweet fetching for identity analysis
 The system SHALL fetch up to the user's configured number of recent posts (presets 100/200/400, default 200; see the `identity-tweet-depth` capability) via the X API using the user's connected credentials. Because the X v2 timeline endpoint returns at most 100 results per request, the system SHALL paginate using the `next_token` pagination cursor, accumulating posts across pages until the configured depth is reached or the timeline is exhausted, bounded by a defensive page cap. Pure retweets (no added text) SHALL be filtered out via the API `exclude=retweets` parameter. Quote tweets and replies SHALL be preserved. For replies and quote tweets, the system SHALL also resolve the referenced (parent / quoted) tweet's text and author handle from the **same** API response via the `referenced_tweets.id` and `referenced_tweets.id.author_id` expansions (no additional API calls), attaching that context to each post when available. The fetched, context-enriched tweets SHALL be sent to Gemini with the `/who-am-i` skill for analysis.
 
+A failure caused by a missing/invalid X OAuth 2.0 bearer (an `XReconnectError`) SHALL be distinguished from other fetch failures and from a genuinely empty timeline: it SHALL propagate as a reconnect-needed signal rather than collapsing into a "no posts found" outcome.
+
 #### Scenario: Fetch with connected X credentials at configured depth
 - **WHEN** the identity analysis is triggered for a user with valid X API credentials and a configured depth of N (100, 200, or 400)
 - **THEN** the system SHALL call the X API, paginating as needed, to collect up to N of the user's recent posts with `exclude=retweets`, and pass the remaining posts to Gemini
@@ -48,8 +50,12 @@ The system SHALL fetch up to the user's configured number of recent posts (prese
 - **WHEN** a reply or quote references a tweet that is not present in the response expansions (deleted, protected, or otherwise unavailable)
 - **THEN** the system SHALL fall back to the bare reply/quote text without referenced context and SHALL NOT fail the analysis
 
-#### Scenario: X API fetch fails
-- **WHEN** the X API call fails (rate limit, invalid credentials, network error)
+#### Scenario: X bearer missing or invalid (reconnect needed)
+- **WHEN** the tweet fetch fails because no usable OAuth 2.0 bearer is available (`XReconnectError` — e.g. the stored token is dead and was cleared)
+- **THEN** the analysis SHALL NOT report "no posts found"; it SHALL surface a reconnect-X outcome to the caller so the user is told to reconnect their X account
+
+#### Scenario: X API fetch fails for other reasons
+- **WHEN** the X API call fails for a non-auth reason (rate limit, network error)
 - **THEN** the system SHALL display an error message and offer to retry or use the default identity
 - **AND** if a failure occurs partway through pagination, the system MAY proceed with the posts already collected rather than discarding them
 
@@ -80,7 +86,7 @@ The system SHALL provide a minimal default Identity Document for users who skip 
 - **THEN** the skill SHALL receive the skeleton identity and produce output with neutral but human tone (not corporate AI tone)
 
 ### Requirement: Identity re-analysis trigger
-The system SHALL allow users to re-trigger identity analysis at any time from the settings view. This fetches fresh tweets — up to the user's configured depth (presets 100/200/400, default 200) — and regenerates the Identity Document, replacing the existing one (after user confirmation).
+The system SHALL allow users to re-trigger identity analysis at any time from the settings view. This fetches fresh tweets — up to the user's configured depth (presets 100/200/400, default 200) — and regenerates the Identity Document, replacing the existing one (after user confirmation). When re-analysis fails because the X connection is missing or invalid, the system SHALL show a reconnect-X message with a path to reconnect, leaving the existing identity unchanged — it SHALL NOT report "No tweets were found" for an auth/connection failure.
 
 #### Scenario: User triggers re-analysis from settings
 - **WHEN** a user clicks "Re-analyze my identity" in settings
@@ -89,6 +95,10 @@ The system SHALL allow users to re-trigger identity analysis at any time from th
 #### Scenario: Re-analysis confirmation
 - **WHEN** the new Identity Document is generated
 - **THEN** the user SHALL be shown a preview and asked to confirm before it replaces the existing identity
+
+#### Scenario: Re-analysis blocked by missing/invalid X connection
+- **WHEN** re-analysis fails because the X OAuth 2.0 connection is missing or has become invalid (`XReconnectError`)
+- **THEN** the system SHALL show a "reconnect your X account" message with an action to reconnect (and SHALL NOT show "No tweets were found"), and the existing identity SHALL remain unchanged
 
 ### Requirement: Identity injection into Gemini calls
 Every identity-attached skill (`/work-progress`, `/refine`, `/quote`, `/video`, `/know-my-project`, `/what-i-like`) SHALL include the user's full Identity Document in the system instruction. The identity SHALL be injected as a distinct section after the skill prompt and before the task protocol, introduced as "this is who I am" (first-person, not "this is the user's profile").

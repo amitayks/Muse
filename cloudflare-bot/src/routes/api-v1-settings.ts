@@ -38,6 +38,8 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
             repo_defaults: repoDefaults,
             has_gemini: user.has_gemini === 1,
             has_x: hasXOAuth,
+            // True once a dead token is cleared (x_oauth2_access_enc NULL ⇒ hasXOAuth false)
+            // while has_x intent stays 1, so the webapp surfaces the reconnect prompt.
             needs_x_reconnect: user.has_x === 1 && !hasXOAuth,
             has_github: user.has_github === 1,
             has_heygen: user.has_heygen === 1,
@@ -123,16 +125,9 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
                 break;
             }
             case 'x': {
-                const { apiKey, apiSecret, accessToken, accessSecret } = body;
-                if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
-                    return errorResponse('apiKey, apiSecret, accessToken, accessSecret are required', 400);
-                }
-                await storeEncryptedKey(env, chatId, 'x_api_key_enc', await encrypt(env, apiKey));
-                await storeEncryptedKey(env, chatId, 'x_api_secret_enc', await encrypt(env, apiSecret));
-                await storeEncryptedKey(env, chatId, 'x_access_token_enc', await encrypt(env, accessToken));
-                await storeEncryptedKey(env, chatId, 'x_access_secret_enc', await encrypt(env, accessSecret));
-                await updateUser(env, chatId, { has_x: 1 });
-                break;
+                // X connects via OAuth 2.0 (PKCE) through GET /api/v1/x/oauth/start — the legacy
+                // OAuth 1.0a key-paste flow is retired. Reject any attempt to store 1.0a keys.
+                return errorResponse('X connects via OAuth 2.0 — use the in-app "Connect X" flow', 400);
             }
             case 'instagram': {
                 if (!body.token || !body.accountId) {

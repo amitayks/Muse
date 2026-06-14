@@ -128,4 +128,11 @@ export const api = {
    */
   startXOAuth: () =>
     request<{ authorizeUrl: string }>('/api/v1/x/oauth/start'),
+
+  /**
+   * Live X (Twitter) connection-health probe. The backend resolves a usable bearer
+   * (refreshing, and clearing a dead token, as needed) and reports the current state.
+   */
+  getXOAuthStatus: () =>
+    request<{ connected: boolean; needsReconnect: boolean }>('/api/v1/x/oauth/status'),
 };
