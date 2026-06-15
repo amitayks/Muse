@@ -33,14 +33,15 @@ export async function repostShowAction(
     if (!draft) return renderError('Draft not found.', lang);
 
     // Initialize with all unchecked
-    const selection: PublishTargets = { x: false, instagram_post: false, instagram_story: false, instagram_reel: false };
+    const selection: PublishTargets = { x: false, instagram_post: false, instagram_story: false, instagram_reel: false, linkedin: false };
     repostSelections.set(`${ctx.chatId}:${draftId}`, selection);
 
     const user = await getUser(ctx.env, ctx.chatId);
     const hasInstagram = user?.has_instagram === 1;
+    const hasLinkedIn = user?.has_linkedin === 1;
     const hasVideo = draft.has_video === 1;
 
-    return renderRepostPicker(selection, draftId, hasInstagram, hasVideo, lang);
+    return renderRepostPicker(selection, draftId, hasInstagram, hasLinkedIn, hasVideo, lang);
 }
 
 /**
@@ -48,9 +49,9 @@ export async function repostShowAction(
  */
 // Map short callback keys to full platform names
 const PLATFORM_KEY_MAP: Record<string, keyof PublishTargets> = {
-    x: 'x', ip: 'instagram_post', is: 'instagram_story', ir: 'instagram_reel',
+    x: 'x', ip: 'instagram_post', is: 'instagram_story', ir: 'instagram_reel', li: 'linkedin',
     // Also accept full names for backward compat
-    instagram_post: 'instagram_post', instagram_story: 'instagram_story', instagram_reel: 'instagram_reel',
+    instagram_post: 'instagram_post', instagram_story: 'instagram_story', instagram_reel: 'instagram_reel', linkedin: 'linkedin',
 };
 
 export async function repostToggleAction(
@@ -62,7 +63,7 @@ export async function repostToggleAction(
     if (!draftId) return;
 
     const key = `${ctx.chatId}:${draftId}`;
-    const selection = repostSelections.get(key) || { x: false, instagram_post: false, instagram_story: false, instagram_reel: false };
+    const selection = repostSelections.get(key) || { x: false, instagram_post: false, instagram_story: false, instagram_reel: false, linkedin: false };
 
     // Toggle
     selection[platform] = !selection[platform];
@@ -78,9 +79,10 @@ export async function repostToggleAction(
 
     const user = await getUser(ctx.env, ctx.chatId);
     const hasInstagram = user?.has_instagram === 1;
+    const hasLinkedIn = user?.has_linkedin === 1;
     const hasVideo = draft.has_video === 1;
 
-    const view = renderRepostPicker(selection, draftId, hasInstagram, hasVideo, lang);
+    const view = renderRepostPicker(selection, draftId, hasInstagram, hasLinkedIn, hasVideo, lang);
     if (ctx.messageId) {
         await editMessage(ctx.env, ctx.chatId, ctx.messageId, view.text, view.keyboard);
     }
@@ -99,7 +101,7 @@ export async function repostPublishAction(
     const selection = repostSelections.get(key);
     if (!selection) return renderError('No platforms selected.', lang);
 
-    const anySelected = selection.x || selection.instagram_post || selection.instagram_story || selection.instagram_reel;
+    const anySelected = selection.x || selection.instagram_post || selection.instagram_story || selection.instagram_reel || selection.linkedin;
     if (!anySelected) return renderError(t(lang, 'platforms.noTargetSelected'), lang);
 
     const draft = await getDraft(ctx.env, draftId, ctx.chatId);
@@ -133,6 +135,7 @@ export async function repostPublishAction(
             if (result.results.instagram_post) mergedResults.instagram_post = result.results.instagram_post;
             if (result.results.instagram_story) mergedResults.instagram_story = result.results.instagram_story;
             if (result.results.instagram_reel) mergedResults.instagram_reel = result.results.instagram_reel;
+            if (result.results.linkedin) mergedResults.linkedin = result.results.linkedin;
             if (result.results.errors) {
                 mergedResults.errors = { ...(mergedResults.errors || {}), ...result.results.errors };
             }
@@ -202,6 +205,7 @@ function renderRepostPicker(
     selection: PublishTargets,
     draftId: string,
     hasInstagram: boolean,
+    hasLinkedIn: boolean,
     hasVideo: boolean,
     lang: Lang
 ): ViewResult {
@@ -230,6 +234,13 @@ function renderRepostPicker(
                 callback_data: `plat:repost:toggle:ir:${draftId}`,
             }]);
         }
+    }
+
+    if (hasLinkedIn) {
+        rows.push([{
+            text: `${check(selection.linkedin)} 💼 ${t(lang, 'platforms.linkedin')}`,
+            callback_data: `plat:repost:toggle:li:${draftId}`,
+        }]);
     }
 
     rows.push([

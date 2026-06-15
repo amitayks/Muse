@@ -6,12 +6,15 @@ import type { Env } from '../types';
 import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { decrypt, encrypt } from '../infra/crypto';
-import { getUserEncryptedKeys, getUser, clearXOAuth2Tokens, tryClaimXRefreshLock, releaseXRefreshLock } from './user-db';
+import { getUserEncryptedKeys, getUser, clearXOAuth2Tokens, tryClaimXRefreshLock, releaseXRefreshLock, clearLinkedInOAuth2Tokens } from './user-db';
 import { refreshAccessToken, XRefreshInvalidError } from '../services/x-oauth';
+import { refreshAccessToken as refreshLinkedInToken, LinkedInRefreshInvalidError } from '../services/linkedin-oauth';
 import { logError } from '../infra/security';
 
 // Refresh the OAuth 2.0 access token when it is at/within this buffer of expiring.
 const X_TOKEN_REFRESH_BUFFER_MS = 60 * 1000; // 60 seconds
+// LinkedIn access tokens last ~60 days; refresh when at/within this buffer of expiry.
+const LINKEDIN_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Resolve a user's decrypted API keys from D1.
@@ -37,6 +40,9 @@ export async function getUserKeys(env: Env, chatId: string): Promise<Partial<Env
         INSTAGRAM_BUSINESS_ACCOUNT_ID: undefined,
         INSTAGRAM_APP_SECRET: undefined,
         CLAUDE_API_KEY: undefined,
+        // LinkedIn bearer is resolved (proactively refreshed) during env hydration, not here;
+        // set undefined so it never falls back to a Worker secret.
+        LINKEDIN_ACCESS_TOKEN: undefined,
     };
 
     if (keys.gemini_key_enc) {
@@ -192,6 +198,115 @@ export async function getValidXAccessToken(env: Env, chatId: string): Promise<st
     }
 }
 
+// ==================== LINKEDIN OAUTH 2.0 TOKEN LIFECYCLE ====================
+
+/**
+ * Persist a freshly-obtained (or refreshed) LinkedIn OAuth 2.0 token set for a user.
+ * Encrypts the access + refresh tokens and records BOTH the access-token expiry
+ * (now + expiresInSec) and the ABSOLUTE refresh-token expiry (now + refreshExpiresInSec).
+ * LinkedIn rotates the refresh token on every refresh, so the new refresh token MUST be
+ * persisted here. The two tokens are written together so a rotated refresh token is never
+ * stranded without its matching access token.
+ */
+export async function storeLinkedInTokens(
+    env: Env,
+    chatId: string,
+    accessToken: string,
+    refreshToken: string,
+    expiresInSec: number,
+    refreshExpiresInSec: number
+): Promise<void> {
+    const now = Date.now();
+    const expiresAt = new Date(now + expiresInSec * 1000).toISOString();
+    const refreshExpiresAt = new Date(now + refreshExpiresInSec * 1000).toISOString();
+    const accessEnc = await encrypt(env, accessToken);
+    const refreshEnc = await encrypt(env, refreshToken);
+    await env.DB.prepare(
+        "UPDATE users SET linkedin_oauth2_access_enc = ?, linkedin_oauth2_refresh_enc = ?, linkedin_oauth2_expires_at = ?, linkedin_refresh_expires_at = ?, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(accessEnc, refreshEnc, expiresAt, refreshExpiresAt, chatId).run();
+}
+
+/**
+ * Invalidate a user's LinkedIn connection after a confirmed dead/expired refresh token: clear
+ * the stored OAuth 2.0 credentials (so the failing refresh loop stops and
+ * `needs_linkedin_reconnect` derives true) and notify the user once with a reconnect path.
+ * `has_linkedin` and `linkedin_person_urn` are preserved. Fire-and-forget notification.
+ */
+export async function invalidateLinkedInConnection(env: Env, chatId: string): Promise<void> {
+    await clearLinkedInOAuth2Tokens(env, chatId);
+
+    const { sendMessage } = await import('../integrations/telegram');
+    const user = await getUser(env, chatId);
+    const lang = (user?.language as Lang) || 'en';
+    const keyboard = env.WEBAPP_URL
+        ? [[{ text: t(lang, 'notifications.btnReconnectLinkedIn'), web_app: { url: `${env.WEBAPP_URL}/#/settings` } }]]
+        : undefined;
+    await sendMessage(env, chatId, t(lang, 'notifications.linkedinReconnectNeeded'), keyboard).catch(() => {});
+}
+
+/**
+ * Resolve a usable LinkedIn OAuth 2.0 bearer access token for a user, refreshing proactively.
+ *
+ * Returns the decrypted access token; if `linkedin_oauth2_expires_at` is at/within the buffer
+ * of now (or already past), refreshes via the LinkedIn token endpoint, persists the rotated
+ * access + refresh token + new expiries, and returns the fresh token. Returns null when no
+ * token is stored, the refresh token is past its ABSOLUTE expiry, or the refresh fails (caller
+ * surfaces a reconnect prompt). A re-read CAS guard avoids tearing down a healthy connection
+ * when a concurrent refresher rotated the refresh token first.
+ */
+export async function getValidLinkedInAccessToken(env: Env, chatId: string): Promise<string | null> {
+    const keys = await getUserEncryptedKeys(env, chatId);
+    if (!keys || !keys.linkedin_oauth2_access_enc) {
+        return null;
+    }
+
+    const expiresAtMs = keys.linkedin_oauth2_expires_at ? Date.parse(keys.linkedin_oauth2_expires_at) : NaN;
+    const needsRefresh =
+        Number.isNaN(expiresAtMs) || expiresAtMs - Date.now() <= LINKEDIN_TOKEN_REFRESH_BUFFER_MS;
+
+    if (!needsRefresh || !keys.linkedin_oauth2_refresh_enc) {
+        // Still comfortably valid, or no refresh token to use. If there's no refresh token and the
+        // access token is already past expiry, treat as unusable.
+        if (needsRefresh && !keys.linkedin_oauth2_refresh_enc) {
+            const notYetExpired = !Number.isNaN(expiresAtMs) && expiresAtMs > Date.now();
+            return notYetExpired ? await decrypt(env, keys.linkedin_oauth2_access_enc) : null;
+        }
+        return decrypt(env, keys.linkedin_oauth2_access_enc);
+    }
+
+    // The refresh token's 1-year expiry is ABSOLUTE — it does not extend on refresh. Once past,
+    // no refresh is possible: the connection is dead and needs a full reconnect.
+    const refreshExpiresMs = keys.linkedin_refresh_expires_at ? Date.parse(keys.linkedin_refresh_expires_at) : NaN;
+    if (!Number.isNaN(refreshExpiresMs) && refreshExpiresMs <= Date.now()) {
+        logError('[linkedin-oauth] refresh token past absolute expiry for chat', chatId);
+        await invalidateLinkedInConnection(env, chatId);
+        return null;
+    }
+
+    const usedRefreshEnc = keys.linkedin_oauth2_refresh_enc;
+    try {
+        const refreshToken = await decrypt(env, usedRefreshEnc);
+        const tokens = await refreshLinkedInToken(env, refreshToken);
+        await storeLinkedInTokens(env, chatId, tokens.accessToken, tokens.refreshToken, tokens.expiresInSec, tokens.refreshExpiresInSec);
+        return tokens.accessToken;
+    } catch (error) {
+        if (error instanceof LinkedInRefreshInvalidError) {
+            // Re-read: if the stored refresh token changed, a concurrent refresher rotated it first —
+            // the connection is healthy; return its fresh access token and do NOT clear or notify.
+            const after = await getUserEncryptedKeys(env, chatId);
+            if (after?.linkedin_oauth2_refresh_enc && after.linkedin_oauth2_refresh_enc !== usedRefreshEnc) {
+                return after.linkedin_oauth2_access_enc ? await decrypt(env, after.linkedin_oauth2_access_enc) : null;
+            }
+            logError('[linkedin-oauth] refresh token dead for chat', chatId, error.message);
+            await invalidateLinkedInConnection(env, chatId);
+            return null;
+        }
+        // Transient failure (network/5xx/429): leave tokens intact and retry next tick.
+        logError('[linkedin-oauth] token refresh failed for chat', chatId, error instanceof Error ? error.message : String(error));
+        return null;
+    }
+}
+
 /**
  * Create a hydrated env object with per-user keys overlaid.
  * Shared infra (DB, IMAGES, TELEGRAM_BOT_TOKEN, etc.) is preserved from original env.
@@ -211,6 +326,11 @@ export async function hydrateEnv(env: Env, chatId: string): Promise<Env> {
 
     // Resolve the per-request X OAuth 2.0 bearer (proactively refreshed); undefined if not connected
     hydrated.X_OAUTH2_ACCESS_TOKEN = (await getValidXAccessToken(env, chatId)) ?? undefined;
+
+    // Resolve the per-request LinkedIn bearer (proactively refreshed) + the member's person URN;
+    // both undefined if not connected (or refresh failed → publish fails fast with a reconnect error)
+    hydrated.LINKEDIN_ACCESS_TOKEN = (await getValidLinkedInAccessToken(env, chatId)) ?? undefined;
+    hydrated.LINKEDIN_PERSON_URN = user?.linkedin_person_urn || undefined;
 
     return hydrated;
 }

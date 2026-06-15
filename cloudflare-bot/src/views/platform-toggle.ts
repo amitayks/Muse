@@ -13,6 +13,7 @@ const PLATFORM_EMOJIS: Record<string, string> = {
     instagram_post: '📸',
     instagram_story: '📖',
     instagram_reel: '🎬',
+    linkedin: '💼',
 };
 
 /** Map platform keys to i18n string keys */
@@ -21,6 +22,7 @@ const PLATFORM_I18N_KEYS: Record<string, string> = {
     instagram_post: 'platforms.post',
     instagram_story: 'platforms.story',
     instagram_reel: 'platforms.reel',
+    linkedin: 'platforms.linkedin',
 };
 
 export function platformEmoji(platform: string): string {
@@ -37,7 +39,7 @@ export function platformLabel(platform: string, lang: Lang): string {
  */
 export function formatPlatformSummary(results: PublishResults, lang: Lang): string {
     const parts: string[] = [];
-    const platforms = ['x', 'instagram_post', 'instagram_story', 'instagram_reel'] as const;
+    const platforms = ['x', 'instagram_post', 'instagram_story', 'instagram_reel', 'linkedin'] as const;
     for (const p of platforms) {
         if (results[p]) {
             parts.push(`${platformEmoji(p)} ${platformLabel(p, lang)} ✅`);
@@ -57,6 +59,7 @@ export function renderPlatformBadges(targets: PublishTargets): string {
     if (targets.instagram_post) badges.push(platformEmoji('instagram_post'));
     if (targets.instagram_story) badges.push(platformEmoji('instagram_story'));
     if (targets.instagram_reel) badges.push(platformEmoji('instagram_reel'));
+    if (targets.linkedin) badges.push(platformEmoji('linkedin'));
     return badges.join(' ');
 }
 
@@ -64,11 +67,12 @@ export function renderPlatformBadges(targets: PublishTargets): string {
  * Parse publish targets from JSON string
  */
 export function parsePublishTargets(raw: string | null | undefined): PublishTargets {
-    if (!raw) return { x: true, instagram_post: false, instagram_story: false, instagram_reel: false };
+    if (!raw) return { x: true, instagram_post: false, instagram_story: false, instagram_reel: false, linkedin: false };
     try {
-        return JSON.parse(raw) as PublishTargets;
+        // Legacy rows predate the `linkedin` field — default it to false so old drafts don't target LinkedIn.
+        return { linkedin: false, ...JSON.parse(raw) } as PublishTargets;
     } catch {
-        return { x: true, instagram_post: false, instagram_story: false, instagram_reel: false };
+        return { x: true, instagram_post: false, instagram_story: false, instagram_reel: false, linkedin: false };
     }
 }
 
@@ -77,7 +81,7 @@ export function parsePublishTargets(raw: string | null | undefined): PublishTarg
  */
 export function renderPublishResults(results: Record<string, any>, errors: Record<string, string> | undefined, lang: Lang): string {
     const lines: string[] = [];
-    const platforms = ['x', 'instagram_post', 'instagram_story', 'instagram_reel'] as const;
+    const platforms = ['x', 'instagram_post', 'instagram_story', 'instagram_reel', 'linkedin'] as const;
 
     for (const p of platforms) {
         if (results[p]) {

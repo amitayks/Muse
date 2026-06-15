@@ -757,10 +757,14 @@ export async function refineHandwrittenContent(
 function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, _language?: string, options?: GenerateContentOptions): string {
     const { data } = source;
 
-    // Sanitize commit messages
+    // Send the FULL message of every commit, uncapped (sanitized, not truncated),
+    // so the AI sees everything. For a single commit that's one full message;
+    // for a PR it's every commit's full message, separated so commit boundaries
+    // stay distinguishable. Works the same for the Fast and Edit/compose paths
+    // since both carry the messages via `commitMessages`.
     const safeCommitMessages = data.commitMessages
-        .map(msg => sanitizeContent(msg, 200))
-        .join('\n- ');
+        .map(msg => sanitizeContent(msg, Number.MAX_SAFE_INTEGER))
+        .join('\n\n- ');
 
     // Sanitize file names
     const safeFileNames = data.fileNames

@@ -12,6 +12,7 @@ import { updateDraftStatus, updateDraftPublishResults, createPublished } from '.
 import { enqueuePendingXPost, type PendingXPayload } from '../data/x-pending-db';
 import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
+import { postToLinkedIn, uploadImageToLinkedIn, uploadVideoToLinkedIn, LinkedInPublishError, LINKEDIN_MAX_COMMENTARY, type LinkedInMedia } from '../integrations/linkedin';
 // Lazy-imported to avoid loading satori/yoga wasm at module evaluation time (breaks CF Workers)
 // import { renderTweetCard, renderThreadCards, renderQuoteTweetCard, createStoryImage, storeTweetCard, storeStoryImage, getTweetCard } from '../services/tweet-card';
 
@@ -144,6 +145,27 @@ export async function publishDraft(
         }
     }
 
+    // ==================== LinkedIn Publishing ====================
+
+    // Reshape the draft into ONE native LinkedIn member post: thread text merged into a single
+    // commentary, photos combined (or one video) as the post media. Independent of X/Instagram —
+    // its failure is isolated and never blocks the other platforms. Runs before the deferred-X
+    // early-return below so a LinkedIn result is captured even when X video is deferred.
+    if (targets.linkedin) {
+        try {
+            console.log(`[publish] LinkedIn: starting for draft ${draft.id} (connected=${!!env.LINKEDIN_ACCESS_TOKEN}, urn=${env.LINKEDIN_PERSON_URN ? 'set' : 'missing'})`);
+            const linkedinResult = await publishToLinkedIn(env, draft, content);
+            results.linkedin = linkedinResult;
+            if (!primaryUrl && linkedinResult.url) primaryUrl = linkedinResult.url;
+            console.log(`[publish] LinkedIn: published draft ${draft.id} → ${linkedinResult.url}`);
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error('[publish] LinkedIn publishing failed:', msg);
+            results.errors = { ...results.errors, linkedin: msg };
+            if (error instanceof LinkedInPublishError && error.isAuthError) results.needsLinkedInReconnect = true;
+        }
+    }
+
     // ==================== Deferred X video post ====================
 
     // X target is a video and its media uploaded successfully → enqueue a pending row so the
@@ -163,7 +185,7 @@ export async function publishDraft(
 
     // ==================== Status Transition ====================
 
-    const anySuccess = !!(results.x || results.instagram_post || results.instagram_story || results.instagram_reel);
+    const anySuccess = !!(results.x || results.instagram_post || results.instagram_story || results.instagram_reel || results.linkedin);
 
     // Store publish results on draft
     await updateDraftPublishResults(env, draft.id, chatId, results);
@@ -329,13 +351,15 @@ async function enqueueDeferredXPost(
         originalTweetUrl: draft.original_tweet_url,
         content,
         media,
-        // Only the Instagram portion already produced inline (X is not yet posted).
+        // The non-X portions already produced inline (Instagram + LinkedIn); X is not yet posted.
         igResults: {
             instagram_post: igResults.instagram_post,
             instagram_story: igResults.instagram_story,
             instagram_reel: igResults.instagram_reel,
+            linkedin: igResults.linkedin,
             errors: igResults.errors,
             needsInstagramReconnect: igResults.needsInstagramReconnect,
+            needsLinkedInReconnect: igResults.needsLinkedInReconnect,
         },
     };
 
@@ -537,6 +561,102 @@ async function publishToIGReel(
         post_id: publishResult.id,
         url: `https://www.instagram.com/reel/${publishResult.id}`,
     };
+}
+
+// ==================== LinkedIn Branch ====================
+
+/**
+ * Publish a draft as ONE native LinkedIn member post.
+ *
+ * Text: every tweet's text merged with blank lines (trimmed to LinkedIn's 3000-char limit).
+ * Media: image/video exclusivity like X — if any tweet has a video, exactly one video is
+ * uploaded and attached; otherwise all photos across the thread are uploaded as a multi-image
+ * post; with no per-tweet media the draft-level image is used; with no media at all the post is
+ * text-only. (No tweet-card rendering — LinkedIn keeps the real text, unlike Instagram.)
+ */
+async function publishToLinkedIn(
+    env: Env,
+    draft: Draft,
+    content: DraftContent
+): Promise<{ post_urn: string; url: string }> {
+    const commentary = content.tweets
+        .map(t => t.text)
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, LINKEDIN_MAX_COMMENTARY);
+
+    const media = await resolveLinkedInMedia(env, draft, content);
+    return postToLinkedIn(env, commentary, media);
+}
+
+/**
+ * Collect and upload a draft's media for LinkedIn, returning the share-media category + asset URNs.
+ * Video wins over photos (LinkedIn, like X, attaches EITHER images OR one video). Photo upload
+ * failures are skipped (best-effort); a video upload failure throws (fails the LinkedIn branch).
+ */
+async function resolveLinkedInMedia(
+    env: Env,
+    draft: Draft,
+    content: DraftContent
+): Promise<LinkedInMedia> {
+    // 1) A video anywhere in the thread takes precedence — upload exactly one.
+    for (const tweet of content.tweets) {
+        const video = tweet.media?.find(m => m.type === 'video');
+        if (video) {
+            console.log(`[publish] LinkedIn: video media detected (key=${video.key}) — uploading`);
+            const r2 = await env.IMAGES.get(video.key);
+            if (!r2) throw new LinkedInPublishError('Video media missing from storage');
+            const asset = await uploadVideoToLinkedIn(env, await r2.arrayBuffer());
+            return { category: 'VIDEO', assetUrns: [asset] };
+        }
+    }
+
+    // 2) Photos across all tweets → multi-image post (best-effort per photo).
+    const photoKeys: string[] = [];
+    for (const tweet of content.tweets) {
+        for (const m of tweet.media || []) {
+            if (m.type === 'photo') photoKeys.push(m.key);
+        }
+    }
+    if (photoKeys.length > 0) {
+        const assetUrns: string[] = [];
+        for (const key of photoKeys) {
+            try {
+                const r2 = await env.IMAGES.get(key);
+                if (!r2) continue;
+                assetUrns.push(await uploadImageToLinkedIn(env, await r2.arrayBuffer()));
+            } catch (err) {
+                console.error('[publish] LinkedIn photo upload skipped:', err instanceof Error ? err.message : String(err));
+            }
+        }
+        if (assetUrns.length > 0) return { category: 'IMAGE', assetUrns };
+    }
+
+    // 3) Draft-level image fallback (auto-generated drafts). R2 key or absolute URL.
+    if (draft.image_url) {
+        try {
+            const bytes = await loadImageBytes(env, draft.image_url);
+            if (bytes) {
+                const asset = await uploadImageToLinkedIn(env, bytes);
+                return { category: 'IMAGE', assetUrns: [asset] };
+            }
+        } catch (err) {
+            console.error('[publish] LinkedIn draft-image upload skipped:', err instanceof Error ? err.message : String(err));
+        }
+    }
+
+    // 4) No usable media → text-only.
+    return { category: 'NONE', assetUrns: [] };
+}
+
+/** Load image bytes from an R2 key (e.g. `drafts/...`) or an absolute URL. */
+async function loadImageBytes(env: Env, imageUrl: string): Promise<ArrayBuffer | null> {
+    if (/^https?:\/\//i.test(imageUrl)) {
+        const res = await fetch(imageUrl);
+        return res.ok ? await res.arrayBuffer() : null;
+    }
+    const r2 = await env.IMAGES.get(imageUrl);
+    return r2 ? await r2.arrayBuffer() : null;
 }
 
 // ==================== Tweet Card Generation Helper ====================

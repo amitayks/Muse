@@ -198,6 +198,11 @@ export const en: Record<string, string> = {
   'settings.refreshXConnection': 'Reconnect',
   'settings.xConnected': 'X connected',
   'settings.xConnectFailed': 'Failed to connect X. Please try again.',
+  'settings.connectLinkedIn': 'Connect LinkedIn',
+  'settings.reconnectLinkedIn': 'Reconnect LinkedIn',
+  'settings.refreshLinkedInConnection': 'Reconnect',
+  'settings.linkedinConnected': 'LinkedIn connected',
+  'settings.linkedinConnectFailed': 'Failed to connect LinkedIn. Please try again.',
   'settings.update': 'Update',
   'settings.skills': 'Skills',
   'settings.systemPrompts': 'System Prompts',
@@ -209,6 +214,7 @@ export const en: Record<string, string> = {
   'platform.igPost': 'Instagram Post',
   'platform.igStory': 'Instagram Story',
   'platform.igReel': 'Instagram Reel',
+  'platform.linkedin': 'LinkedIn',
 
   // Video Studio
   'video.title': 'Video Studio',

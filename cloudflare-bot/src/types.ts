@@ -16,6 +16,14 @@ export interface Env {
     X_OAUTH2_REDIRECT_URI?: string;
     // Resolved per-request bearer access token, set by hydrateEnv
     X_OAUTH2_ACCESS_TOKEN?: string;
+    // LinkedIn OAuth 2.0 (confidential client) app credentials — app-level Worker config,
+    // NEVER per-user. The client secret is required because LinkedIn is a confidential client.
+    LINKEDIN_CLIENT_ID?: string;
+    LINKEDIN_CLIENT_SECRET?: string;
+    LINKEDIN_REDIRECT_URI?: string;
+    // Resolved per-request LinkedIn values, set by hydrateEnv (undefined when not connected)
+    LINKEDIN_ACCESS_TOKEN?: string;
+    LINKEDIN_PERSON_URN?: string;
     // Google API key for Gemini image generation
     GOOGLE_API_KEY: string;
     // Claude API key for Claude text generation
@@ -74,6 +82,12 @@ export interface User {
     instagram_app_secret_enc: string | null;
     instagram_token_expires_at: string | null;
     claude_key_enc: string | null;
+    // LinkedIn OAuth 2.0 (confidential client) user-context tokens + identity
+    linkedin_oauth2_access_enc: string | null;
+    linkedin_oauth2_refresh_enc: string | null;
+    linkedin_oauth2_expires_at: string | null;
+    linkedin_refresh_expires_at: string | null;
+    linkedin_person_urn: string | null; // urn:li:person:{sub} (plaintext identifier, not a secret)
 
     // Feature flags
     has_gemini: number;
@@ -82,6 +96,7 @@ export interface User {
     has_heygen: number;
     has_instagram: number;
     has_claude: number;
+    has_linkedin: number;
 
     // UI state (from former chat_state)
     message_id: number | null;
@@ -192,6 +207,7 @@ export interface PublishTargets {
     instagram_post: boolean;
     instagram_story: boolean;
     instagram_reel: boolean;
+    linkedin: boolean;
 }
 
 export const DEFAULT_PUBLISH_TARGETS: PublishTargets = {
@@ -199,6 +215,7 @@ export const DEFAULT_PUBLISH_TARGETS: PublishTargets = {
     instagram_post: false,
     instagram_story: false,
     instagram_reel: false,
+    linkedin: false,
 };
 
 // Per-platform publish results (stored on draft after publishing)
@@ -219,11 +236,17 @@ export interface PublishResults {
         post_id: string;
         url: string;
     };
+    linkedin?: {
+        post_urn: string;
+        url: string;
+    };
     errors?: Record<string, string>;
     /** Set when an Instagram failure was an auth error (expired/invalid token) — drives the "Reconnect Instagram" affordance */
     needsInstagramReconnect?: boolean;
     /** Set when an X failure requires (re)connecting the OAuth 2.0 token — drives the "Reconnect X" affordance */
     needsXReconnect?: boolean;
+    /** Set when a LinkedIn failure was an auth error (expired/invalid/missing token) — drives the "Reconnect LinkedIn" affordance */
+    needsLinkedInReconnect?: boolean;
     /**
      * Set while an X VIDEO post has been deferred to the every-minute cron processor
      * (core/x-pending.ts): media is uploaded inline, the postThread/postQuoteTweet step retries
@@ -728,6 +751,8 @@ export interface TelegramUpdate {
 // Context for stateful operations
 export interface ChatContext {
     awaiting_input?: 'commit_sha' | 'schedule' | 'schedule_time' | 'delete' | 'add_repo' | 'add_account' | 'edit_draft' | 'handwrite' | 'timezone' | 'edit_overview' | 'video_preset_name' | 'edit_character' | 'repost_url' | 'update_key';
+    /** When set on the commit_sha prompt, a pasted SHA is expanded to its full PR. */
+    pr_mode?: boolean;
     key_service?: 'gemini' | 'x' | 'github' | 'instagram' | 'claude';
     compose?: ComposeState;
     videoCompose?: VideoComposeState;

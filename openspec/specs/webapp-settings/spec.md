@@ -40,11 +40,16 @@ The system SHALL allow switching between AI providers: Gemini and Claude.
 - **THEN** the change SHALL be saved via API immediately
 
 ### Requirement: Default platform targets section
-The system SHALL display checkboxes for default publish targets.
+The system SHALL display checkboxes for default publish targets. The LinkedIn checkbox SHALL only be shown when the user has a connected LinkedIn account (`has_linkedin = true`), mirroring the Instagram gating.
 
 #### Scenario: Platform checkboxes
 - **WHEN** the platforms section renders
 - **THEN** checkboxes SHALL display for: X, Instagram Post, Instagram Story, Instagram Reel, with current defaults checked
+
+#### Scenario: LinkedIn checkbox shown only when connected
+- **WHEN** the platforms section renders and `has_linkedin = true`
+- **THEN** a LinkedIn checkbox SHALL display alongside the others, reflecting the current `default_publish_targets.linkedin`
+- **AND** when `has_linkedin = false` the LinkedIn checkbox SHALL NOT be shown
 
 #### Scenario: Toggle default platform
 - **WHEN** the user toggles a default platform checkbox
@@ -130,4 +135,27 @@ The system SHALL provide links to prompt editing and identity re-analysis.
 #### Scenario: Re-analyze identity button
 - **WHEN** the user taps "Re-analyze Identity"
 - **THEN** the system SHALL call the re-analyze API, show a loading state, and upon completion, display a success message
+
+### Requirement: LinkedIn OAuth connection control
+The settings API-keys section SHALL include a LinkedIn entry that, like X, reflects **live** connection health rather than mere token presence: it SHALL surface a distinct "needs reconnect" state when the stored token is invalid (driven by `needs_linkedin_reconnect` from the settings API and/or a live `GET /api/v1/linkedin/oauth/status` probe), and it SHALL offer a Connect action (when not connected) and a reconnect/refresh action (even when currently connected) that runs the LinkedIn OAuth flow via `GET /api/v1/linkedin/oauth/start`. Because LinkedIn uses OAuth, it SHALL NOT present a manual key-paste modal.
+
+#### Scenario: Not connected shows Connect
+- **WHEN** the settings load and `has_linkedin` is false
+- **THEN** the LinkedIn control SHALL show a "Connect LinkedIn" action that calls `startLinkedInOAuth()` and redirects the browser to the returned authorize URL
+
+#### Scenario: Connected shows healthy status with reconnect available
+- **WHEN** the settings load and LinkedIn is connected and healthy
+- **THEN** the LinkedIn control SHALL show a "Connected" badge AND still expose a reconnect/refresh action so the user can re-link at any time
+
+#### Scenario: Needs-reconnect state
+- **WHEN** the settings load and `needs_linkedin_reconnect` is true (or the live probe returns `needsReconnect: true`)
+- **THEN** the LinkedIn control SHALL show a prominent "Reconnect LinkedIn" state instead of a healthy badge, with an action that starts the OAuth flow
+
+#### Scenario: Return from OAuth shows result
+- **WHEN** the webapp loads with `?linkedin_connected=1` or `?linkedin_connected=0` after the OAuth redirect
+- **THEN** it SHALL show a success or failure toast respectively and refresh the LinkedIn connection status
+
+#### Scenario: Settings API exposes LinkedIn status
+- **WHEN** `GET /api/v1/settings` is called
+- **THEN** the response SHALL include `has_linkedin` and `needs_linkedin_reconnect` so the control can render without a separate probe on first paint
 

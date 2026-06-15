@@ -14,6 +14,22 @@ import { renderPlatformBadges, parsePublishTargets, renderPublishResults, platfo
 
 export type DraftListType = 'auto' | 'approved' | 'scheduled' | 'handwrite' | 'published' | 'repost';
 
+/**
+ * Make a URL safe for a Telegram inline-keyboard button. Telegram rejects raw ':' characters
+ * in the path (e.g. a LinkedIn post URL `…/feed/update/urn:li:share:123`), failing the whole
+ * editMessage. Percent-encode the `…/feed/update/<URN>` segment so the button is accepted while
+ * staying browser-resolvable. Idempotent: decode-then-encode normalizes already-encoded URNs.
+ */
+function telegramSafeUrl(url: string): string {
+    return url.replace(/(\/feed\/update\/)(.+)$/, (_m, prefix: string, urn: string) => {
+        try {
+            return prefix + encodeURIComponent(decodeURIComponent(urn));
+        } catch {
+            return prefix + encodeURIComponent(urn);
+        }
+    });
+}
+
 // Short codes for callback_data (Telegram 64-byte limit)
 const listTypeToShort: Record<string, string> = { auto: 'a', handwrite: 'h', approved: 'v', scheduled: 's', published: 'p', repost: 'r' };
 export const shortToListType: Record<string, DraftListType> = { a: 'auto', h: 'handwrite', v: 'approved', s: 'scheduled', p: 'published', r: 'repost' };
@@ -260,6 +276,7 @@ ${t(lang, 'drafts.notFoundMsg')}`,
 
     const user = await getUser(env, chatId);
     const hasInstagram = user?.has_instagram === 1;
+    const hasLinkedIn = user?.has_linkedin === 1;
 
     // Build platform toggle rows (inline) or single platform button
     const hasVideo = draft.has_video === 1;
@@ -286,6 +303,12 @@ ${t(lang, 'drafts.notFoundMsg')}`,
                     callback_data: `plat:toggle:instagram_reel:${draftId}`,
                 }]);
             }
+        }
+        if (hasLinkedIn) {
+            rows.push([{
+                text: `${check(targets.linkedin)} 💼 ${t(lang, 'platforms.linkedin')}`,
+                callback_data: `plat:toggle:linkedin:${draftId}`,
+            }]);
         }
         return rows;
     }
@@ -353,13 +376,16 @@ ${t(lang, 'drafts.notFoundMsg')}`,
             if (publishResults.instagram_reel?.url) {
                 urlButtons.push({ text: '🎬 Reel', url: publishResults.instagram_reel.url });
             }
+            if (publishResults.linkedin?.url) {
+                urlButtons.push({ text: '💼 LinkedIn', url: telegramSafeUrl(publishResults.linkedin.url) });
+            }
 
             if (urlButtons.length > 0) {
                 actionButtons.push(urlButtons);
             }
 
             // Repost button — publish to additional platforms
-            if (hasInstagram) {
+            if (hasInstagram || hasLinkedIn) {
                 actionButtons.push([
                     { text: `🔄 ${t(lang, 'platforms.btnRepost')}`, callback_data: `plat:repost:show:${draft.id}` },
                 ]);
@@ -414,12 +440,19 @@ ${tweetPreview}`,
     };
 }
 
-export function renderGeneratePrompt(lang: Lang = 'en'): ViewResult {
+export function renderGeneratePrompt(lang: Lang = 'en', prMode = false): ViewResult {
+    const prButton: InlineButton = prMode
+        ? { text: t(lang, 'drafts.btnPrModeOn'), callback_data: 'view:generate', style: 'success' }
+        : { text: t(lang, 'drafts.btnPrModeOff'), callback_data: 'view:generate_pr' };
+    const hint = prMode ? `\n\n${t(lang, 'drafts.prModeHint')}` : '';
     return {
         text: `${t(lang, 'drafts.generateTitle')}
 
-${t(lang, 'drafts.generateDesc')}`,
-        keyboard: [cancelRow('view:home', lang)],
+${t(lang, 'drafts.generateDesc')}${hint}`,
+        keyboard: [
+            [prButton],
+            cancelRow('view:home', lang),
+        ],
     };
 }
 

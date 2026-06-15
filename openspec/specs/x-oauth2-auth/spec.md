@@ -1,5 +1,8 @@
-## ADDED Requirements
+# x-oauth2-auth Specification
 
+## Purpose
+TBD - created by archiving change add-x-oauth2-media. Update Purpose after archive.
+## Requirements
 ### Requirement: OAuth 2.0 PKCE connect flow (webapp-initiated)
 
 The system SHALL provide a per-user X (Twitter) OAuth 2.0 Authorization Code + PKCE connect flow, using a **public client** (no client secret), initiated from the webapp. The flow SHALL request the scopes `tweet.read tweet.write users.read media.write offline.access`.
@@ -84,3 +87,4 @@ The system SHALL expose a "needs X reconnect" signal for users who have no store
 
 - **WHEN** a user who only has legacy OAuth 1.0a credentials (no `x_oauth2_access_enc`) attempts an X action
 - **THEN** they SHALL be treated as not connected and prompted to connect via OAuth 2.0
+

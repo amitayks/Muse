@@ -125,5 +125,6 @@ export async function settingsKeyInput(
         hasX: user?.has_x === 1,
         hasGitHub: user?.has_github === 1,
         hasInstagram: user?.has_instagram === 1,
+        hasLinkedIn: user?.has_linkedin === 1,
     }, lang);
 }

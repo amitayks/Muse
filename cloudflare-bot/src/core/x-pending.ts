@@ -198,7 +198,8 @@ async function finalizeFailure(
 ): Promise<void> {
     const msg = isAuth ? 'needs_x_reconnect' : (error instanceof Error ? error.message : String(error));
 
-    const igSucceeded = !!(payload.igResults.instagram_post || payload.igResults.instagram_story || payload.igResults.instagram_reel);
+    // Any non-X platform that published inline (Instagram OR LinkedIn) means the draft IS published.
+    const nonXSucceeded = !!(payload.igResults.instagram_post || payload.igResults.instagram_story || payload.igResults.instagram_reel || payload.igResults.linkedin);
     const results: PublishResults = {
         ...payload.igResults,
         errors: { ...payload.igResults.errors, x: msg },
@@ -208,8 +209,8 @@ async function finalizeFailure(
 
     await updateDraftPublishResults(env, payload.draftId, payload.chatId, results);
 
-    if (igSucceeded) {
-        // Instagram is live → the draft is published (with an X error recorded).
+    if (nonXSucceeded) {
+        // A non-X platform is live → the draft is published (with an X error recorded).
         const igResult = results.instagram_post || results.instagram_story || results.instagram_reel;
         await createPublished(env, payload.chatId, {
             draft_id: payload.draftId,

@@ -49,7 +49,7 @@ export async function platformToggleAction(
     targets[platform] = newValue;
 
     // Enforce at-least-one target
-    const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel;
+    const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel || targets.linkedin;
     if (!anyEnabled) {
         // Don't allow disabling the last target — revert and show toast
         targets[platform] = true;

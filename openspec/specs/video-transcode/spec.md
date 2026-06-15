@@ -1,5 +1,8 @@
-## ADDED Requirements
+# video-transcode Specification
 
+## Purpose
+TBD - created by archiving change transcode-video-on-upload. Update Purpose after archive.
+## Requirements
 ### Requirement: Server-side video normalization via a Cloudflare Container
 
 The system SHALL provide a Cloudflare Container running `ffmpeg` that normalizes an MP4 to X tweet-video spec. It SHALL expose an HTTP endpoint (`POST /transcode`) that reads an MP4 from the request body and returns an MP4 that is H.264 (High profile, `yuv420p`), ≤ 1920×1200, ≤ 60 fps, with an AAC audio track (a silent track injected when the source has none) and `+faststart`. The container is wired to the Worker via a `Container` Durable Object class + binding, `[[containers]]` config, and a `new_sqlite_classes` migration.
@@ -28,3 +31,4 @@ The normalized MP4 SHALL be stored in R2 and used as the single canonical media 
 
 - **WHEN** a video upload has been normalized and stored
 - **THEN** the returned media key/URL SHALL reference the normalized object, and `uploadVideoToX` SHALL chunk-upload the normalized bytes (not the original)
+

@@ -59,6 +59,18 @@ deleted_classes = ["VideoTranscoder"]
 # Optional:
 #   - MAX_USERS: Max registered users (default: 50)
 #
+# X OAuth 2.0 (PKCE public client) — app-level connect flow config:
+#   - X_OAUTH2_CLIENT_ID, X_OAUTH2_REDIRECT_URI
+#
+# LinkedIn OAuth 2.0 (CONFIDENTIAL client) — app-level connect flow config:
+#   - LINKEDIN_CLIENT_ID: the LinkedIn app's Client ID
+#   - LINKEDIN_REDIRECT_URI: must exactly match the redirect URL registered with LinkedIn;
+#                            its path is the callback route (e.g. https://<worker>/linkedin/oauth/callback)
+#   - LINKEDIN_CLIENT_SECRET: the LinkedIn app's Client Secret (set via `wrangler secret put` —
+#                             confidential client, required in the token exchange; NEVER per-user)
+#   Provision a LinkedIn app with the "Sign In with LinkedIn using OpenID Connect" + "Share on
+#   LinkedIn" products and programmatic refresh tokens enabled.
+#
 # REMOVED (no longer needed — per-user webhook secrets stored in D1):
 #   - GITHUB_OWNER (was: GitHub org/user for commit search)
 #   - GITHUB_WEBHOOK_SECRET (was: shared webhook signing secret)

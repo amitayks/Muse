@@ -198,6 +198,11 @@ export const he: Record<string, string> = {
   'settings.refreshXConnection': 'התחבר מחדש',
   'settings.xConnected': 'X מחובר',
   'settings.xConnectFailed': 'החיבור ל-X נכשל. נסה שוב.',
+  'settings.connectLinkedIn': 'התחבר ללינקדאין',
+  'settings.reconnectLinkedIn': 'התחבר מחדש ללינקדאין',
+  'settings.refreshLinkedInConnection': 'התחבר מחדש',
+  'settings.linkedinConnected': 'לינקדאין מחובר',
+  'settings.linkedinConnectFailed': 'החיבור ללינקדאין נכשל. נסה שוב.',
   'settings.update': 'עדכן',
   'settings.skills': 'כישורים',
   'settings.systemPrompts': 'פרומפטים של מערכת',
@@ -209,6 +214,7 @@ export const he: Record<string, string> = {
   'platform.igPost': 'פוסט אינסטגרם',
   'platform.igStory': 'סטורי אינסטגרם',
   'platform.igReel': 'ריל אינסטגרם',
+  'platform.linkedin': 'לינקדאין',
 
   // Video Studio
   'video.title': 'סטודיו וידאו',

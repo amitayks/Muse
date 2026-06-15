@@ -1,30 +1,40 @@
 ## Purpose
 
 Lets a draft be published to multiple platforms (X, Instagram Post, Story, Reel) by storing per-draft `publish_targets` and per-platform `publish_results`, enforcing rules such as Post/Reel mutual exclusivity, video-gated Reels, Instagram-credential gating, and at-least-one-target, and drives the Telegram toggle UI, publish-targets header, and repost-from-published flow.
-
 ## Requirements
-
 ### Requirement: PublishTargets type
-The system SHALL define a `PublishTargets` interface with boolean fields: `x`, `instagram_post`, `instagram_story`, `instagram_reel`.
+The system SHALL define a `PublishTargets` interface with boolean fields: `x`, `instagram_post`, `instagram_story`, `instagram_reel`, `linkedin`.
 
 #### Scenario: Default publish targets
 - **WHEN** a new draft is created and no user defaults are set
-- **THEN** `publish_targets` SHALL default to `{ x: true, instagram_post: false, instagram_story: false, instagram_reel: false }`
+- **THEN** `publish_targets` SHALL default to `{ x: true, instagram_post: false, instagram_story: false, instagram_reel: false, linkedin: false }`
 
 #### Scenario: User with custom defaults
-- **WHEN** a new draft is created and the user has `default_publish_targets` set to `{ x: true, instagram_post: true, instagram_story: false, instagram_reel: false }`
+- **WHEN** a new draft is created and the user has `default_publish_targets` set to `{ x: true, instagram_post: true, instagram_story: false, instagram_reel: false, linkedin: true }`
 - **THEN** the draft SHALL inherit those defaults as its `publish_targets`
 
+#### Scenario: Legacy targets without the linkedin field
+- **WHEN** an existing `publish_targets` value is parsed that predates the `linkedin` field (no `linkedin` key present)
+- **THEN** `linkedin` SHALL be treated as `false` so existing drafts default to not targeting LinkedIn
+
 ### Requirement: PublishResults type
-The system SHALL define a `PublishResults` interface with optional per-platform result objects and an optional `errors` record.
+The system SHALL define a `PublishResults` interface with optional per-platform result objects and an optional `errors` record. The LinkedIn result SHALL be `linkedin?: { post_urn: string; url: string }`, and an optional `needsLinkedInReconnect?: boolean` flag SHALL drive the "Reconnect LinkedIn" affordance after an auth failure.
 
 #### Scenario: Successful multi-platform publish
 - **WHEN** X and Instagram Post both succeed
 - **THEN** `publish_results` SHALL be `{ x: { tweet_ids: [...], url: "..." }, instagram_post: { post_id: "...", url: "..." } }`
 
+#### Scenario: Successful LinkedIn publish
+- **WHEN** LinkedIn publishing succeeds
+- **THEN** `publish_results.linkedin` SHALL be `{ post_urn: "urn:li:share:...", url: "https://www.linkedin.com/feed/update/..." }`
+
 #### Scenario: Partial failure
 - **WHEN** X succeeds but Instagram Story fails
 - **THEN** `publish_results` SHALL be `{ x: { tweet_ids: [...], url: "..." }, errors: { instagram_story: "Token expired" } }`
+
+#### Scenario: LinkedIn auth failure
+- **WHEN** LinkedIn publishing fails with an auth error
+- **THEN** `publish_results` SHALL contain `errors.linkedin` AND `needsLinkedInReconnect = true`
 
 ### Requirement: Post and Reel mutual exclusivity
 The system SHALL enforce that `instagram_post` and `instagram_reel` cannot both be `true` at the same time. Enabling one SHALL automatically disable the other.
@@ -168,3 +178,34 @@ Platform toggle callbacks SHALL use the format `plat:toggle:{platform}:{draftId}
 #### Scenario: Repost publish callback
 - **WHEN** the user clicks Publish in the repost flow
 - **THEN** the callback data SHALL be `plat:repost:publish:{draftId}`
+
+### Requirement: LinkedIn toggle conditional on connection
+The `linkedin` platform toggle SHALL only be displayed when the user has a connected LinkedIn account (`has_linkedin = 1`), mirroring how Instagram options are gated on `has_instagram`. LinkedIn has no mutual-exclusivity with any other target — it is a plain independent toggle.
+
+#### Scenario: User without LinkedIn connected
+- **WHEN** the platform toggle buttons are rendered and `user.has_linkedin = 0`
+- **THEN** the LinkedIn toggle SHALL NOT be displayed
+
+#### Scenario: User with LinkedIn connected
+- **WHEN** the platform toggle buttons are rendered and `user.has_linkedin = 1`
+- **THEN** the LinkedIn toggle SHALL be displayed and independently toggleable, with no effect on the X or Instagram toggles
+
+#### Scenario: LinkedIn counts toward at-least-one-target
+- **WHEN** LinkedIn is the only enabled target and the user attempts to disable it
+- **THEN** the system SHALL prevent the toggle and keep LinkedIn active, consistent with the at-least-one-target rule
+
+### Requirement: LinkedIn platform badge, label, and results display
+The platform display helpers SHALL recognize the `linkedin` platform: a 💼 emoji badge, a label resolved from the `platforms.linkedin` i18n key, and inclusion in the publish-targets header, the platform badges string, and the per-platform results summary.
+
+#### Scenario: LinkedIn in the publish-targets header
+- **WHEN** a draft has `publish_targets` including `linkedin: true`
+- **THEN** the header SHALL include the LinkedIn badge (e.g. `💼 LinkedIn`) among the selected platforms
+
+#### Scenario: LinkedIn in the published results summary
+- **WHEN** a published draft's `publish_results` includes a successful `linkedin` result
+- **THEN** the per-platform results summary SHALL show `💼 LinkedIn ✅`
+
+#### Scenario: LinkedIn failure in the results summary
+- **WHEN** a published draft's `publish_results` includes `errors.linkedin`
+- **THEN** the per-platform results summary SHALL show `💼 LinkedIn ❌`
+

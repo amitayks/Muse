@@ -27,7 +27,9 @@ export async function commitShaInput(ctx: HandlerContext & { text: string; conte
     const genMessageId = await sendMessage(env, chatId, genView.text, genView.keyboard);
 
     try {
-        const source = await getContentSource(env, sha);
+        // PR mode (opt-in via the prompt toggle): expand the SHA to its full PR.
+        const preferPr = ctx.context?.pr_mode === true;
+        const source = await getContentSource(env, sha, preferPr);
         const commitSha = source.type === 'pr' ? source.data.commits[0] || sha : source.data.sha;
 
         // Dedup check: if event already exists for this SHA, show it

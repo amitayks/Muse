@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS users (
   x_oauth2_access_enc TEXT,
   x_oauth2_refresh_enc TEXT,
   claude_key_enc TEXT,
+  -- LinkedIn OAuth 2.0 (confidential client) user-context tokens + identity
+  linkedin_oauth2_access_enc TEXT,
+  linkedin_oauth2_refresh_enc TEXT,
+  -- ISO 8601 access-token expiry; ABSOLUTE refresh-token expiry (1yr, does not extend); person URN
+  linkedin_oauth2_expires_at TEXT,
+  linkedin_refresh_expires_at TEXT,
+  linkedin_person_urn TEXT,
   -- Feature flags
   has_gemini INTEGER DEFAULT 0,
   has_x INTEGER DEFAULT 0,
@@ -54,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
   has_heygen INTEGER DEFAULT 0,
   has_instagram INTEGER DEFAULT 0,
   has_claude INTEGER DEFAULT 0,
+  has_linkedin INTEGER DEFAULT 0,
   -- UI state (merged from former chat_state)
   message_id INTEGER,
   onboarding_message_id INTEGER,
@@ -100,6 +108,15 @@ CREATE TABLE IF NOT EXISTS x_oauth_state (
   state TEXT PRIMARY KEY,
   chat_id TEXT,
   code_verifier TEXT,
+  created_at TEXT
+);
+
+-- Transient state for the LinkedIn OAuth 2.0 authorize <-> callback handshake.
+-- Single-use (deleted on callback), swept after a short TTL (~10 min). No code_verifier:
+-- LinkedIn is a confidential client (client secret in Worker config), so there is no PKCE.
+CREATE TABLE IF NOT EXISTS linkedin_oauth_state (
+  state TEXT PRIMARY KEY,
+  chat_id TEXT,
   created_at TEXT
 );
 

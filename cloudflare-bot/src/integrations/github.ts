@@ -276,7 +276,8 @@ export async function getPR(env: Env, repo: string, number: number): Promise<PRD
         title: pr.title,
         body: pr.body || '',
         commits: commits.map((c) => c.sha),
-        commitMessages: commits.map((c) => c.commit.message.split('\n')[0]),
+        // Full message of each commit (subject + body), not just the first line.
+        commitMessages: commits.map((c) => c.commit.message),
         fileNames: files.map((f) => f.filename),
         files_changed: pr.changed_files,
         additions: pr.additions,
@@ -297,7 +298,8 @@ async function buildCommitData(env: Env, repo: string, sha: string, searchAuthor
         sha: commit.sha,
         title: title || 'Untitled commit',
         body: bodyLines.join('\n').trim(),
-        commitMessages: [title || 'Untitled commit'],
+        // Full commit message (subject + body) — used by the content prompt.
+        commitMessages: [commit.commit.message.trim() || title || 'Untitled commit'],
         fileNames: commit.files?.map(f => f.filename) || [],
         files_changed: commit.files?.length || 0,
         additions: commit.stats?.additions || 0,
@@ -308,9 +310,17 @@ async function buildCommitData(env: Env, repo: string, sha: string, searchAuthor
 }
 
 /**
- * Get content source - finds repo once, tries PR, falls back to direct commit.
+ * Get content source for a manually-pasted SHA.
+ *
+ * Default (`preferPr` false): resolves to exactly that one commit — we do NOT
+ * expand it to the PR that contains it.
+ *
+ * PR opt-in (`preferPr` true): resolves the PR that contains the commit and
+ * returns all of its commits; falls back to single-commit if no PR is found.
+ *
+ * (The GitHub webhook handler builds PR sources separately via getPR().)
  */
-export async function getContentSource(env: Env, sha: string): Promise<ContentSource> {
+export async function getContentSource(env: Env, sha: string, preferPr = false): Promise<ContentSource> {
     // Step 1: Find which repo has this commit (single lookup)
     const found = await findCommitBysha(env, sha);
     if (!found) {
@@ -319,15 +329,17 @@ export async function getContentSource(env: Env, sha: string): Promise<ContentSo
 
     const { repo, commit: searchCommit } = found;
 
-    // Step 2: Try to find a PR for this commit
-    const pr = await findPRForCommit(env, repo, sha);
-    if (pr) {
-        console.log(`Found PR #${pr.number} in repo ${repo}`);
-        return { type: 'pr', data: pr, repo };
+    // Step 2 (opt-in): expand to the PR that contains this commit.
+    if (preferPr) {
+        const pr = await findPRForCommit(env, repo, sha);
+        if (pr) {
+            console.log(`PR mode: found PR #${pr.number} in repo ${repo}`);
+            return { type: 'pr', data: pr, repo };
+        }
+        console.log('PR mode requested but no PR found — falling back to single commit');
     }
 
-    // Step 3: Fallback to direct commit data
-    console.log('No PR found, using commit data directly');
+    // Step 3: Single-commit data (default, and the PR-mode fallback).
     const commitData = await buildCommitData(env, repo, sha, searchCommit.author?.login);
     return { type: 'commit', data: commitData, repo };
 }

@@ -1,7 +1,6 @@
 ## Purpose
 
 The end-to-end Twitter source pipeline: inline parallel per-user cron execution, timeline polling with automatic user_id resolution, and relevance scoring of fetched tweets.
-
 ## Requirements
 
 <!-- Stage 1: Cron Execution -->
@@ -157,3 +156,18 @@ After scoring, each tweet's `relevance_score` (INTEGER) and `relevance_reason` (
 #### Scenario: Score persistence
 - **WHEN** the AI returns `{ tweet_id: "123", score: 8, reason: "Major framework release" }`
 - **THEN** the twitter_tweets row with id "123" SHALL have `relevance_score=8` and `relevance_reason="Major framework release"`
+
+### Requirement: X read/poller calls authenticate via OAuth 2.0 bearer
+
+The X read paths used by the source/poller system (`getUserTweets`, `searchConversation`, `getTweetById`, `lookupUserByUsername`) SHALL authenticate with the user's OAuth 2.0 `Authorization: Bearer` token. The required read scopes (`tweet.read`, `users.read`) SHALL be part of the granted scope set.
+
+#### Scenario: Polling monitored accounts uses the bearer
+
+- **WHEN** the poller fetches tweets or looks up a user for a connected user's monitored accounts
+- **THEN** the requests SHALL send `Authorization: Bearer <access_token>` and SHALL NOT use OAuth 1.0a signing
+
+#### Scenario: Poller skips users who are not connected
+
+- **WHEN** the poller runs for a user with no valid OAuth 2.0 token
+- **THEN** it SHALL skip that user's X reads (surfacing a reconnect-required signal) rather than failing with an opaque auth error
+

@@ -288,12 +288,14 @@ export function renderApiKeys(services: {
     hasX: boolean;
     hasGitHub: boolean;
     hasInstagram: boolean;
+    hasLinkedIn: boolean;
 }, lang: Lang = 'en'): ViewResult {
     const g = services.hasGemini;
     const cl = services.hasClaude;
     const x = services.hasX;
     const gh = services.hasGitHub;
     const ig = services.hasInstagram;
+    const li = services.hasLinkedIn;
 
     return {
         text: `${t(lang, 'settings.apiKeysTitle')}
@@ -302,13 +304,15 @@ ${g ? '✅' : '⬜'} ${t(lang, 'settings.geminiAi')} ${t(lang, 'common.arrow')} 
 ${cl ? '✅' : '⬜'} ${t(lang, 'settings.claudeAi')} ${t(lang, 'common.arrow')} <code>${cl ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
 ${x ? '✅' : '⬜'} ${t(lang, 'settings.xTwitter')} ${t(lang, 'common.arrow')} <code>${x ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
 ${gh ? '✅' : '⬜'} ${t(lang, 'settings.github')} ${t(lang, 'common.arrow')} <code>${gh ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
-${ig ? '✅' : '⬜'} ${t(lang, 'settings.instagram')} ${t(lang, 'common.arrow')} <code>${ig ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>`,
+${ig ? '✅' : '⬜'} ${t(lang, 'settings.instagram')} ${t(lang, 'common.arrow')} <code>${ig ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>
+${li ? '✅' : '⬜'} ${t(lang, 'settings.linkedin')} ${t(lang, 'common.arrow')} <code>${li ? t(lang, 'settings.connected') : t(lang, 'settings.notConnected')}</code>`,
         keyboard: [
             [{ text: `${t(lang, 'settings.geminiAi')} \u2014 ${g ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:gemini', ...(g ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.claudeAi')} \u2014 ${cl ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:claude', ...(cl ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.xTwitter')} \u2014 ${x ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:x', ...(x ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.github')} \u2014 ${gh ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:github', ...(gh ? { style: 'success' as const } : {}) }],
             [{ text: `${t(lang, 'settings.instagram')} \u2014 ${ig ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:instagram', ...(ig ? { style: 'success' as const } : {}) }],
+            [{ text: `${t(lang, 'settings.linkedin')} \u2014 ${li ? t(lang, 'settings.update') : t(lang, 'settings.connect')}`, callback_data: 'settings:update:linkedin', ...(li ? { style: 'success' as const } : {}) }],
             [backButton('settings:sub:platforms', lang)],
         ],
     };

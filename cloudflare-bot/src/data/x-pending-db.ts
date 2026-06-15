@@ -30,8 +30,8 @@ export interface PendingXPayload {
     content: DraftContent;
     /** Already-uploaded X media ids (video + photos); valid for hours. */
     media: ResolvedXMedia;
-    /** Instagram results already produced inline (carried so the executor writes one complete record). */
-    igResults: Pick<PublishResults, 'instagram_post' | 'instagram_story' | 'instagram_reel' | 'errors' | 'needsInstagramReconnect'>;
+    /** Non-X results already produced inline (Instagram + LinkedIn), carried so the executor writes one complete record. */
+    igResults: Pick<PublishResults, 'instagram_post' | 'instagram_story' | 'instagram_reel' | 'linkedin' | 'errors' | 'needsInstagramReconnect' | 'needsLinkedInReconnect'>;
 }
 
 /** Row shape of x_pending_posts. */

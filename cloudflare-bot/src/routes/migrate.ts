@@ -607,6 +607,36 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('x_oauth2_refresh_lock migration note:', String(refreshLockError));
         }
 
+        // Migration: LinkedIn publishing — OAuth 2.0 confidential-client tokens + state table (023)
+        // Per-user LinkedIn tokens, person URN, has_linkedin flag, and the transient authorize <->
+        // callback state. LinkedIn is a confidential client (secret in Worker config, not here);
+        // refresh_expires_at is an ABSOLUTE 1-year bound that does not extend on refresh.
+        try {
+            const usersInfo10 = await env.DB.prepare("PRAGMA table_info(users)").all();
+            const hasLinkedIn = usersInfo10.results?.some((col: any) => col.name === 'linkedin_oauth2_access_enc');
+            if (!hasLinkedIn) {
+                await execStatements(env.DB, [
+                    `ALTER TABLE users ADD COLUMN linkedin_oauth2_access_enc TEXT;`,
+                    `ALTER TABLE users ADD COLUMN linkedin_oauth2_refresh_enc TEXT;`,
+                    `ALTER TABLE users ADD COLUMN linkedin_oauth2_expires_at TEXT;`,
+                    `ALTER TABLE users ADD COLUMN linkedin_refresh_expires_at TEXT;`,
+                    `ALTER TABLE users ADD COLUMN linkedin_person_urn TEXT;`,
+                    `ALTER TABLE users ADD COLUMN has_linkedin INTEGER DEFAULT 0;`,
+                ]);
+                logInfo('Added linkedin_* columns to users table');
+            }
+            await env.DB.prepare(
+                `CREATE TABLE IF NOT EXISTS linkedin_oauth_state (
+                    state TEXT PRIMARY KEY,
+                    chat_id TEXT,
+                    created_at TEXT
+                );`
+            ).run();
+            logInfo('Ensured linkedin_oauth_state table exists');
+        } catch (linkedInError) {
+            logInfo('linkedin migration note:', String(linkedInError));
+        }
+
         // Migration: Deferred X video post — schedule store (source of truth) (021)
         // An X video media object needs ~10-60s after STATUS=succeeded before POST /2/tweets
         // accepts it. Media is uploaded inline (ids valid for hours); the tweet-creation step is

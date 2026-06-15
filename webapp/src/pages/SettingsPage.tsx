@@ -10,7 +10,7 @@ interface UserSettings {
   timezone: string;
   page_size: number;
   ai_provider: string;
-  default_publish_targets: { x: boolean; instagram_post: boolean; instagram_story: boolean; instagram_reel: boolean };
+  default_publish_targets: { x: boolean; instagram_post: boolean; instagram_story: boolean; instagram_reel: boolean; linkedin: boolean };
   repost_defaults: { fastGenerateImage: boolean; analyzeSourceImage: boolean };
   commit_defaults: { commitFastImage: boolean; commitFastAi: boolean };
   repo_defaults: { autoOverview: boolean; defaultWatchPushes: boolean };
@@ -20,8 +20,11 @@ interface UserSettings {
   has_heygen: boolean;
   has_instagram: boolean;
   has_claude: boolean;
+  has_linkedin: boolean;
   /** Set by the backend when a stored X OAuth 2.0 token is missing/expired and the user must reconnect. */
   needs_x_reconnect?: boolean;
+  /** Set by the backend when a stored LinkedIn OAuth 2.0 token is missing/expired and the user must reconnect. */
+  needs_linkedin_reconnect?: boolean;
 }
 
 const TIMEZONES = ['UTC-5', 'UTC-4', 'UTC-3', 'UTC-2', 'UTC-1', 'UTC', 'UTC+1', 'UTC+2', 'UTC+3', 'UTC+4', 'UTC+5', 'UTC+5:30', 'UTC+6', 'UTC+7', 'UTC+8', 'UTC+9', 'UTC+10', 'UTC+12'];
@@ -54,19 +57,34 @@ export function SettingsPage() {
     onError: (err) => showToast(err instanceof Error ? err.message : t('common.error'), 'error'),
   });
 
-  // Handle the post-callback return: the backend redirects back with ?x_connected=1 (or =0 on failure).
+  // Start the LinkedIn OAuth 2.0 connect flow: fetch the authorize URL, then redirect to LinkedIn.
+  const connectLinkedInMutation = useMutation({
+    mutationFn: () => api.startLinkedInOAuth(),
+    onSuccess: ({ authorizeUrl }) => {
+      window.location.assign(authorizeUrl);
+    },
+    onError: (err) => showToast(err instanceof Error ? err.message : t('common.error'), 'error'),
+  });
+
+  // Handle the post-callback return: the backend redirects back with ?x_connected / ?linkedin_connected
+  // = 1 (or = 0 on failure).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const connected = params.get('x_connected');
-    if (connected === null) return;
-    if (connected === '1') {
-      showToast(t('settings.xConnected'), 'success');
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-    } else {
-      showToast(t('settings.xConnectFailed'), 'error');
+    const xConnected = params.get('x_connected');
+    const linkedinConnected = params.get('linkedin_connected');
+    if (xConnected === null && linkedinConnected === null) return;
+    if (xConnected !== null) {
+      showToast(xConnected === '1' ? t('settings.xConnected') : t('settings.xConnectFailed'), xConnected === '1' ? 'success' : 'error');
     }
-    // Strip the param so a refresh doesn't re-trigger the toast (preserve the hash route).
+    if (linkedinConnected !== null) {
+      showToast(linkedinConnected === '1' ? t('settings.linkedinConnected') : t('settings.linkedinConnectFailed'), linkedinConnected === '1' ? 'success' : 'error');
+    }
+    if (xConnected === '1' || linkedinConnected === '1') {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    }
+    // Strip the params so a refresh doesn't re-trigger the toast (preserve the hash route).
     params.delete('x_connected');
+    params.delete('linkedin_connected');
     const query = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +103,7 @@ export function SettingsPage() {
     { key: 'x', label: 'X / Twitter', connected: settings.has_x },
     { key: 'github', label: 'GitHub', connected: settings.has_github },
     { key: 'instagram', label: 'Instagram', connected: settings.has_instagram },
+    { key: 'linkedin', label: 'LinkedIn', connected: settings.has_linkedin },
   ];
 
   return (
@@ -141,6 +160,10 @@ export function SettingsPage() {
               onChange={v => update('default_publish_targets', { ...settings.default_publish_targets, instagram_reel: v })} />
           </>
         )}
+        {settings.has_linkedin && (
+          <ToggleRow label={t('platform.linkedin')} checked={settings.default_publish_targets.linkedin}
+            onChange={v => update('default_publish_targets', { ...settings.default_publish_targets, linkedin: v })} />
+        )}
       </Section>
 
       {/* Repost Defaults */}
@@ -178,6 +201,13 @@ export function SettingsPage() {
                 needsReconnect={settings.needs_x_reconnect ?? false}
                 pending={connectXMutation.isPending}
                 onConnect={() => connectXMutation.mutate()}
+              />
+            ) : svc.key === 'linkedin' ? (
+              <LinkedInConnectControl
+                connected={settings.has_linkedin}
+                needsReconnect={settings.needs_linkedin_reconnect ?? false}
+                pending={connectLinkedInMutation.isPending}
+                onConnect={() => connectLinkedInMutation.mutate()}
               />
             ) : (
               <span className={`badge ${svc.connected ? 'badge-approved' : 'badge-draft'}`}>
@@ -277,6 +307,65 @@ function XConnectControl({
   }
   // Either never connected, or the stored/live token went stale -> offer a prominent (re)connect action.
   const label = effectiveNeedsReconnect ? t('settings.reconnectX') : t('settings.connectX');
+  return (
+    <button className="btn btn-primary" onClick={onConnect} disabled={pending}>
+      {label}
+    </button>
+  );
+}
+
+function LinkedInConnectControl({
+  connected, needsReconnect, pending, onConnect,
+}: {
+  connected: boolean;
+  needsReconnect: boolean;
+  pending: boolean;
+  onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+
+  // Live token-health probe (mirrors XConnectControl): asks the backend to actually resolve a
+  // bearer (refreshing / clearing a dead token) so we can flip into the reconnect state even when
+  // the cached settings still say "connected". Any fetch error is ignored — never crash the page.
+  const statusQuery = useQuery({
+    queryKey: ['linkedin-oauth-status'],
+    queryFn: () => api.getLinkedInOAuthStatus(),
+    enabled: connected,
+    retry: false,
+    staleTime: 30_000,
+  });
+
+  const liveNeedsReconnect = statusQuery.data?.needsReconnect ?? false;
+  const effectiveNeedsReconnect = needsReconnect || liveNeedsReconnect;
+
+  // Connected and healthy -> badge plus a subtle, always-available reconnect affordance.
+  if (connected && !effectiveNeedsReconnect) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-sm)' }}>
+        <span className="badge badge-approved">{t('settings.connected')}</span>
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={pending}
+          title={t('settings.refreshLinkedInConnection')}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: pending ? 'default' : 'pointer',
+            color: 'var(--link)',
+            fontSize: '12px',
+            textDecoration: 'underline',
+            opacity: pending ? 0.5 : 1,
+          }}
+        >
+          {t('settings.refreshLinkedInConnection')}
+        </button>
+      </span>
+    );
+  }
+  // Either never connected, or the stored/live token went stale -> prominent (re)connect action.
+  const label = effectiveNeedsReconnect ? t('settings.reconnectLinkedIn') : t('settings.connectLinkedIn');
   return (
     <button className="btn btn-primary" onClick={onConnect} disabled={pending}>
       {label}

@@ -271,6 +271,7 @@ export const he: StringsMap = {
         xTwitter: 'X/Twitter',
         github: 'GitHub',
         instagram: 'Instagram',
+        linkedin: 'לינקדאין',
         update: 'עדכן',
         connect: 'חבר',
         connected: 'מחובר',
@@ -397,7 +398,10 @@ export const he: StringsMap = {
         deleteDraftWarn: '⚠️ פעולה זו תמחק את הטיוטה לצמיתות. לא ניתן לבטל פעולה זו.',
 
         generateTitle: '⚡ <b>יצירת תוכן</b>',
-        generateDesc: 'שלח לי SHA של קומיט או מספר PR.\n\nדוגמה: <code>abc1234</code> או <code>42</code>\n\nאמצא את ה-PR ואצור תוכן מעניין!',
+        generateDesc: 'שלח לי SHA של קומיט.\n\nדוגמה: <code>abc1234</code>\n\nכברירת מחדל אכתוב פוסט על אותו קומיט בלבד. לחץ על כפתור ה-PR למטה כדי להשתמש בכל הקומיטים מה-PR שלו.',
+        btnPrModeOff: '🔀 השתמש בכל ה-PR',
+        btnPrModeOn: '✅ מצב PR פעיל — כל ה-PR',
+        prModeHint: '🔀 <b>מצב PR</b>: ארחיב את הקומיט ל-PR שלו ואשתמש בכל הקומיטים שבו.',
 
         scheduleTitle: '📅 <b>תזמון פוסט</b>',
         scheduleDesc: 'שלח לי את SHA של הקומיט ותאריך-שעה.\n\nפורמט: <code>abc1234 2024-01-15 14:00</code>\n\nהתוכן ייוצר עכשיו ויפורסם בזמן המתוזמן.',
@@ -722,6 +726,8 @@ export const he: StringsMap = {
         instagramReconnectNeeded: '⚠️ <b>צריך לחבר מחדש את אינסטגרם</b>\n\nטוקן הגישה של אינסטגרם פג ולא ניתן היה לרענן אותו אוטומטית. חבר מחדש כדי להמשיך לפרסם.',
         btnReconnectX: '🔁 חבר מחדש את X',
         xReconnectNeeded: '⚠️ <b>צריך לחבר מחדש את X</b>\n\nהחיבור ל-X פג ולא ניתן היה לרענן אותו אוטומטית. חבר מחדש כדי להמשיך לפרסם ולנתח זהות.',
+        btnReconnectLinkedIn: '🔁 חבר מחדש את לינקדאין',
+        linkedinReconnectNeeded: '⚠️ <b>צריך לחבר מחדש את לינקדאין</b>\n\nהחיבור ללינקדאין פג ולא ניתן היה לרענן אותו אוטומטית. חבר מחדש כדי להמשיך לפרסם בלינקדאין.',
         scheduledPostPublished: '📤 <b>פוסט מתוזמן פורסם!</b>',
         scheduledPostPartial: '⚠️ <b>פוסט מתוזמן פורסם חלקית</b>',
         publishedAt: '🕐 פורסם ב-{time}',
@@ -885,6 +891,9 @@ export const he: StringsMap = {
         updateInstagramTitle: '📸 <b>עדכן פרטי Instagram</b>',
         updateInstagramDesc: 'שלח את הפרטים בפורמט הזה (אחד בכל שורה):',
         instagramDevPortal: '📖 Meta developers',
+        updateLinkedInTitle: '💼 <b>חבר לינקדאין</b>',
+        updateLinkedInDesc: 'לינקדאין מתחבר בצורה מאובטחת דרך OAuth. פתח את האפליקציה כדי לחבר או לחבר מחדש את חשבון הלינקדאין שלך.',
+        linkedinConnectApp: '💼 חבר באפליקציה',
     },
 
     addAccount: {
@@ -979,6 +988,7 @@ export const he: StringsMap = {
         post: 'פוסט אינסטגרם',
         story: 'סטורי אינסטגרם',
         reel: 'ריל אינסטגרם',
+        linkedin: 'לינקדאין',
 
         // ממשק בחירה
         selectTargets: 'בחר יעדי פרסום',

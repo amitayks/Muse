@@ -17,6 +17,7 @@ import { handleMediaUploadApi } from './api-v1-media';
 import { handleComposeApi } from './api-v1-compose';
 import { handlePromptsApi } from './api-v1-prompts';
 import { handleXOAuthStart, handleXOAuthStatus } from './x-oauth';
+import { handleLinkedInOAuthStart, handleLinkedInOAuthStatus } from './linkedin-oauth';
 
 /** CORS headers for webapp origin */
 function corsHeaders(env: Env): Record<string, string> {
@@ -130,6 +131,10 @@ export async function handleApiV1(
             response = await handleXOAuthStart(apiCtx);
         } else if (path === '/x/oauth/status') {
             response = await handleXOAuthStatus(apiCtx);
+        } else if (path === '/linkedin/oauth/start') {
+            response = await handleLinkedInOAuthStart(apiCtx);
+        } else if (path === '/linkedin/oauth/status') {
+            response = await handleLinkedInOAuthStatus(apiCtx);
         } else {
             response = errorResponse('Not Found', 404);
         }

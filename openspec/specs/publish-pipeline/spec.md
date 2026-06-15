@@ -370,3 +370,73 @@ When a draft's content is updated (e.g., via the webapp `PUT /api/v1/drafts/:id`
 - **WHEN** a draft with a webapp-added video targets Instagram Reel and is published
 - **THEN** because `has_video = 1`, the Instagram-Reel branch SHALL run and publish the video as a Reel
 
+### Requirement: X post calls authenticate via OAuth 2.0 bearer
+
+All X post operations used by the publish pipeline (`postTweet`, `postThread`, `postQuoteTweet`, and `deleteTweet`) SHALL authenticate with the user's OAuth 2.0 `Authorization: Bearer` token, for both text-only and media-bearing posts.
+
+#### Scenario: Thread and quote posts use the bearer
+
+- **WHEN** the publish pipeline posts a tweet, a thread, or a quote tweet (with or without media)
+- **THEN** each request SHALL send `Authorization: Bearer <access_token>` for the publishing user, and SHALL NOT use OAuth 1.0a signing
+
+#### Scenario: Publish blocked when X is not connected
+
+- **WHEN** a draft targets X but the user has no valid OAuth 2.0 token
+- **THEN** the X branch of the publish pipeline SHALL record a reconnect-required error in `publish_results.errors.x` rather than attempting an unauthenticated post
+
+### Requirement: LinkedIn publish branch in publishDraft
+The `publishDraft()` pipeline SHALL include an independent LinkedIn branch, guarded by `targets.linkedin`, that reshapes the draft into a single LinkedIn member post and publishes it via the LinkedIn integration. The branch SHALL run inside its own `try/catch` so a LinkedIn failure never blocks the X or Instagram branches, and its outcome SHALL be recorded under `publish_results.linkedin` (success) or `publish_results.errors.linkedin` (failure). On a LinkedIn auth error, the pipeline SHALL set `publish_results.needsLinkedInReconnect = true`.
+
+#### Scenario: Publish draft to LinkedIn only
+- **WHEN** `publishDraft()` is called with `publish_targets = { linkedin: true }`
+- **THEN** it SHALL build the LinkedIn post, publish it, and store `publish_results.linkedin = { post_urn, url }`
+
+#### Scenario: Publish draft to X and LinkedIn
+- **WHEN** `publishDraft()` is called with `publish_targets = { x: true, linkedin: true }`
+- **THEN** X and LinkedIn SHALL each publish independently
+- **AND** results SHALL be stored as `{ x: {...}, linkedin: {...} }`, with either platform's failure isolated in `errors`
+
+#### Scenario: LinkedIn fails, X succeeds
+- **WHEN** X publishing succeeds but LinkedIn publishing fails
+- **THEN** `publish_results` SHALL contain `{ x: {...}, errors: { linkedin: "<message>" } }`
+- **AND** the draft status SHALL still transition to `published` (because at least one target succeeded)
+
+#### Scenario: LinkedIn auth failure flags reconnect
+- **WHEN** the LinkedIn branch fails with an auth error (invalid/expired/missing token)
+- **THEN** `publish_results.errors.linkedin` SHALL be set AND `publish_results.needsLinkedInReconnect = true`
+
+#### Scenario: LinkedIn contributes to anySuccess
+- **WHEN** LinkedIn is the only successful target
+- **THEN** `anySuccess` SHALL be true, `createPublished()` SHALL be called, and `updateDraftStatus('published')` SHALL run
+
+### Requirement: Thread merged into a single LinkedIn commentary
+The LinkedIn branch SHALL merge the draft's thread text into one post body by joining each tweet's text with double newlines and trimming the result to LinkedIn's 3000-character `shareCommentary` limit.
+
+#### Scenario: Multi-tweet thread merged
+- **WHEN** a thread of 3 tweets is published to LinkedIn
+- **THEN** the commentary SHALL be `tweet1.text + "\n\n" + tweet2.text + "\n\n" + tweet3.text`
+- **AND** the merged text SHALL be trimmed to 3000 characters
+
+#### Scenario: Single tweet
+- **WHEN** a single-tweet draft is published to LinkedIn
+- **THEN** the commentary SHALL be that tweet's text (trimmed to 3000 characters if needed)
+
+### Requirement: LinkedIn media combined with image/video exclusivity
+The LinkedIn branch SHALL collect media from the draft and attach it to the single post: if any tweet carries a video, exactly one video SHALL be uploaded and attached (`shareMediaCategory = VIDEO`) and photos SHALL be ignored; otherwise all photos across all tweets SHALL be collected, uploaded, and attached (`shareMediaCategory = IMAGE`); with no per-tweet media, the draft-level `image_url` SHALL be used; with no media at all, a text-only post (`shareMediaCategory = NONE`) SHALL be published. The image source precedence SHALL match the Instagram branch (per-tweet photos → draft image → none).
+
+#### Scenario: Thread with photos across tweets
+- **WHEN** a thread's tweets contain photos and no video
+- **THEN** all photos SHALL be uploaded as LinkedIn image assets and attached to the one post as `IMAGE` media
+
+#### Scenario: Thread containing a video
+- **WHEN** any tweet in the draft contains a `type: 'video'` media item
+- **THEN** the video SHALL win: exactly one video SHALL be uploaded and attached as `VIDEO`, and any photos SHALL be skipped
+
+#### Scenario: Draft-level image fallback
+- **WHEN** the draft has no per-tweet media but has a draft-level `image_url`
+- **THEN** that image SHALL be uploaded and attached to the LinkedIn post
+
+#### Scenario: No media → text-only
+- **WHEN** the draft has no per-tweet media and no draft-level image
+- **THEN** the LinkedIn post SHALL be published as text-only (`shareMediaCategory = NONE`); the branch SHALL NOT render tweet-card images for LinkedIn
+

@@ -63,6 +63,7 @@ async function sendStepView(
         hasInstagram: user.has_instagram === 1,
         hasGemini: user.has_gemini === 1,
         hasGitHub: user.has_github === 1,
+        hasLinkedIn: user.has_linkedin === 1,
     }, step);
     view = { ...view, text: bar + '\n\n' + view.text };
 

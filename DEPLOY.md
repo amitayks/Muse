@@ -96,6 +96,34 @@ its absence — see `getIdentityTweetCount` for the `try/catch → default` patt
 
 ---
 
+## LinkedIn publishing setup (migration 023)
+
+LinkedIn publishing adds per-user OAuth 2.0 tokens + a connect flow. To enable it:
+
+1. **Create a LinkedIn app** at <https://www.linkedin.com/developers/apps>. Add the
+   **"Sign In with LinkedIn using OpenID Connect"** and **"Share on LinkedIn"** products,
+   and request **programmatic refresh tokens** (so 60-day access tokens refresh silently).
+2. **Register the redirect URL** in the app's Auth tab. It must exactly equal
+   `LINKEDIN_REDIRECT_URI`; its path is the callback route served by the Worker, e.g.
+   `https://content-bot.keisarcontentcreator.workers.dev/linkedin/oauth/callback`.
+3. **Set Worker config** (vars in the dashboard or `wrangler.toml`, secret via CLI):
+   ```bash
+   # Vars
+   #   LINKEDIN_CLIENT_ID    = <app Client ID>
+   #   LINKEDIN_REDIRECT_URI = https://<worker-host>/linkedin/oauth/callback
+   npx wrangler secret put LINKEDIN_CLIENT_SECRET   # confidential client — required in token exchange
+   ```
+   If any of the three is unset, `/api/v1/linkedin/oauth/start` returns 503 and the
+   connect button is inert (LinkedIn stays hidden until a user connects), so deploying
+   without config is safe.
+4. **Apply migration 023** (adds the `linkedin_*` user columns + `linkedin_oauth_state`
+   table) — same as any additive migration above (direct `wrangler d1 execute` of
+   `migrations/023_linkedin_publishing.sql`, or hit `/migrate`). Migrate before deploy.
+5. Users connect under **Settings → API Keys → LinkedIn** (OAuth, no key paste). Once
+   connected (`has_linkedin = 1`), the LinkedIn target appears on the draft platform toggles.
+
+---
+
 ## Known sharp edges (not best practice)
 
 These are why this doc exists. Things to fix when we modernize the pipeline:

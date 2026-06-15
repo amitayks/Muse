@@ -43,7 +43,8 @@ export async function updateUser(
         'instagram_token_enc' | 'instagram_account_id_enc' |
         'instagram_app_secret_enc' | 'instagram_token_expires_at' |
         'claude_key_enc' |
-        'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' | 'has_claude' |
+        'linkedin_person_urn' |
+        'has_gemini' | 'has_x' | 'has_github' | 'has_heygen' | 'has_instagram' | 'has_claude' | 'has_linkedin' |
         'ai_provider' |
         'language' | 'default_publish_targets' |
         'github_username' |
@@ -93,6 +94,7 @@ export async function storeEncryptedKey(
         'github_token_enc', 'heygen_api_key_enc',
         'instagram_token_enc', 'instagram_account_id_enc', 'instagram_app_secret_enc',
         'x_oauth2_access_enc', 'x_oauth2_refresh_enc',
+        'linkedin_oauth2_access_enc', 'linkedin_oauth2_refresh_enc',
         'claude_key_enc'
     ];
     if (!allowedFields.includes(keyField)) {
@@ -120,6 +122,11 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
     x_oauth2_access_enc: string | null;
     x_oauth2_refresh_enc: string | null;
     x_oauth2_expires_at: string | null;
+    linkedin_oauth2_access_enc: string | null;
+    linkedin_oauth2_refresh_enc: string | null;
+    linkedin_oauth2_expires_at: string | null;
+    linkedin_refresh_expires_at: string | null;
+    linkedin_person_urn: string | null;
     claude_key_enc: string | null;
 } | null> {
     return env.DB.prepare(`
@@ -128,6 +135,8 @@ export async function getUserEncryptedKeys(env: Env, chatId: string): Promise<{
                github_token_enc, heygen_api_key_enc,
                instagram_token_enc, instagram_account_id_enc, instagram_app_secret_enc,
                x_oauth2_access_enc, x_oauth2_refresh_enc, x_oauth2_expires_at,
+               linkedin_oauth2_access_enc, linkedin_oauth2_refresh_enc,
+               linkedin_oauth2_expires_at, linkedin_refresh_expires_at, linkedin_person_urn,
                claude_key_enc
         FROM users WHERE chat_id = ?
     `).bind(chatId).first();
@@ -256,4 +265,63 @@ export async function takeXOAuthState(
     }
 
     return { chatId: row.chat_id, codeVerifier: row.code_verifier };
+}
+
+// ==================== LINKEDIN OAUTH 2.0 STATE STORE ====================
+
+// Transient LinkedIn connect-state rows older than this are treated as expired.
+const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Persist the in-flight CSRF `state` for the LinkedIn authorize → callback round-trip.
+ * No PKCE verifier: LinkedIn is a confidential client, so the token exchange carries the
+ * client secret instead of a code_verifier.
+ */
+export async function putLinkedInOAuthState(
+    env: Env,
+    state: string,
+    chatId: string
+): Promise<void> {
+    await env.DB.prepare(
+        "INSERT OR REPLACE INTO linkedin_oauth_state (state, chat_id, created_at) VALUES (?, ?, datetime('now'))"
+    ).bind(state, chatId).run();
+}
+
+/**
+ * Single-use lookup of a LinkedIn connect-state row: deletes the row on read and returns its
+ * bound chat_id. Returns null if the state is unknown, already used, or older than the TTL.
+ */
+export async function takeLinkedInOAuthState(
+    env: Env,
+    state: string
+): Promise<{ chatId: string } | null> {
+    const row = await env.DB.prepare(
+        'SELECT chat_id, created_at FROM linkedin_oauth_state WHERE state = ?'
+    ).bind(state).first<{ chat_id: string | null; created_at: string | null }>();
+
+    // Single-use: delete the row regardless of validity so it can never be replayed.
+    await env.DB.prepare('DELETE FROM linkedin_oauth_state WHERE state = ?').bind(state).run();
+
+    if (!row || !row.chat_id || !row.created_at) {
+        return null;
+    }
+
+    const createdAtMs = Date.parse(`${row.created_at} UTC`);
+    if (!Number.isNaN(createdAtMs) && Date.now() - createdAtMs > LINKEDIN_OAUTH_STATE_TTL_MS) {
+        return null;
+    }
+
+    return { chatId: row.chat_id };
+}
+
+/**
+ * Clear the LinkedIn OAuth 2.0 credentials (access + refresh + both expiries) in one atomic
+ * write. Used when a refresh token is confirmed dead (or past its absolute expiry). Does NOT
+ * touch `has_linkedin` or `linkedin_person_urn` — the connect intent is preserved so the
+ * settings API derives `needs_linkedin_reconnect`.
+ */
+export async function clearLinkedInOAuth2Tokens(env: Env, chatId: string): Promise<void> {
+    await env.DB.prepare(
+        "UPDATE users SET linkedin_oauth2_access_enc = NULL, linkedin_oauth2_refresh_enc = NULL, linkedin_oauth2_expires_at = NULL, linkedin_refresh_expires_at = NULL, updated_at = datetime('now') WHERE chat_id = ?"
+    ).bind(chatId).run();
 }

@@ -26,6 +26,9 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
         // Users who had X via 1.0a (has_x=1) but no OAuth token need to (re)connect via the app.
         const xKeys = await getUserEncryptedKeys(env, chatId);
         const hasXOAuth = !!xKeys?.x_oauth2_access_enc;
+        // LinkedIn "connected" means an OAuth 2.0 token is stored. A dead token is cleared
+        // (linkedin_oauth2_access_enc NULL) while has_linkedin intent stays 1 → reconnect prompt.
+        const hasLinkedInOAuth = !!xKeys?.linkedin_oauth2_access_enc;
 
         return jsonResponse({
             language: user.language,
@@ -45,6 +48,9 @@ export async function handleSettingsApi(ctx: ApiContext, path: string): Promise<
             has_heygen: user.has_heygen === 1,
             has_instagram: user.has_instagram === 1,
             has_claude: user.has_claude === 1,
+            has_linkedin: hasLinkedInOAuth,
+            // True once a dead token is cleared while has_linkedin intent stays 1 → reconnect prompt.
+            needs_linkedin_reconnect: user.has_linkedin === 1 && !hasLinkedInOAuth,
         });
     }
 

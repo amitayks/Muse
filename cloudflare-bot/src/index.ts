@@ -32,6 +32,7 @@ import { handleAdminPromptEditorPage } from './routes/app-admin';
 import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi, handleIdentityApi } from './routes/api-prompt';
 import { handleApiV1 } from './routes/api-v1';
 import { handleXOAuthCallback } from './routes/x-oauth';
+import { handleLinkedInOAuthCallback } from './routes/linkedin-oauth';
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -140,6 +141,19 @@ export default {
                 const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleXOAuthCallback(request, env);
+                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+            }
+
+            // LinkedIn OAuth 2.0 callback — path must equal LINKEDIN_REDIRECT_URI's path
+            // (falls back to /linkedin/oauth/callback). Top-level so it matches the URI
+            // registered with LinkedIn exactly.
+            const linkedinOAuthCallbackPath = env.LINKEDIN_REDIRECT_URI
+                ? new URL(env.LINKEDIN_REDIRECT_URI).pathname
+                : '/linkedin/oauth/callback';
+            if (url.pathname === linkedinOAuthCallbackPath && request.method === 'GET') {
+                const rateLimit = checkRateLimit(`api:${clientIP}`, RATE_LIMITS.api);
+                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+                const response = await handleLinkedInOAuthCallback(request, env);
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
             }
 

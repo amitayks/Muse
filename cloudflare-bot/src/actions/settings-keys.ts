@@ -115,6 +115,7 @@ export async function settingsKeysAction(
             hasX: user?.has_x === 1,
             hasGitHub: user?.has_github === 1,
             hasInstagram: user?.has_instagram === 1,
+            hasLinkedIn: user?.has_linkedin === 1,
         }, lang);
     }
 
@@ -186,6 +187,17 @@ export async function settingsKeysAction(
                 text: `${t(lang, 'apiKeys.updateInstagramTitle')}\n\n${t(lang, 'apiKeys.updateInstagramDesc')}\n\n<code>ACCESS_TOKEN</code>\n<code>BUSINESS_ACCOUNT_ID</code>\n<code>APP_SECRET</code>\n\n<i>(Message will be deleted after saving)</i>`,
                 keyboard: [
                     [{ text: t(lang, 'apiKeys.instagramDevPortal'), url: 'https://developers.facebook.com/' }],
+                    [{ text: t(lang, 'common.back'), callback_data: 'settings:keys' }],
+                ],
+            };
+        }
+
+        if (service === 'linkedin') {
+            // LinkedIn connects via OAuth 2.0 in the webapp — there is no key-paste flow.
+            return {
+                text: `${t(lang, 'apiKeys.updateLinkedInTitle')}\n\n${t(lang, 'apiKeys.updateLinkedInDesc')}`,
+                keyboard: [
+                    ...(env.WEBAPP_URL ? [[{ text: t(lang, 'apiKeys.linkedinConnectApp'), web_app: { url: `${env.WEBAPP_URL}/#/settings` } }]] : []),
                     [{ text: t(lang, 'common.back'), callback_data: 'settings:keys' }],
                 ],
             };
@@ -325,7 +337,8 @@ async function handleSettingsPlat(
         const user = await getUser(env, chatId);
         const targets = parsePublishTargets(user?.default_publish_targets);
         const hasInstagram = user?.has_instagram === 1;
-        return renderSettingsDefaultTargets(targets, hasInstagram, lang);
+        const hasLinkedIn = user?.has_linkedin === 1;
+        return renderSettingsDefaultTargets(targets, hasInstagram, hasLinkedIn, lang);
     }
 
     if (extra === 'done') {
@@ -340,17 +353,18 @@ async function handleSettingsPlat(
         const user = await getUser(env, chatId);
         const targets = parsePublishTargets(user?.default_publish_targets);
         const hasInstagram = user?.has_instagram === 1;
+        const hasLinkedIn = user?.has_linkedin === 1;
 
         const newValue = !targets[platform];
 
-        // Mutual exclusivity: post ↔ reel
+        // Mutual exclusivity: post ↔ reel (LinkedIn has none)
         if (platform === 'instagram_post' && newValue) targets.instagram_reel = false;
         if (platform === 'instagram_reel' && newValue) targets.instagram_post = false;
 
         targets[platform] = newValue;
 
         // Enforce at-least-one target
-        const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel;
+        const anyEnabled = targets.x || targets.instagram_post || targets.instagram_story || targets.instagram_reel || targets.linkedin;
         if (!anyEnabled) {
             targets[platform] = true;
             if (ctx.callbackId) {
@@ -360,7 +374,7 @@ async function handleSettingsPlat(
 
         await updateDefaultPublishTargets(env, chatId, targets);
 
-        const view = renderSettingsDefaultTargets(targets, hasInstagram, lang);
+        const view = renderSettingsDefaultTargets(targets, hasInstagram, hasLinkedIn, lang);
         if (ctx.messageId) {
             await editMessage(env, chatId, ctx.messageId, view.text, view.keyboard);
         }
@@ -371,6 +385,7 @@ async function handleSettingsPlat(
 function renderSettingsDefaultTargets(
     targets: PublishTargets,
     hasInstagram: boolean,
+    hasLinkedIn: boolean,
     lang: Lang
 ): ViewResult {
     const check = (enabled: boolean) => enabled ? '✅' : '⬜';
@@ -394,6 +409,13 @@ function renderSettingsDefaultTargets(
         rows.push([{
             text: `${check(targets.instagram_reel)} 🎬 ${t(lang, 'platforms.reel')}`,
             callback_data: 'settings:plat:toggle:instagram_reel',
+        }]);
+    }
+
+    if (hasLinkedIn) {
+        rows.push([{
+            text: `${check(targets.linkedin)} 💼 ${t(lang, 'platforms.linkedin')}`,
+            callback_data: 'settings:plat:toggle:linkedin',
         }]);
     }
 

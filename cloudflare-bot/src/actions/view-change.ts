@@ -39,7 +39,10 @@ export async function viewChangeAction(ctx: HandlerContext & { value: string; ex
             return renderHelp(lang);
         case 'generate':
             await updateChatState(env, chatId, { current_view: 'generate', context: { awaiting_input: 'commit_sha' } });
-            return renderGeneratePrompt(lang);
+            return renderGeneratePrompt(lang, false);
+        case 'generate_pr':
+            await updateChatState(env, chatId, { current_view: 'generate', context: { awaiting_input: 'commit_sha', pr_mode: true } });
+            return renderGeneratePrompt(lang, true);
         case 'schedule':
             await updateChatState(env, chatId, { current_view: 'schedule', context: { awaiting_input: 'schedule' } });
             return renderSchedulePrompt(lang);

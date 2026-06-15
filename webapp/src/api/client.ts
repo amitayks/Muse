@@ -135,4 +135,18 @@ export const api = {
    */
   getXOAuthStatus: () =>
     request<{ connected: boolean; needsReconnect: boolean }>('/api/v1/x/oauth/status'),
+
+  /**
+   * Start the LinkedIn OAuth 2.0 connect flow.
+   * Returns the LinkedIn authorize URL the user must be redirected to.
+   */
+  startLinkedInOAuth: () =>
+    request<{ authorizeUrl: string }>('/api/v1/linkedin/oauth/start'),
+
+  /**
+   * Live LinkedIn connection-health probe. The backend resolves a usable bearer
+   * (refreshing, and clearing a dead token, as needed) and reports the current state.
+   */
+  getLinkedInOAuthStatus: () =>
+    request<{ connected: boolean; needsReconnect: boolean }>('/api/v1/linkedin/oauth/status'),
 };

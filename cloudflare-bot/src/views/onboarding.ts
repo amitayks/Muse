@@ -12,7 +12,7 @@ import type { Lang } from '../ui/strings';
 // ─── Progress Bar ─────────────────────────────────────────────────────────
 
 export function buildProgressBar(
-    state: { hasX: boolean; hasInstagram: boolean; hasGemini: boolean; hasGitHub: boolean },
+    state: { hasX: boolean; hasInstagram: boolean; hasGemini: boolean; hasGitHub: boolean; hasLinkedIn?: boolean },
     currentStep: string,
 ): string {
     const PAST_IDENTITY = ['gemini_key', 'github_token', 'complete'];
@@ -30,6 +30,12 @@ export function buildProgressBar(
         { label: 'AI', done: state.hasGemini, stepKey: 'gemini_key' },
         { label: 'GitHub', done: state.hasGitHub, stepKey: 'github_token' },
     );
+
+    // LinkedIn is an optional secondary platform connected via Settings (not a blocking onboarding
+    // step). Surface it as a badge only once connected, so it never reads as a locked/required step.
+    if (state.hasLinkedIn) {
+        steps.push({ label: 'LinkedIn', done: true, stepKey: 'linkedin' });
+    }
 
     return steps.map(s => {
         if (s.done) return `✅ ${s.label}`;

@@ -271,6 +271,7 @@ export const en = {
         xTwitter: 'X/Twitter',
         github: 'GitHub',
         instagram: 'Instagram',
+        linkedin: 'LinkedIn',
         update: 'Update',
         connect: 'Connect',
         connected: 'Connected',
@@ -415,7 +416,10 @@ export const en = {
 
         // Generate prompt
         generateTitle: '⚡ <b>Generate Content</b>',
-        generateDesc: 'Send me a commit SHA or PR number.\n\nExample: <code>abc1234</code> or <code>42</code>\n\nI\'ll find the PR and create engaging content for it!',
+        generateDesc: 'Send me a commit SHA.\n\nExample: <code>abc1234</code>\n\nBy default I write a post about that one commit. Tap the PR button below to use all commits from its pull request instead.',
+        btnPrModeOff: '🔀 Use whole PR',
+        btnPrModeOn: '✅ PR mode on — using whole PR',
+        prModeHint: '🔀 <b>PR mode</b>: I\'ll expand this commit to its pull request and use all of its commits.',
 
         // Schedule prompt
         scheduleTitle: '📅 <b>Schedule Post</b>',
@@ -765,6 +769,8 @@ export const en = {
         instagramReconnectNeeded: '⚠️ <b>Instagram needs reconnecting</b>\n\nYour Instagram access token expired and could not be refreshed automatically. Reconnect to resume publishing.',
         btnReconnectX: '🔁 Reconnect X',
         xReconnectNeeded: '⚠️ <b>X needs reconnecting</b>\n\nYour X connection expired and could not be refreshed automatically. Reconnect to resume posting and identity analysis.',
+        btnReconnectLinkedIn: '🔁 Reconnect LinkedIn',
+        linkedinReconnectNeeded: '⚠️ <b>LinkedIn needs reconnecting</b>\n\nYour LinkedIn connection expired and could not be refreshed automatically. Reconnect to resume publishing to LinkedIn.',
         scheduledPostPublished: '📤 <b>Scheduled Post Published!</b>',
         scheduledPostPartial: '⚠️ <b>Scheduled Post Partially Published</b>',
         publishedAt: '🕐 Published {time}',
@@ -945,6 +951,9 @@ export const en = {
         updateInstagramTitle: '📸 <b>Update Instagram Credentials</b>',
         updateInstagramDesc: 'Send your credentials in this format (one per line):',
         instagramDevPortal: '📖 Meta developers',
+        updateLinkedInTitle: '💼 <b>Connect LinkedIn</b>',
+        updateLinkedInDesc: 'LinkedIn connects securely via OAuth. Open the app to connect or reconnect your LinkedIn account.',
+        linkedinConnectApp: '💼 Connect in app',
     },
 
     addAccount: {
@@ -1041,6 +1050,7 @@ export const en = {
         post: 'Instagram Post',
         story: 'Instagram Story',
         reel: 'Instagram Reel',
+        linkedin: 'LinkedIn',
 
         // Toggle UI
         selectTargets: 'Select Publish Targets',
