@@ -39,12 +39,27 @@ All `/api/v1/*` responses SHALL include CORS headers allowing requests from the 
 - **WHEN** any `/api/v1/*` response is sent
 - **THEN** it SHALL include `Access-Control-Allow-Origin: <WEBAPP_URL>` header
 
-### Requirement: Dashboard API
-The system SHALL provide a dashboard endpoint returning status counts and next scheduled draft.
+### Requirement: Home API
+The system SHALL provide a read-only endpoint that returns everything the Home screen needs in one request: the ordered list of upcoming scheduled drafts, the list of pending notifications (commit events + repost candidates not yet turned into drafts), draft status counts (for the Drafts hub), and the admin flag.
 
-#### Scenario: GET /api/v1/dashboard
-- **WHEN** a GET request is made to `/api/v1/dashboard`
-- **THEN** the response SHALL include: `{ counts: { draft, approved, scheduled, published }, nextScheduled: { id, title, firstTweet, scheduledAt, format } | null, isAdmin: boolean }`
+#### Scenario: GET /api/v1/home
+- **WHEN** a GET request is made to `/api/v1/home`
+- **THEN** the response SHALL include `{ scheduled: Array<{ id, title, firstTweet, scheduledAt, format, targets }>, notifications: Array<{ kind: 'commit' | 'repost', id, title, preview, repo?, score? }>, counts: { draft, approved, scheduled, published }, isAdmin: boolean }`, scoped to the authenticated user
+
+#### Scenario: Notifications are pre-draft only
+- **WHEN** the home notifications list is built
+- **THEN** it SHALL include commit events and repost candidates that have NOT yet been turned into drafts, and exclude any that already have a generated draft
+
+### Requirement: Repo search API
+The system SHALL provide an endpoint backing the inline repo search that queries the user's accessible GitHub repositories using `GITHUB_TOKEN`, scoped to `GITHUB_OWNER`.
+
+#### Scenario: GET /api/v1/repos/search
+- **WHEN** a GET request is made to `/api/v1/repos/search?q=<query>`
+- **THEN** the response SHALL include `{ results: Array<{ full_name, description, private }> }` of accessible repositories matching the query
+
+#### Scenario: Empty query
+- **WHEN** the query is empty or whitespace
+- **THEN** the endpoint SHALL return an empty result set without error
 
 ### Requirement: Drafts CRUD API
 The system SHALL provide full CRUD operations for drafts.
@@ -94,11 +109,34 @@ The system SHALL provide an endpoint to create drafts from the webapp compose fl
 - **THEN** the system SHALL create a new draft (with optional AI refinement), store it in D1, and return the draft ID
 
 ### Requirement: Generate API
-The system SHALL provide an endpoint to generate tweets from commits.
+The system SHALL provide an endpoint to generate a draft from a commit source for the Composer's `[+ commit]` flow. It SHALL accept a partial commit SHA (resolved server-side via the existing `findCommitBysha`/`getContentSource`), optional user message text, optional AI instruction, a language override, and image/AI options. It SHALL create a draft and return its id, driving bot sync.
 
-#### Scenario: POST /api/v1/generate
-- **WHEN** a POST request is made with `{ repoId, commitSha, fastImage, fastAi }` body
-- **THEN** the system SHALL fetch the PR, generate content via AI, create a draft, and return the draft ID
+#### Scenario: POST /api/v1/generate with partial SHA
+- **WHEN** a POST request is made with `{ sha, message?, instruction?, options: { ai?, image?, langOverride? } }`
+- **THEN** the system SHALL resolve the commit (repo + details) from the partial SHA, generate content combining the commit with any message/instruction, create a draft, and return `{ draftId }`
+
+#### Scenario: Unresolvable SHA
+- **WHEN** the partial SHA cannot be resolved in any accessible repo
+- **THEN** the endpoint SHALL return an error (no draft created) with an actionable message
+
+#### Scenario: Generation drives bot sync
+- **WHEN** the draft is created from generation
+- **THEN** the existing bot-message sync SHALL run so the bot reflects the new draft
+
+### Requirement: Schedule API honors the user's configured timezone
+The `POST /api/v1/drafts/:id/schedule` endpoint SHALL interpret the submitted datetime as a wall-clock time in the user's configured `users.timezone` offset and convert it to UTC for storage — the same conversion the bot's own schedule input performs — rather than trusting a client-side UTC value. The webapp SHALL send the raw wall-clock datetime from its picker (no device-timezone conversion), and SHALL render scheduled times in the configured offset, not the device timezone.
+
+#### Scenario: Webapp schedules in the user's timezone
+- **WHEN** a user with timezone `UTC+2` schedules a draft for wall-clock `2026-02-10T08:10` via the webapp
+- **THEN** the endpoint SHALL store `scheduled_at` as `2026-02-10T06:10:00.000Z` (UTC), independent of the device timezone
+
+#### Scenario: Past time is rejected
+- **WHEN** the converted UTC instant is at or before the current time
+- **THEN** the endpoint SHALL return an error and not schedule the draft
+
+#### Scenario: Display agrees with the bot
+- **WHEN** the webapp renders a scheduled draft's time (Home timeline, Composer banner)
+- **THEN** it SHALL show the time in the user's configured offset, matching the bot's scheduled-time display
 
 ### Requirement: Repost API
 The system SHALL provide an endpoint to create repost drafts from X URLs.

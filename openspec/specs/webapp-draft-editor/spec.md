@@ -45,7 +45,7 @@ The system SHALL allow users to add, remove, and reorder tweets within a thread.
 - **THEN** the tweets SHALL be reordered and renumbered accordingly
 
 ### Requirement: Media management per tweet
-The system SHALL allow users to attach, preview, and remove media (images and video) for each tweet, respecting the platform rule that a tweet holds EITHER up to 4 photos OR exactly 1 video.
+The system SHALL allow users to attach, preview, and remove media (images and video) for each tweet, respecting the platform rule that a tweet holds EITHER up to 4 photos OR exactly 1 video. In the existing-draft (viewer) state, attached media SHALL be displayed **full-size** (full content width), not as small thumbnails, so the user sees the image/video as it will appear.
 
 #### Scenario: Attach image via file picker
 - **WHEN** the user taps "Add image" on a tweet with no video attached
@@ -59,16 +59,16 @@ The system SHALL allow users to attach, preview, and remove media (images and vi
 - **WHEN** the user taps "Add video" (or drags a `video/mp4` file) onto a tweet that has no media yet
 - **THEN** the video is uploaded to R2 and attached to the tweet as a single video media item
 
-#### Scenario: Image preview
-- **WHEN** a tweet has attached images
-- **THEN** thumbnail previews SHALL be displayed below the tweet text, showing up to 4 images per tweet (X's limit)
+#### Scenario: Image shown full-size in the viewer
+- **WHEN** a tweet in the existing-draft view has attached images
+- **THEN** the images SHALL be displayed full content width below the tweet text (up to 4), not as 80×80 thumbnails
 
-#### Scenario: Video preview
-- **WHEN** a tweet has an attached video
-- **THEN** the video SHALL be displayed below the tweet text in a `<video>` preview with a play affordance
+#### Scenario: Video shown full-size in the viewer
+- **WHEN** a tweet in the existing-draft view has an attached video
+- **THEN** the video SHALL be displayed full content width in a `<video>` element with a play affordance
 
 #### Scenario: Remove media
-- **WHEN** the user taps the "X" button on an image or video preview
+- **WHEN** the user taps the remove control on an image or video
 - **THEN** the media SHALL be removed from the tweet's media list (R2 object is NOT deleted — just unlinked from the tweet)
 
 #### Scenario: Photo/video exclusivity
@@ -78,7 +78,7 @@ The system SHALL allow users to attach, preview, and remove media (images and vi
 
 #### Scenario: Max 4 images per tweet
 - **WHEN** a tweet already has 4 images attached
-- **THEN** the "Add image" button SHALL be disabled with a tooltip "Max 4 images per tweet (X limit)"
+- **THEN** the "Add image" affordance SHALL be disabled with a hint "Max 4 images per tweet (X limit)"
 
 ### Requirement: AI refine panel
 The system SHALL provide an AI refine panel where users can send natural language instructions to modify the draft content.
@@ -100,23 +100,27 @@ The system SHALL provide an AI refine panel where users can send natural languag
 - **THEN** the tweet texts SHALL revert to their pre-refine state (single level undo)
 
 ### Requirement: Platform target toggles
-The system SHALL display checkboxes for each platform target: X, Instagram Post, Instagram Story, Instagram Reel.
+The system SHALL display self-toggling platform buttons at the bottom of the draft after the tweets: X, Instagram Post, Instagram Story, Instagram Reel, and LinkedIn. Instagram buttons SHALL appear only when the user has Instagram (`has_instagram`); the LinkedIn button SHALL appear only when the user has LinkedIn (`has_linkedin`). Toggling SHALL save immediately and sync the bot message.
 
 #### Scenario: Display current targets
-- **WHEN** the draft editor loads
-- **THEN** platform checkboxes SHALL reflect the draft's current `publish_targets` values
+- **WHEN** the draft view loads
+- **THEN** the platform buttons SHALL reflect the draft's current `publish_targets` values
 
 #### Scenario: Toggle platform
-- **WHEN** the user toggles a platform checkbox
-- **THEN** the change SHALL be saved via API immediately, and the bot message SHALL update to reflect the new targets
+- **WHEN** the user toggles a platform button
+- **THEN** the change SHALL be saved via API immediately and the bot message SHALL update to reflect the new targets
 
 #### Scenario: Instagram options conditional on user having Instagram
-- **WHEN** the user does not have Instagram configured (has_instagram = 0)
-- **THEN** Instagram platform checkboxes SHALL NOT be displayed
+- **WHEN** the user does not have Instagram configured (`has_instagram = 0`)
+- **THEN** the Instagram platform buttons SHALL NOT be displayed
+
+#### Scenario: LinkedIn option conditional on connection
+- **WHEN** the user has LinkedIn connected (`has_linkedin = true`)
+- **THEN** a LinkedIn platform button SHALL be displayed; otherwise it SHALL NOT be shown
 
 #### Scenario: At least one platform required
-- **WHEN** the user tries to uncheck the last remaining platform
-- **THEN** the system SHALL prevent the action and show a message "At least one platform must be selected"
+- **WHEN** the user tries to turn off the last remaining platform
+- **THEN** the system SHALL prevent it and indicate that at least one platform must be selected
 
 ### Requirement: Schedule date/time picker
 The system SHALL provide a proper date and time picker for scheduling drafts.

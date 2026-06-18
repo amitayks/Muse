@@ -5,19 +5,23 @@ Provides the drafts list view with category tabs and count badges, an infinite-s
 ## Requirements
 
 ### Requirement: Draft list with category tabs
-The system SHALL display drafts in a tabbed list view with categories: All, Auto, Handwritten, Repost, Approved, Scheduled, Published.
+The Drafts screen SHALL be a **hub presented as a grid of status categories**, not a tab bar. The grid SHALL include a tile per draft status — Needs Review (draft), Approved, Scheduled, Published (and Publishing when any exist) — each showing a count. Tapping a tile SHALL open that status's list. Within a status list, an optional source filter (Commit · Repost · Handwrite) MAY be offered.
 
-#### Scenario: Default tab
-- **WHEN** the user navigates to `/#/drafts` without a tab parameter
-- **THEN** the "All" tab SHALL be selected, showing all drafts sorted by most recent
+#### Scenario: Hub grid loads
+- **WHEN** the user navigates to the Drafts hub
+- **THEN** the app SHALL display a grid of status tiles (Needs Review, Approved, Scheduled, Published, …), each with the count of drafts in that status
 
-#### Scenario: Tab from URL parameter
-- **WHEN** the user navigates to `/#/drafts?tab=approved`
-- **THEN** the "Approved" tab SHALL be selected, showing only approved drafts
+#### Scenario: Open a status list
+- **WHEN** the user taps a status tile (e.g. "Scheduled")
+- **THEN** the app SHALL open a list showing only drafts of that status
 
-#### Scenario: Tab with count badges
-- **WHEN** the drafts page loads
-- **THEN** each tab SHALL display a count badge with the number of drafts in that category
+#### Scenario: Source filter within a list
+- **WHEN** the user is viewing a status list and selects a source filter (e.g. "Repost")
+- **THEN** the list SHALL show only drafts of that status and source
+
+#### Scenario: Empty status
+- **WHEN** a status tile has zero drafts
+- **THEN** the tile SHALL show a count of 0, and opening it SHALL show an empty state
 
 ### Requirement: Scrollable draft list without pagination limits
 The system SHALL display drafts in a scrollable list that loads more items on scroll (infinite scroll or load-more button), not limited to the bot's 5-per-page constraint.
@@ -65,19 +69,19 @@ Each draft card SHALL provide quick action buttons based on the draft's status.
 - **THEN** the card SHALL show quick action buttons: Publish Now, Unschedule, Delete
 
 ### Requirement: Draft card navigation to editor
-Tapping a draft card (not its action buttons) SHALL navigate to the draft editor.
+Tapping a draft card (not its action buttons) SHALL navigate to the unified Composer/Draft-viewer for that draft.
 
 #### Scenario: Tap draft card
 - **WHEN** the user taps the main area of a draft card
-- **THEN** the app SHALL navigate to `/#/draft/:id` where `:id` is the draft's ID
+- **THEN** the app SHALL open the Composer/Draft-viewer for that draft's id
 
 ### Requirement: Delete confirmation dialog
-The system SHALL require confirmation before deleting a draft.
+The system SHALL require confirmation before deleting a draft, using Telegram's native `showConfirm`/`showPopup` rather than a custom modal, with haptic feedback.
 
-#### Scenario: Delete with confirmation
-- **WHEN** the user taps the "Delete" button on a draft card
-- **THEN** a confirmation dialog SHALL appear with "Are you sure? This cannot be undone" and buttons "Delete" (destructive) and "Cancel"
+#### Scenario: Delete with native confirmation
+- **WHEN** the user taps "Delete" on a draft card
+- **THEN** the app SHALL present a native Telegram confirmation popup, and proceed only on confirm
 
 #### Scenario: Confirm delete
 - **WHEN** the user confirms deletion
-- **THEN** the draft SHALL be deleted via API, the card SHALL be removed from the list with an animation, and a success toast SHALL appear
+- **THEN** the draft SHALL be deleted via API, the card SHALL be removed from the list, and a success indication SHALL be shown

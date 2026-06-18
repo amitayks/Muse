@@ -16,22 +16,34 @@ The system SHALL display all followed Twitter/X accounts as a list with status i
 - **THEN** the page SHALL display "No accounts added" with an "Add Account" button
 
 ### Requirement: Add account
-The system SHALL allow adding a new Twitter account to follow by username.
+The system SHALL allow adding an account to follow by `@username`, validated against X before it is saved, using a native input affordance.
 
 #### Scenario: Add account form
 - **WHEN** the user taps "Add Account"
 - **THEN** a form SHALL appear with a text input for the Twitter @username
 
 #### Scenario: Submit add account
-- **WHEN** the user enters a username and taps "Add"
-- **THEN** the system SHALL call `POST /api/v1/accounts`, validate the account exists on X, and add it to the list
+- **WHEN** the user enters a username and confirms
+- **THEN** the system SHALL call the add endpoint, validate the account exists on X, add it to the list, and open its detail page
+
+#### Scenario: Invalid username
+- **WHEN** the entered username does not resolve on X
+- **THEN** the app SHALL show an actionable error and not add the account
 
 ### Requirement: Account detail page
-The system SHALL display full account configuration and persona on a detail page.
+The account detail page SHALL mirror the bot's account detail exactly — no more, no less — using native components and chrome. It SHALL display: `@username` (+ display name), watching status, a follow/unfollow control, the relevance threshold (x/10), an auto-approve toggle, a media-AI (Analyze Media) toggle, the AI persona overview with Update/Bootstrap, and Delete.
 
-#### Scenario: Account detail loads
-- **WHEN** the user navigates to `/#/account/:id`
-- **THEN** the page SHALL display: @username, display name, profile image, watching status, relevance threshold slider, auto-approve toggle, media AI toggle, persona text (if bootstrapped)
+#### Scenario: Account detail loads with the bot's fields
+- **WHEN** the user navigates to an account's detail page
+- **THEN** the page SHALL display @username, display name, watching status, relevance threshold (x/10), auto-approve toggle, media-AI toggle, and persona overview (if bootstrapped)
+
+#### Scenario: No fields beyond the bot's
+- **WHEN** the account detail renders
+- **THEN** it SHALL NOT introduce configuration beyond what the bot exposes (threshold/auto-approve/media-AI/persona/follow/delete)
+
+#### Scenario: Native confirmation on delete
+- **WHEN** the user deletes the account
+- **THEN** a native Telegram confirmation SHALL be shown before deletion, with haptic feedback
 
 ### Requirement: Relevance threshold slider
 The system SHALL provide a slider (1-10) for configuring the relevance threshold.

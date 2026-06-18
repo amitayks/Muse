@@ -15,35 +15,54 @@ The system SHALL display all watched repositories as a list with status indicato
 - **WHEN** the user has no repositories
 - **THEN** the page SHALL display "No repositories added" with an "Add Repository" button
 
+### Requirement: Inline GitHub repo search to add
+The Repos screen SHALL provide an inline search that queries the user's accessible GitHub repositories (via a backing search endpoint using `GITHUB_TOKEN`, scoped to `GITHUB_OWNER`) and shows results inline as the user types. Selecting a result SHALL add (save) that repository and immediately open its detail page for configuration.
+
+#### Scenario: Inline results as you type
+- **WHEN** the user types a query into the repo search field
+- **THEN** the app SHALL show matching accessible repositories inline (full name + brief info), debounced
+
+#### Scenario: Select a result adds and opens detail
+- **WHEN** the user taps a search result
+- **THEN** the system SHALL add the repository via the existing add endpoint (which validates accessibility) and navigate directly to that repo's detail page
+
+#### Scenario: No matches
+- **WHEN** the query matches no accessible repository
+- **THEN** the search SHALL show an empty result state without error
+
 ### Requirement: Add repository
-The system SHALL allow adding a new repository via owner/repo input.
+The system SHALL allow adding a repository through the inline GitHub search (type → inline results → tap to add), replacing the manual `owner/repo` text-entry form.
 
-#### Scenario: Add repo form
-- **WHEN** the user taps "Add Repository"
-- **THEN** a form SHALL appear with a text input for `owner/repo` format (e.g., `facebook/react`)
+#### Scenario: Add via search selection
+- **WHEN** the user selects a repository from the inline search results
+- **THEN** the system SHALL call `POST /api/v1/repos`, show a brief loading state, add the repo, set up the GitHub webhook, and open the repo detail page
 
-#### Scenario: Submit add repo
-- **WHEN** the user enters a valid owner/repo and taps "Add"
-- **THEN** the system SHALL call `POST /api/v1/repos`, show a loading state, and upon success, add the new repo to the list and set up the GitHub webhook
-
-#### Scenario: Invalid format
-- **WHEN** the user enters text that doesn't match `owner/repo` format
-- **THEN** the input SHALL show a validation error
+#### Scenario: Add fails (inaccessible)
+- **WHEN** adding a selected repository fails server-side validation
+- **THEN** the app SHALL show an actionable error and remain on the search
 
 ### Requirement: Repo detail page
-The system SHALL display full repo configuration on a detail page.
+The repo detail page SHALL mirror the bot's repo detail exactly — no more, no less — using native components and chrome. It SHALL show: `owner/repo`, watching status, a watch on/off control, a Watch-PRs toggle, a Watch-Pushes toggle, the branch configuration, and the Project Overview (summary, key-feature count, visual theme) with Edit and Re-bootstrap actions (or Bootstrap when none exists), plus Delete.
 
-#### Scenario: Repo detail loads
-- **WHEN** the user navigates to `/#/repo/:id`
-- **THEN** the page SHALL display: repo name, watching status, watch PRs toggle, watch pushes toggle, branch configuration, overview text (if bootstrapped)
+#### Scenario: Repo detail loads with the bot's fields
+- **WHEN** the user opens a repo's detail page
+- **THEN** the page SHALL display owner/repo, watching status, Watch-PRs toggle, Watch-Pushes toggle, branches, and the Project Overview (summary/features/visual theme)
 
 #### Scenario: Inline overview editing
-- **WHEN** the user taps "Edit Overview" on the repo detail page
-- **THEN** the overview text SHALL become editable in a full-size textarea (no Telegram message character limits), with a "Save" button
+- **WHEN** the user taps "Edit Overview"
+- **THEN** the overview text SHALL become editable in a full-size field (no Telegram character limits) with a Save action
 
 #### Scenario: Save overview
 - **WHEN** the user edits the overview and taps "Save"
 - **THEN** the updated overview SHALL be saved via API
+
+#### Scenario: Bootstrap or re-bootstrap from detail
+- **WHEN** the repo has no overview and the user taps "Bootstrap", or has one and taps "Re-bootstrap"
+- **THEN** the system SHALL (re)generate the overview via API, showing a loading state, with native confirmation before re-bootstrapping an existing overview
+
+#### Scenario: No fields beyond the bot's
+- **WHEN** the repo detail renders
+- **THEN** it SHALL NOT introduce configuration beyond what the bot exposes (watch/PRs/pushes/branches/overview/delete)
 
 ### Requirement: Repo configuration toggles
 The system SHALL allow toggling repo configuration: watch PRs, watch pushes.

@@ -2,6 +2,53 @@
 
 Provides the webapp compose page for creating tweet drafts: a thread builder with character counters, per-tweet image uploads, AI Refine / Image Generation / Analyze Images toggles, an optional AI instruction, a per-session language override (with i18n and API support), and a save-as-draft flow.
 ## Requirements
+### Requirement: Unified Composer and Draft-viewer component
+The system SHALL implement composing a new draft and viewing/editing an existing draft as a **single component** driven by an explicit lifecycle state derived from the draft's source, status, and the active toggles. The component's primary action SHALL be the system `MainButton`, whose label and behavior morph by state:
+
+- **composing** (new handwrite): `MainButton` = **Save**
+- **pre-generate** (seeded from a commit/repost source, not yet generated): `MainButton` = **Generate**
+- **draft** (saved/generated, status `draft`): `MainButton` = **Approve**
+- **approved**: `MainButton` = **Publish**
+- **scheduled**: `MainButton` = **Publish** (with a scheduled banner and unschedule affordance)
+- **published**: read-only, no `MainButton` primary action
+
+Only after Save/Generate produces a persisted draft SHALL the action morph from Save/Generate to Approve, then Publish. The tweet-editing surface (per-tweet text, media, thread tabs) SHALL be identical across states; the existing-draft states additionally show full media, platform toggles, and the top action row (delete · schedule · refine).
+
+#### Scenario: Handwrite composing state
+- **WHEN** the user opens the Composer empty (e.g. from the Home placeholder)
+- **THEN** the state SHALL be "composing" and the `MainButton` SHALL read "Save"
+
+#### Scenario: Commit-seeded pre-generate state
+- **WHEN** the Composer is seeded from a commit event (Edit flow) and no draft exists yet
+- **THEN** the state SHALL be "pre-generate" and the `MainButton` SHALL read "Generate"
+
+#### Scenario: Morph to Approve after save
+- **WHEN** a Save or Generate completes and a draft with status `draft` now exists
+- **THEN** the same screen SHALL update so the `MainButton` reads "Approve" without leaving the component
+
+#### Scenario: Morph to Publish after approve
+- **WHEN** the user approves the draft
+- **THEN** the `MainButton` SHALL read "Publish"
+
+#### Scenario: Published is read-only
+- **WHEN** the component opens a draft with status `published`
+- **THEN** the tweet text SHALL be read-only, no editing actions SHALL be offered, and publish results/links SHALL be shown
+
+### Requirement: Add commit source in the composer
+The Composer SHALL provide a `[+ commit]` affordance in the customize row that accepts a partial commit SHA, resolves it to a repo+commit via the existing GitHub flow (`findCommitBysha` / `getContentSource`, scoped by `GITHUB_OWNER`/`GITHUB_TOKEN`), and attaches it as the generation source — combined with any text the user has already typed. Generation does not occur until the user taps the `MainButton` (Generate).
+
+#### Scenario: Paste a partial SHA
+- **WHEN** the user taps `[+ commit]` and enters a partial commit SHA
+- **THEN** the system SHALL resolve the commit's repo and details via the existing GitHub resolution flow and show a commit summary attached to the compose
+
+#### Scenario: SHA not found
+- **WHEN** the entered SHA cannot be resolved in any accessible repo
+- **THEN** the app SHALL show an actionable error and let the user retry, without creating a draft
+
+#### Scenario: Generate combines message and commit
+- **WHEN** a commit source is attached, the user has typed message text, and taps Generate
+- **THEN** the generation request SHALL combine the user's message with the resolved commit as the source
+
 ### Requirement: Tweet compose editor
 The system SHALL provide a compose page for creating new drafts with a rich editing experience, mirroring the bot's handwrite flow but with full editing power.
 
@@ -45,34 +92,38 @@ The system SHALL allow attaching images or a single video to each tweet during c
 - **AND WHEN** a tweet has photos attached, the video option SHALL NOT be offered
 
 ### Requirement: Compose toggles (AI, Image Gen, Analyze)
-The system SHALL provide toggle switches that mirror the bot's compose toggles.
+The system SHALL present compose customization as a bottom **customize row** containing `[+ commit]` and the toggles `ai | image | language`, each with a default that the user can flip. The `image` toggle SHALL behave as Image Generation when no media is attached and as Analyze Images when one or more images are attached; it SHALL be unavailable when only a video is attached. The `language` toggle SHALL override the AI generation language for the session. Toggling SHALL emit haptic feedback.
 
-#### Scenario: AI Refine toggle
-- **WHEN** the user enables the "AI Refine" toggle
-- **THEN** the composed content SHALL be refined by AI when the user saves the draft (pen-down equivalent)
+#### Scenario: AI toggle
+- **WHEN** the user enables the `ai` toggle
+- **THEN** the content SHALL be refined by AI when the user saves/generates the draft
 
-#### Scenario: Image Generation toggle
-- **WHEN** the user enables "Image Generation" toggle (only visible when no media is attached)
-- **THEN** the system SHALL generate an AI image prompt from the content when saving
+#### Scenario: Image toggle generates when no media
+- **WHEN** the user enables the `image` toggle with no media attached
+- **THEN** the system SHALL generate an AI image prompt from the content when saving/generating
 
-#### Scenario: Analyze Images toggle
-- **WHEN** the user enables "Analyze Images" toggle (only visible when one or more images ARE attached)
-- **THEN** the system SHALL include the attached images in the AI refinement context
+#### Scenario: Image toggle analyzes when images attached
+- **WHEN** one or more images ARE attached and the `image` toggle is enabled
+- **THEN** the system SHALL include the attached images in the AI refinement context (analyze), and the generate-image behavior SHALL be suppressed because media is already attached
 
-#### Scenario: Image Gen hides when media attached
-- **WHEN** the user attaches at least one image to any tweet
-- **THEN** the "Image Generation" toggle SHALL be replaced by "Analyze Images" toggle
+#### Scenario: Image toggle unavailable for video-only
+- **WHEN** the only media attached is a video
+- **THEN** the `image` toggle SHALL be unavailable (video frames are not analyzed and generation is suppressed)
 
-#### Scenario: Analyze Images not offered for video
-- **WHEN** the only media attached is a video (no images)
-- **THEN** the "Analyze Images" toggle SHALL NOT be shown (video frames are not analyzed), and "Image Generation" SHALL be hidden because media is already attached
+#### Scenario: Language toggle override
+- **WHEN** the user flips the `language` toggle to the non-default language
+- **THEN** subsequent save/generate requests SHALL include `langOverride` for that language
 
 ### Requirement: Instruction input for AI
-The system SHALL allow an optional instruction to guide AI refinement.
+The system SHALL provide an optional **instruction tab rendered after the tweet tabs** (the last thread item), which may stay empty or be filled. Its contents SHALL be included as AI guidance in the save/generate/refine request.
 
-#### Scenario: Add instruction
-- **WHEN** the user taps "Add Instruction" and types a message
-- **THEN** the instruction SHALL be included in the AI refinement request when saving
+#### Scenario: Instruction tab present after tweets
+- **WHEN** the Composer renders the thread
+- **THEN** an optional instruction field SHALL appear after the last tweet tab, distinct from the tweets
+
+#### Scenario: Instruction guides generation
+- **WHEN** the user fills the instruction field and taps Generate (or Save with `ai` on)
+- **THEN** the instruction SHALL be included as guidance in the AI request
 
 ### Requirement: Save as draft (pen-down equivalent)
 The system SHALL provide a "Save as Draft" button that creates the draft, optionally running AI refinement. When a language override is active, the API request SHALL include it so the server uses the correct language for AI calls.

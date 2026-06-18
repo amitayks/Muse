@@ -99,3 +99,22 @@ Whenever the bot's draft message is resent as a new Telegram message — whether
 - **WHEN** a sync resent and persisted a new `message_id`, and another draft edit follows
 - **THEN** that next edit SHALL succeed in place (no further resend) because the stored id now points to the live message
 
+### Requirement: v2 webapp mutations preserve bot sync
+The v2 webapp SHALL perform **all** draft persistence exclusively through the existing draft endpoints that already trigger bot sync (`POST /api/v1/compose`, `POST /api/v1/generate`, `PUT /api/v1/drafts/:id`, `/approve`, `/schedule`, `DELETE /schedule`, `/targets`, `/refine`, `DELETE /api/v1/drafts/:id`). No v2 code path SHALL mutate draft state outside these endpoints. Any new draft content shape introduced by v2 (e.g. per-tweet media variants) SHALL be representable by `DraftContent` and renderable by the bot's `renderDraftDetail`, so the synced bot message stays correct.
+
+#### Scenario: Composer-created draft syncs the bot
+- **WHEN** the v2 Composer creates a draft (Save or Generate) via the compose/generate endpoint
+- **THEN** the backend SHALL drive the existing bot-message sync so the bot reflects the new/updated draft
+
+#### Scenario: Every v2 edit routes through a syncing endpoint
+- **WHEN** the v2 Composer/Draft-viewer changes a draft's content, targets, status, or schedule
+- **THEN** the change SHALL go through the corresponding existing endpoint that calls `syncBotMessage`/`syncBotHome` — never a side channel
+
+#### Scenario: New content shape remains bot-renderable
+- **WHEN** v2 introduces a new draft content shape (e.g. additional per-tweet media)
+- **THEN** the bot's `renderDraftDetail` SHALL be updated in the same change so the synced message renders it correctly (verified by editing such a draft in the webapp and observing the bot message update)
+
+#### Scenario: Live sync still works for media drafts
+- **WHEN** the user edits an image/video-bearing draft in the v2 webapp
+- **THEN** the bot's photo message caption (or resent message) SHALL update per the existing media-aware sync, with no regression
+

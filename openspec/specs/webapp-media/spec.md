@@ -22,19 +22,19 @@ The system SHALL allow uploading images from the webapp to R2 storage via the Wo
 - **THEN** an error message SHALL be displayed inline (e.g., "Upload failed — file too large") and the user SHALL be able to retry
 
 ### Requirement: Image preview in editor
-The system SHALL display image previews for all media attached to drafts.
+The system SHALL display image previews for all media attached to drafts. In the Composer/Draft-viewer existing-draft state, images SHALL render **full content width** (not 80×80 thumbnails) so the user sees them as they will appear.
 
 #### Scenario: Existing media preview
-- **WHEN** the draft editor loads for a draft with existing attached images
-- **THEN** the images SHALL be loaded from the `/media/:key` endpoint and displayed as thumbnails
+- **WHEN** the Composer/Draft-viewer loads a draft with existing attached images
+- **THEN** the images SHALL be loaded from the `/media/:key` endpoint and displayed full content width below the relevant tweet
 
 #### Scenario: Newly uploaded image preview
 - **WHEN** an image upload completes successfully
-- **THEN** the image SHALL immediately appear as a thumbnail preview in the media area
+- **THEN** the image SHALL immediately appear as a full-width preview in the tweet's media area
 
-#### Scenario: Thumbnail size
-- **WHEN** image thumbnails render
-- **THEN** they SHALL be displayed at a consistent size (e.g., 80x80px) with object-fit cover, regardless of original dimensions
+#### Scenario: Aspect handling
+- **WHEN** images render full-width
+- **THEN** they SHALL preserve aspect ratio (no distortion), with multiple images laid out in a tidy grid (up to 4)
 
 ### Requirement: Image removal from draft
 The system SHALL allow removing images from a draft without deleting the R2 object.
@@ -102,19 +102,15 @@ The system SHALL allow uploading an `video/mp4` file from the webapp to R2 stora
 - **AND** if the upload fails (network error, too large, invalid type) an inline error SHALL be shown and the user SHALL be able to retry
 
 ### Requirement: Video preview in media grid
-The system SHALL display a video preview for media items of `type: 'video'` attached to a tweet, distinct from image thumbnails.
+The system SHALL display a video preview for media items of `type: 'video'` attached to a tweet, distinct from images. In the Composer/Draft-viewer existing-draft state, the video SHALL render **full content width** in a `<video>` element with a play affordance.
 
 #### Scenario: Existing video preview
-- **WHEN** the editor loads a tweet that has an attached video
-- **THEN** the video SHALL be loaded from the `/media/:key` endpoint and rendered in a `<video>` element (with a play affordance), not a broken `<img>`
+- **WHEN** the viewer loads a tweet that has an attached video
+- **THEN** the video SHALL be loaded from the `/media/:key` endpoint and rendered full-width in a `<video>` element (with a play affordance), not a broken `<img>`
 
 #### Scenario: Newly uploaded video preview
 - **WHEN** a video upload completes successfully
-- **THEN** the video SHALL immediately appear as a preview in the media area
-
-#### Scenario: Consistent preview sizing
-- **WHEN** a video preview renders in the grid
-- **THEN** it SHALL occupy the same consistent slot size as image thumbnails (e.g., 80x80) with object-fit cover
+- **THEN** the video SHALL immediately appear as a full-width preview in the tweet's media area
 
 ### Requirement: Photo and video media exclusivity
 The shared media grid SHALL enforce the platform rule that a single tweet contains EITHER up to 4 photos OR exactly 1 video, never both and never more than one video.

@@ -3,11 +3,19 @@
 Provides a single scrollable settings page covering general preferences (timezone, language, page size), AI provider selection, default publish targets, repost/commit/repo defaults, API key connection status and updates for each service, and links to the prompt editor and identity re-analysis.
 ## Requirements
 ### Requirement: Settings page with sections
-The system SHALL display all user settings on a single scrollable page organized into sections, replacing the bot's 6 nested sub-menus.
+The Settings screen SHALL be recomposed into clearly grouped native sections using the Telegram UI kit (`Section`/`Cell`): **Connections** (X/LinkedIn OAuth + encrypted API keys), **Identity** (Identity Document), **Skills** (in-app prompt/skills editor), **Defaults** (default publish targets, repost/commit/repo defaults, AI provider), and **Language & General** (language, timezone, page size). Each section SHALL load current values from the settings API.
 
 #### Scenario: Settings page loads
 - **WHEN** the user navigates to `/#/settings`
 - **THEN** the page SHALL display all settings sections with current values loaded from API
+
+#### Scenario: Settings page loads grouped sections
+- **WHEN** the user navigates to Settings
+- **THEN** the page SHALL display the grouped sections (Connections, Identity, Skills, Defaults, Language & General) with current values, styled natively (no hardcoded theme)
+
+#### Scenario: Settings sub-pages are flow screens
+- **WHEN** the user opens a Settings sub-page (e.g. Skills)
+- **THEN** the bottom Tabbar SHALL hide and the system `BackButton` SHALL return to Settings
 
 ### Requirement: General settings section
 The system SHALL display general settings: timezone, language, page size.
@@ -122,19 +130,19 @@ For X/Twitter specifically (OAuth 2.0 connected), the system SHALL reflect **liv
 - **THEN** the control SHALL reflect the live `{ connected, needsReconnect }` result, and a dead token discovered by the probe SHALL switch the control into the needs-reconnect state
 
 ### Requirement: Skills and identity section
-The system SHALL provide links to prompt editing and identity re-analysis.
+Settings SHALL provide an **in-app Skills section** (not a link to a separate page) and an **Identity** entry. The Skills section SHALL open the consolidated per-language skills editor (see `webapp-prompt-editor`); admins SHALL additionally see a global skills editor entry. The Identity entry SHALL allow viewing and editing the user's Identity Document and re-running identity analysis.
 
-#### Scenario: Prompt editor link
-- **WHEN** the skills section renders
-- **THEN** a "System Prompts" button SHALL navigate to `/#/settings/prompts` (the prompt editor page, replacing the old `/app/prompts`)
+#### Scenario: Open in-app Skills
+- **WHEN** the user taps the Skills entry
+- **THEN** the app SHALL open the in-app Skills editor at `/#/settings/skills` (the standalone prompt-editor pages are removed)
 
-#### Scenario: Admin prompt editor link
+#### Scenario: Admin global skills entry
 - **WHEN** the current user is an admin
-- **THEN** an additional "Admin Prompts" button SHALL appear, navigating to the admin prompt editor
+- **THEN** an additional "Global skills" entry SHALL appear for editing default prompts and pushing to users
 
-#### Scenario: Re-analyze identity button
-- **WHEN** the user taps "Re-analyze Identity"
-- **THEN** the system SHALL call the re-analyze API, show a loading state, and upon completion, display a success message
+#### Scenario: View and edit Identity Document
+- **WHEN** the user opens the Identity entry
+- **THEN** the app SHALL display the current Identity Document and allow editing it and re-running analysis, showing a loading state during analysis
 
 ### Requirement: LinkedIn OAuth connection control
 The settings API-keys section SHALL include a LinkedIn entry that, like X, reflects **live** connection health rather than mere token presence: it SHALL surface a distinct "needs reconnect" state when the stored token is invalid (driven by `needs_linkedin_reconnect` from the settings API and/or a live `GET /api/v1/linkedin/oauth/status` probe), and it SHALL offer a Connect action (when not connected) and a reconnect/refresh action (even when currently connected) that runs the LinkedIn OAuth flow via `GET /api/v1/linkedin/oauth/start`. Because LinkedIn uses OAuth, it SHALL NOT present a manual key-paste modal.
@@ -158,4 +166,19 @@ The settings API-keys section SHALL include a LinkedIn entry that, like X, refle
 #### Scenario: Settings API exposes LinkedIn status
 - **WHEN** `GET /api/v1/settings` is called
 - **THEN** the response SHALL include `has_linkedin` and `needs_linkedin_reconnect` so the control can render without a separate probe on first paint
+
+### Requirement: Identity Document view and edit
+The system SHALL let the user view their AI-generated Identity Document, edit its text, and trigger re-analysis from X history, within the Settings → Identity area.
+
+#### Scenario: Identity loads
+- **WHEN** the user opens Settings → Identity
+- **THEN** the current Identity Document text SHALL be displayed in a full-size, scrollable, editable field
+
+#### Scenario: Save edited identity
+- **WHEN** the user edits the Identity Document and saves
+- **THEN** the updated document SHALL be persisted via API and used for subsequent AI generation
+
+#### Scenario: Re-analyze identity
+- **WHEN** the user taps "Re-analyze"
+- **THEN** the system SHALL re-fetch recent tweets, regenerate the Identity Document, show a loading state, and display the result on completion
 
