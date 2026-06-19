@@ -20,7 +20,7 @@ The system SHALL provide `POST /api/v1/drafts/:id/tweets/:idx/image` that genera
 - **THEN** the endpoint SHALL return a 400 error and SHALL NOT generate an image
 
 ### Requirement: Image AI receives only the image-prompt-builder skill, identity, and tweet context
-The generation call's system instruction SHALL consist solely of the `image-prompt-builder` (`/image-gen`) skill and the user's identity document, assembled via the existing skill-assembly path. The user message SHALL consist solely of the tweet text plus the source-derived context defined below. No additional stylistic direction, repo visual-theme injection, or other steering SHALL be added — the model decides the image from skill + identity + tweet alone.
+The generation call's system instruction SHALL consist solely of the `/image-gen` skill and the user's identity document, assembled via the existing skill-assembly path. The user message SHALL consist solely of the tweet text plus the source-derived context defined below. No additional stylistic direction, repo visual-theme injection, or other steering SHALL be added — the model decides the image from skill + identity + tweet alone. (The `/image-gen` skill is the "how, not what" creative-freedom skill; it is no longer the generic `image-prompt-builder` methodology.)
 
 #### Scenario: Handwrite generation inputs
 - **WHEN** generating an image for a `handwrite` draft tweet
@@ -30,6 +30,19 @@ The generation call's system instruction SHALL consist solely of the `image-prom
 #### Scenario: No external steering injected
 - **WHEN** the generation prompt is assembled for any source
 - **THEN** the only inputs SHALL be the `/image-gen` skill, the identity document, the tweet text, and the source-derived context — nothing else
+
+### Requirement: The /image-gen skill prescribes how, not what
+The `/image-gen` skill used by this pipeline SHALL guide the model only on **how** to produce an image that accompanies the tweet, and SHALL NOT bias the model toward any particular subject, genre, or photographic style. In particular it SHALL NOT default to depicting a person, SHALL NOT impose a fashion/portrait framework, and SHALL NOT carry a fixed category schema or camera/lighting/film-stock vocabulary. The choice of subject and visual style SHALL be the model's, grounded by the attached identity and the tweet.
+
+#### Scenario: Commit tweet does not default to a person photo
+- **WHEN** an image is generated for a `commit` draft tweet whose text and context contain no person
+- **THEN** the skill SHALL NOT cause the model to invent and depict a person
+- **AND** the generated image SHALL relate to the tweet's actual subject rather than a styled portrait of an imagined person
+
+#### Scenario: No genre or style is forced by the skill
+- **WHEN** the `/image-gen` skill is in effect for any source
+- **THEN** the skill SHALL NOT require a specific photographic genre, styling framework, or camera/lighting vocabulary
+- **AND** the model SHALL remain free to choose both subject and visual style
 
 ### Requirement: Source-aware context assembly
 The service SHALL assemble the user-message context by branching on `draft.source`, using identifiers already stored on the draft, without requiring the caller to pass context:

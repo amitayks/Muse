@@ -41,10 +41,6 @@ Each Gemini API call for identity-attached skills SHALL assemble the system inst
 - **WHEN** `/persona` is assembled
 - **THEN** the assembly SHALL use only skill prompt + task protocol (no identity layer)
 
-#### Scenario: Image-gen never assembled alone
-- **WHEN** `/image-gen` is needed
-- **THEN** it SHALL be attached to the calling skill's assembly (e.g., appended to `/work-progress` or `/refine`) — it is never assembled as a standalone call
-
 ### Requirement: Skill type consolidation
 The system SHALL consolidate prompt types with these merges: `edit` + `handwrite_refine` SHALL merge into a single `/refine` skill stored as prompt type `edit`. The `handwrite_refine` prompt type SHALL be deprecated. When invoked from the handwrite flow, the `/refine` skill SHALL receive no edit instruction (just "rewrite in my voice"). When invoked from the edit flow, the `/refine` skill SHALL receive the user's edit instruction framed as Gemini's own thought ("I got this text, and I want to change it like [instruction]").
 
@@ -138,20 +134,25 @@ The `/persona` skill SHALL be rewritten in the new skill format but SHALL NOT re
 - **THEN** it SHALL follow the new skill template structure but without identity injection
 
 ### Requirement: /image-gen skill (standalone, identity-attached)
-The `/image-gen` skill SHALL carry the `image-prompt-builder` methodology (the skill's `SKILL.md` content, with its "consult references/…" lines removed and its reference files excluded). It SHALL receive the user's Identity Document at runtime (it remains in the identity-attached skill set) and SHALL be invoked as a standalone call dedicated to image-prompt generation — not appended to a content skill's output. Its output SHALL be a single top-level JSON image prompt, not an `imagePrompt` field embedded inside another skill's JSON. The skill SHALL be maintained in a single language (English); the per-skill identity and tweet supply voice and content.
+The `/image-gen` skill SHALL instruct the model on **how** to create an image that accompanies a specific tweet, and SHALL NOT prescribe **what** to create. It SHALL be written in the first-person self-narrative format used by every other skill (e.g. "I'm making an image to go alongside this post…"), framing the task as producing an image for a specific tweet at its position in the thread — the same way `/refine` and `/work-progress` frame their tasks. It SHALL teach the model to choose an image that complements and amplifies the post (not restate its text) and to be concrete and specific (a vague prompt yields a muddy, forgettable image), while reading clearly at a glance in a feed. It SHALL NOT prescribe a subject, and SHALL NOT impose any genre or photographic style — no fashion/portrait framework, no camera/lighting/film-stock vocabulary, and no fixed category schema; the model decides both the subject and the look. It SHALL receive the user's Identity Document at runtime (it remains in the identity-attached skill set) so taste comes from identity, and SHALL be invoked as a standalone call dedicated to image-prompt generation — not appended to a content skill's output. Its output SHALL be a single top-level JSON image prompt with model-chosen fields (no required schema), not an `imagePrompt` field embedded inside another skill's JSON. The skill SHALL be maintained in a single language (English); the attached identity and tweet supply voice and content.
 
-#### Scenario: Image-gen carries image-prompt-builder content
-- **WHEN** the `/image-gen` skill text is assembled
-- **THEN** it SHALL contain the `image-prompt-builder` methodology with reference-file pointers stripped
+#### Scenario: Skill tells how, not what
+- **WHEN** the `/image-gen` skill text is examined
+- **THEN** it SHALL describe how to approach an accompanying image (complement the post, be concrete and specific) without naming any subject
+- **AND** it SHALL contain no prescribed genre, photographic-style framework, camera/lighting/film-stock vocabulary, or fixed category schema
+
+#### Scenario: First-person self-narrative format
+- **WHEN** the `/image-gen` skill text is examined
+- **THEN** it SHALL be written in first-person inner monologue ("I'm making an image to go with this post…"), consistent with the other skills, and SHALL NOT use second-person imperative ("Generate…", "You specify…")
 
 #### Scenario: Image-gen is identity-attached and standalone
 - **WHEN** the system assembles the image-generation call
 - **THEN** the system instruction SHALL be the `/image-gen` skill plus the user's Identity Document
 - **AND** `/image-gen` SHALL be invoked on its own for image-prompt generation, not appended to `/work-progress`, `/refine`, or `/quote`
 
-#### Scenario: Output is a standalone JSON prompt
+#### Scenario: Output is a standalone JSON prompt with model-chosen fields
 - **WHEN** the `/image-gen` call returns
-- **THEN** the response SHALL be a single JSON image prompt object, not an `imagePrompt` field inside a content skill's JSON
+- **THEN** the response SHALL be a single JSON image prompt object whose fields are chosen by the model (no fixed five-category schema), not an `imagePrompt` field inside a content skill's JSON
 
 ### Requirement: User-editable skill subset
 Users SHALL be able to edit 4 skills through the WebApp: identity info (`who-am-i`), work-progress (`work-progress`), refine (`refine`), and quote (`quote`). This expands the current 3 user-editable prompts to 4 by adding identity.
