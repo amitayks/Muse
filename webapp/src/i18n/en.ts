@@ -169,6 +169,13 @@ export const en: Record<string, string> = {
   'composer.repostSummary': 'Repost source',
   'composer.resolvingCommit': 'Resolving commit…',
   'composer.commitNotFound': 'Commit not found — check the SHA and try again.',
+  // Schedule calendar
+  'calendar.prevMonth': 'Previous month',
+  'calendar.nextMonth': 'Next month',
+  'calendar.tapToAdd': 'Tap to schedule',
+  'calendar.minuteDown': 'Earlier 5 minutes',
+  'calendar.minuteUp': 'Later 5 minutes',
+  'calendar.set': 'Set',
   // Time / relative
   'time.minutesAgo': '{n}m ago',
   'time.hoursAgo': '{n}h ago',

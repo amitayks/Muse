@@ -123,23 +123,23 @@ The system SHALL display self-toggling platform buttons at the bottom of the dra
 - **THEN** the system SHALL prevent it and indicate that at least one platform must be selected
 
 ### Requirement: Schedule date/time picker
-The system SHALL provide a proper date and time picker for scheduling drafts.
+The system SHALL provide a calendar-based date and time picker for scheduling drafts. Tapping Schedule SHALL open a calendar (month grid → day hour-ruler) in the user's configured timezone; the picker's behavior is defined by the `webapp-schedule-calendar` capability. The picker SHALL keep emitting a raw wall-clock time so the backend conversion at `POST /api/v1/drafts/:id/schedule` is unchanged.
 
 #### Scenario: Open schedule picker
 - **WHEN** the user taps the "Schedule" button on the draft editor
-- **THEN** a date picker and time picker SHALL appear, defaulting to tomorrow at the next hour
+- **THEN** the calendar picker SHALL open in month view for the current month in the user's configured timezone, and (when the draft is already scheduled) SHALL open on the draft's current slot
 
 #### Scenario: Schedule confirmation
-- **WHEN** the user selects a date and time and confirms
-- **THEN** the draft SHALL be scheduled via API (`POST /api/v1/drafts/:id/schedule`), the status SHALL change to "scheduled", and the bot message SHALL update
+- **WHEN** the user selects a day, taps an hour, optionally fine-tunes the minutes, and confirms
+- **THEN** the draft SHALL be scheduled via API (`POST /api/v1/drafts/:id/schedule`) with the chosen wall-clock time, the status SHALL change to "scheduled", and the bot message SHALL update
 
 #### Scenario: Unschedule
 - **WHEN** the user taps "Cancel Schedule" on a scheduled draft
 - **THEN** the schedule SHALL be removed via API (`DELETE /api/v1/drafts/:id/schedule`), the status SHALL revert to "approved", and the bot message SHALL update
 
 #### Scenario: Timezone display
-- **WHEN** the schedule picker displays times
-- **THEN** all times SHALL be shown in the user's configured timezone (from settings)
+- **WHEN** the schedule picker displays the month grid, day hour-ruler, and existing posts
+- **THEN** all dates and times SHALL be shown in the user's configured timezone (from settings), not the device timezone
 
 ### Requirement: Draft actions (approve, publish, delete)
 The system SHALL provide action buttons based on the draft's current status.

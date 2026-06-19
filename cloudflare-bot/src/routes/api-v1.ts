@@ -10,6 +10,7 @@ import { validateInitData } from '../integrations/telegram-auth';
 import { isAdmin } from '../infra/security';
 import { handleDashboardApi } from './api-v1-dashboard';
 import { handleHomeApi } from './api-v1-home';
+import { handleCalendarApi } from './api-v1-calendar';
 import { handleDraftsApi } from './api-v1-drafts';
 import { handleSettingsApi } from './api-v1-settings';
 import { handleReposApi } from './api-v1-repos';
@@ -112,6 +113,8 @@ export async function handleApiV1(
             response = await handleDashboardApi(apiCtx);
         } else if (path === '/home') {
             response = await handleHomeApi(apiCtx);
+        } else if (path === '/calendar') {
+            response = await handleCalendarApi(apiCtx);
         } else if (path.startsWith('/drafts')) {
             response = await handleDraftsApi(apiCtx, path);
         } else if (path.startsWith('/settings')) {

@@ -169,6 +169,13 @@ export const he: Record<string, string> = {
   'composer.repostSummary': 'מקור לריפוסט',
   'composer.resolvingCommit': 'מאתר קומיט…',
   'composer.commitNotFound': 'הקומיט לא נמצא — בדוק את ה-SHA ונסה שוב.',
+  // Schedule calendar
+  'calendar.prevMonth': 'חודש קודם',
+  'calendar.nextMonth': 'חודש הבא',
+  'calendar.tapToAdd': 'הקש לתזמון',
+  'calendar.minuteDown': '5 דקות אחורה',
+  'calendar.minuteUp': '5 דקות קדימה',
+  'calendar.set': 'קבע',
   // Time / relative
   'time.minutesAgo': 'לפני {n} דקות',
   'time.hoursAgo': 'לפני {n} שעות',

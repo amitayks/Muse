@@ -1,0 +1,318 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.45);
+  animation: fade 160ms ease-out;
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+.sheet {
+  background: var(--bg);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  padding: var(--sp-sm) var(--sp-lg) calc(var(--sp-lg) + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-md);
+  max-height: 92%;
+  overflow: hidden;
+  animation: slideUp 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--separator);
+  margin: var(--sp-xs) auto var(--sp-xs);
+  flex: 0 0 auto;
+}
+
+/* ---- header ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.monthTitle {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+.navBtn,
+.closeBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.closeBtn {
+  background: transparent;
+  color: var(--hint, var(--text));
+}
+
+/* ---- month grid ---- */
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--sp-xs);
+}
+
+.weekday {
+  text-align: center;
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: var(--font-weight-medium);
+  color: var(--hint, var(--text));
+  text-transform: uppercase;
+}
+
+.dayCell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  aspect-ratio: 1 / 1;
+  padding: var(--sp-xs) 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.dayCell[data-out] {
+  opacity: 0.38;
+}
+
+.dayCell[data-today] .dayNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--btn-text);
+  font-weight: var(--font-weight-bold);
+}
+
+.dayCell[data-current] {
+  border-color: var(--accent);
+}
+
+.dayNum {
+  margin-top: 2px;
+  line-height: 1;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 6px;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.dot[data-kind='published'] {
+  background: var(--hint, var(--separator));
+}
+
+.more {
+  font-size: 0.6rem;
+  color: var(--hint, var(--text));
+  line-height: 1;
+}
+
+/* ---- day ruler ---- */
+.ruler {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--separator);
+}
+
+.hourRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-sm);
+  min-height: 44px;
+  padding: var(--sp-xs) 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.hourRow[role='button'] {
+  cursor: pointer;
+}
+
+.hourRow[data-past] {
+  opacity: 0.4;
+}
+
+.hourRow[data-selected] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.hourLabel {
+  flex: 0 0 auto;
+  width: 44px;
+  padding-top: 2px;
+  font-size: var(--text-xs, 0.72rem);
+  color: var(--hint, var(--text));
+  font-variant-numeric: tabular-nums;
+}
+
+.hourBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
+.addHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs, 0.72rem);
+  color: var(--hint, var(--text));
+  opacity: 0.7;
+}
+
+.selectedSlot {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--accent);
+}
+
+/* ---- post chips (read-only context) ---- */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding: 4px var(--sp-sm);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.chip[data-kind='published'] {
+  background: var(--bg-elevated);
+  opacity: 0.8;
+}
+
+.chipTime {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-medium);
+}
+
+.chipTitle {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.platforms {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 3px;
+  color: var(--hint, var(--text));
+}
+
+/* ---- confirm bar ---- */
+.confirmBar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-md);
+  padding-top: var(--sp-sm);
+  border-top: 1px solid var(--separator);
+}
+
+.fineTune {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+
+.stepBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.selectedTime {
+  min-width: 60px;
+  text-align: center;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.setBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-sm) var(--sp-xl);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--btn-text);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+
+.setBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

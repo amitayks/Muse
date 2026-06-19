@@ -5,6 +5,7 @@
  */
 
 import { getInitData } from '../lib/telegram';
+import type { CalendarResponse } from '../types/calendar';
 
 /** Thrown when the server returns 401 (session expired) */
 export class SessionExpiredError extends Error {
@@ -121,6 +122,13 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
+
+  /**
+   * Content-calendar feed for the schedule picker: scheduled + published posts within a
+   * local-date window (`from`/`to` are YYYY-MM-DD in the user's configured timezone).
+   */
+  getCalendar: (from: string, to: string) =>
+    request<CalendarResponse>(`/api/v1/calendar?from=${from}&to=${to}`),
 
   /**
    * Start the X (Twitter) OAuth 2.0 connect flow.

@@ -114,6 +114,27 @@ export async function getScheduledDrafts(env: Env, chatId: string, limit = 50): 
 }
 
 /**
+ * Get scheduled drafts whose `scheduled_at` falls within a UTC window, for the calendar feed.
+ * `fromUTC`/`toUTC` are "YYYY-MM-DD HH:MM:SS" UTC bounds (see infra/timezone.localDateRangeToUTC).
+ * The column is normalized (`T`→space, drop `Z`) so the stored ISO form compares lexicographically
+ * against the bounds — the same normalization the cron coordinator uses for due-draft comparison.
+ */
+export async function getScheduledDraftsInRange(
+    env: Env, chatId: string, fromUTC: string, toUTC: string, limit = 500,
+): Promise<Draft[]> {
+    const result = await env.DB.prepare(
+        `SELECT * FROM drafts
+         WHERE chat_id = ? AND status = 'scheduled'
+           AND REPLACE(REPLACE(scheduled_at, 'T', ' '), 'Z', '') >= ?
+           AND REPLACE(REPLACE(scheduled_at, 'T', ' '), 'Z', '') <= ?
+         ORDER BY scheduled_at ASC LIMIT ?`
+    )
+        .bind(chatId, fromUTC, toUTC, limit)
+        .all<Draft>();
+    return result.results || [];
+}
+
+/**
  * Get draft counts grouped by status
  */
 export async function getDraftStatusCounts(env: Env, chatId: string): Promise<Record<string, number>> {
@@ -436,6 +457,39 @@ export async function createPublished(
         )
         .run();
     return id;
+}
+
+/**
+ * A published row enriched with its originating draft's display fields (left-joined, so the
+ * draft fields are null when the draft was deleted after publishing).
+ */
+export interface PublishedWithDraft extends Published {
+    pr_title: string | null;
+    content: string | null;
+    publish_targets: string | null;
+}
+
+/**
+ * Get published posts whose `published_at` falls within a UTC window, for the calendar feed.
+ * Left-joins the originating draft to surface its title / content / publish targets for the
+ * calendar chip; falls back to the published row's own fields when the draft is gone.
+ * `fromUTC`/`toUTC` are "YYYY-MM-DD HH:MM:SS" UTC bounds (see infra/timezone.localDateRangeToUTC).
+ */
+export async function getPublishedInRange(
+    env: Env, chatId: string, fromUTC: string, toUTC: string, limit = 500,
+): Promise<PublishedWithDraft[]> {
+    const result = await env.DB.prepare(
+        `SELECT p.*, d.pr_title AS pr_title, d.content AS content, d.publish_targets AS publish_targets
+         FROM published p
+         LEFT JOIN drafts d ON d.id = p.draft_id AND d.chat_id = p.chat_id
+         WHERE p.chat_id = ?
+           AND REPLACE(REPLACE(p.published_at, 'T', ' '), 'Z', '') >= ?
+           AND REPLACE(REPLACE(p.published_at, 'T', ' '), 'Z', '') <= ?
+         ORDER BY p.published_at ASC LIMIT ?`
+    )
+        .bind(chatId, fromUTC, toUTC, limit)
+        .all<PublishedWithDraft>();
+    return result.results || [];
 }
 
 /**

@@ -66,3 +66,37 @@ export function formatLocalTime(utcDateStr: string, tz: string): string {
 export function isValidTimezone(tz: string): boolean {
     return tz === 'UTC' || /^UTC[+-]\d{1,2}(:\d{2})?$/.test(tz);
 }
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Format a Date's UTC fields as a SQLite-comparable string "YYYY-MM-DD HH:MM:SS".
+ * Matches the shape of D1's `datetime('now')`, so it can be compared lexicographically
+ * against normalized `scheduled_at` / `published_at` columns.
+ */
+export function formatSqlUTC(date: Date): string {
+    const y = date.getUTCFullYear();
+    const mo = pad2(date.getUTCMonth() + 1);
+    const d = pad2(date.getUTCDate());
+    const h = pad2(date.getUTCHours());
+    const mi = pad2(date.getUTCMinutes());
+    const s = pad2(date.getUTCSeconds());
+    return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+}
+
+/**
+ * Expand a local calendar-date window `[from 00:00:00, to 23:59:59]` in the user's `tz`
+ * into a UTC window, returned as SQLite-comparable "YYYY-MM-DD HH:MM:SS" strings.
+ *
+ * `from`/`to` are wall-clock dates ("YYYY-MM-DD") in the user's configured offset — the same
+ * contract the schedule input uses. We parse them as as-if-UTC instants, then `toUTC` subtracts
+ * the offset so the bounds are true UTC (e.g. UTC+2 `from=2026-06-01` → `2026-05-31 22:00:00`).
+ */
+export function localDateRangeToUTC(from: string, to: string, tz: string): { fromUTC: string; toUTC: string } {
+    const startLocal = new Date(`${from}T00:00:00Z`);
+    const endLocal = new Date(`${to}T23:59:59Z`);
+    return {
+        fromUTC: formatSqlUTC(toUTC(startLocal, tz)),
+        toUTC: formatSqlUTC(toUTC(endLocal, tz)),
+    };
+}

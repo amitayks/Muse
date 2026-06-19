@@ -22,7 +22,7 @@ import {
   confirmDestructive, confirm, popup, notifyError, haptics,
 } from '../shell';
 import { PageLoading, CharCounter, PlatformTogglePill, MediaGrid, ImageDropZone, Spinner } from '../components/shared';
-import { ScheduleSheet } from '../components/ScheduleSheet';
+import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { resolveLifecycle } from './composerLifecycle';
 import styles from './ComposerPage.module.css';
 
@@ -535,8 +535,8 @@ export function ComposerPage() {
     if (ok) deleteMutation.mutate();
   }, [t, deleteMutation]);
 
-  // Schedule picker (bottom sheet with day chips + a Material-style clock). Opening it is just a
-  // state toggle; the sheet emits a wall-clock "YYYY-MM-DDTHH:mm" string in the user's tz.
+  // Schedule picker (calendar: month grid → day hour-ruler). Opening it is just a state toggle;
+  // the picker emits a wall-clock "YYYY-MM-DDTHH:mm" string in the user's tz.
   const [scheduling, setScheduling] = useState(false);
 
   const onSchedule = useCallback(() => {
@@ -919,9 +919,11 @@ export function ComposerPage() {
       {errorMsg && <div className={styles.inlineError}>{errorMsg}</div>}
 
       {scheduling && (
-        <ScheduleSheet
+        <ScheduleCalendar
           tz={tz}
           busy={scheduleMutation.isPending}
+          currentScheduledAt={draft?.scheduled_at ?? null}
+          currentDraftId={draftId}
           onConfirm={onScheduleConfirm}
           onCancel={() => setScheduling(false)}
         />

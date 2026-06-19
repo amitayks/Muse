@@ -251,3 +251,32 @@ The system SHALL expose the existing prompt CRUD functionality under `/api/v1/pr
 - **WHEN** a DELETE request is made
 - **THEN** the custom prompt SHALL be deleted, reverting to default
 
+### Requirement: Calendar range API
+
+The system SHALL provide a read-only endpoint `GET /api/v1/calendar` that returns the authenticated user's posts within a date window: future **scheduled** drafts and past **published** posts. The window SHALL be specified as local calendar dates in the user's configured timezone (`from`, `to` as `YYYY-MM-DD`), and the backend SHALL expand them to a UTC window `[from 00:00 local → UTC, to 23:59:59 local → UTC]` using the same offset conversion as the schedule endpoint. Results SHALL be scoped to the authenticated user (`chat_id`). No new persisted schema is introduced — the endpoint reads `drafts.scheduled_at` (status `scheduled`) and the `published` table (`published_at`).
+
+#### Scenario: GET /api/v1/calendar with a date window
+
+- **WHEN** a GET request is made to `/api/v1/calendar?from=2026-06-01&to=2026-06-30` by a user in `UTC+2`
+- **THEN** the response SHALL be `{ items: Array<{ id, kind: 'scheduled' | 'published', at, title, firstTweet, format, targets, draftId, url? }> }`, where `at` is the ISO-UTC instant (`scheduled_at` for scheduled, `published_at` for published), scoped to that user, covering the local window expanded to UTC
+
+#### Scenario: Scheduled and published are distinguished
+
+- **WHEN** the window contains both a draft scheduled in the future and a post published in the past
+- **THEN** the scheduled draft SHALL be returned with `kind: 'scheduled'` and the published post with `kind: 'published'` (the latter MAY include its `url` permalink)
+
+#### Scenario: Timezone-correct window boundaries
+
+- **WHEN** the user is in `UTC+2` and requests `from=2026-06-01`
+- **THEN** the window's lower bound SHALL be the UTC instant corresponding to `2026-06-01 00:00` local (i.e. `2026-05-31T22:00:00Z`), so day bucketing in the webapp agrees with the bot's timezone handling
+
+#### Scenario: Empty window
+
+- **WHEN** the user has no scheduled or published posts in the requested window
+- **THEN** the response SHALL be `{ items: [] }` with a success status
+
+#### Scenario: Authentication and scoping
+
+- **WHEN** the request is made without valid Telegram initData, or for another user's data
+- **THEN** the endpoint SHALL reject it (unauthenticated) or return only the authenticated user's items (never another user's posts)
+
