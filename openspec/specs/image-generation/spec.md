@@ -2,43 +2,20 @@
 
 ## Purpose
 
-Governs draft image generation: lazy, on-demand AI image generation via Gemini when a draft is first viewed (using the repo's visual theme and brand voice for consistency), deferral of generation away from webhook processing, identity-aware image prompts in commit and webhook flows, and tweet-card rendering (including repost cards) for Instagram-bound drafts that lack an image.
+Governs draft image generation: image creation is an explicit per-tweet action (see the `per-tweet-image-generation` capability), not lazy-on-view or coupled to content/webhook generation; deferral of generation away from webhook processing; and tweet-card rendering (including repost cards) for Instagram-bound drafts that lack an image.
 
 ## Requirements
 
-### Requirement: On-demand image generation when viewing draft
-The system SHALL generate an image when a user views a draft that has no image. When generating, the system SHALL pass the repo overview's `visual_theme` and `brand_voice` fields (if available) to the image generation prompt to ensure visual consistency across the repo's posts.
-
-#### Scenario: First time viewing draft with repo overview
-- **WHEN** user clicks View on a draft without an image, and the repo has an overview with visual_theme
-- **THEN** the system SHALL generate an image via Gemini using the structured imagePrompt AND the repo's visual_theme for style consistency
-- **AND** store the image in R2
-- **AND** update draft.image_url
-
-#### Scenario: First time viewing draft without repo overview
-- **WHEN** user clicks View on a draft without an image, and the repo has no overview
-- **THEN** the system SHALL generate an image via Gemini using only the structured imagePrompt (current behavior preserved)
-
-#### Scenario: Viewing draft with existing image
-- **WHEN** user clicks View on a draft with image_url set
-- **THEN** the system SHALL fetch the image from R2
-- **AND** display the image with draft content
-- **AND** SHALL NOT call Gemini API
-
 ### Requirement: Image display in Telegram
-The system SHALL display the generated image alongside draft content in Telegram.
+The system SHALL display already-existing media alongside draft content in Telegram. Rendering a draft SHALL NOT trigger image generation; if a draft has no media, it SHALL render without an image.
 
-#### Scenario: Draft has image
-Given a draft with stored image
-When rendering draft detail
-Then send photo with caption containing draft preview
-And include action buttons
+#### Scenario: Draft has media
+- **WHEN** rendering draft detail for a draft with stored per-tweet media or a legacy `image_url`
+- **THEN** the system SHALL send the photo with a caption containing the draft preview and action buttons
 
-#### Scenario: Draft has no image yet
-Given a draft without image
-When rendering draft detail
-Then generate image first
-Then send photo with caption
+#### Scenario: Draft has no media
+- **WHEN** rendering draft detail for a draft with no media
+- **THEN** the system SHALL render the draft text and buttons without an image and SHALL NOT call the image model
 
 ### Requirement: Webhook does not generate images
 Webhook processing SHALL NOT generate images; image generation is deferred to view time.
@@ -83,28 +60,17 @@ When a repost draft targets Instagram and has no image, the tweet card SHALL ren
 - **AND** the user's own profile data (`own_profile_image_url`, `own_username_x`, `own_display_name_x`) SHALL be used for the outer card
 
 ### Requirement: Commit compose image generation uses identity-aware AI pattern
-Image prompt generation in commit compose mode SHALL use the combined identity + skill system (same as handwrite), not standalone image generation calls.
+Commit compose image generation SHALL use the unified per-tweet image service (the same `image-prompt-builder` skill + identity pipeline used by handwrite and the webapp), generating the image in a dedicated call after the draft exists and attaching it to `content.tweets[0].media`. It SHALL NOT embed an `imagePrompt` field inside the `work-progress`/content JSON, and SHALL NOT write `draft.image_url`.
 
-#### Scenario: Image prompt from work-progress skill response
-- **WHEN** commit compose pen down is triggered with `imageGen: true` and `aiRefine: true`
-- **THEN** the `work-progress` skill response SHALL include `imagePrompt` as a structured JSON object
-- **AND** the imagePrompt SHALL be generated in the same AI call as the tweet content (not a separate call)
-- **AND** the imagePrompt SHALL be influenced by the user's identity and the commit context
+#### Scenario: Commit compose generates via the unified service
+- **WHEN** commit compose runs with its image option enabled
+- **THEN** the image SHALL be produced by the unified per-tweet service from the `image-prompt-builder` skill + identity + the commit/repo + tweet context
+- **AND** the result SHALL be attached to `content.tweets[0].media`
 
-#### Scenario: Image generation deferred to view time
-- **WHEN** a draft is created from commit compose with an `imagePrompt` in DraftContent
-- **THEN** the actual image SHALL be generated lazily via `ensureImage` during `finalizeDraft`
-- **AND** this SHALL follow the same pattern as handwrite compose image generation
+#### Scenario: Commit compose with image option off
+- **WHEN** the image option is off in commit compose
+- **THEN** no image SHALL be generated and no image prompt SHALL be produced
 
-#### Scenario: Commit compose with imageGen off
-- **WHEN** `imageGen: false` in commit compose
-- **THEN** no `imagePrompt` SHALL be generated
-- **AND** the AI call SHALL not include image generation instructions
-
-### Requirement: Webhook auto-generated drafts include imagePrompt from work-progress
-The webhook auto-generation flow SHALL continue to include `imagePrompt` in the `work-progress` skill response, with lazy image generation on view.
-
-#### Scenario: Webhook draft with image prompt
-- **WHEN** webhook auto-generates a draft
-- **THEN** the `generateContent` response SHALL include `imagePrompt` (current behavior preserved)
-- **AND** the image SHALL be generated lazily when the user views the draft via `ensureImage`
+#### Scenario: No imagePrompt embedded in content JSON
+- **WHEN** the `work-progress` skill generates commit content
+- **THEN** the response SHALL NOT include an `imagePrompt` field

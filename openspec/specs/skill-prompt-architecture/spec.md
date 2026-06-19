@@ -137,16 +137,21 @@ The `/persona` skill SHALL be rewritten in the new skill format but SHALL NOT re
 - **WHEN** the `/persona` skill prompt is examined
 - **THEN** it SHALL follow the new skill template structure but without identity injection
 
-### Requirement: /image-gen skill (embedded, no identity)
-The `/image-gen` skill SHALL be rewritten in the new skill format. It SHALL NOT receive the user's Identity Document and SHALL NOT be invoked as a standalone Gemini call. It is a visual direction module attached to other skills at runtime when image generation is needed.
+### Requirement: /image-gen skill (standalone, identity-attached)
+The `/image-gen` skill SHALL carry the `image-prompt-builder` methodology (the skill's `SKILL.md` content, with its "consult references/…" lines removed and its reference files excluded). It SHALL receive the user's Identity Document at runtime (it remains in the identity-attached skill set) and SHALL be invoked as a standalone call dedicated to image-prompt generation — not appended to a content skill's output. Its output SHALL be a single top-level JSON image prompt, not an `imagePrompt` field embedded inside another skill's JSON. The skill SHALL be maintained in a single language (English); the per-skill identity and tweet supply voice and content.
 
-#### Scenario: Image-gen attached to work-progress
-- **WHEN** `/work-progress` generates content with image generation enabled
-- **THEN** the `/image-gen` skill text SHALL be appended to the system instruction alongside the `/work-progress` skill
+#### Scenario: Image-gen carries image-prompt-builder content
+- **WHEN** the `/image-gen` skill text is assembled
+- **THEN** it SHALL contain the `image-prompt-builder` methodology with reference-file pointers stripped
 
-#### Scenario: Image-gen not standalone
-- **WHEN** the system assembles a Gemini call
-- **THEN** `/image-gen` SHALL never be the sole skill in the system instruction — it is always combined with a primary skill
+#### Scenario: Image-gen is identity-attached and standalone
+- **WHEN** the system assembles the image-generation call
+- **THEN** the system instruction SHALL be the `/image-gen` skill plus the user's Identity Document
+- **AND** `/image-gen` SHALL be invoked on its own for image-prompt generation, not appended to `/work-progress`, `/refine`, or `/quote`
+
+#### Scenario: Output is a standalone JSON prompt
+- **WHEN** the `/image-gen` call returns
+- **THEN** the response SHALL be a single JSON image prompt object, not an `imagePrompt` field inside a content skill's JSON
 
 ### Requirement: User-editable skill subset
 Users SHALL be able to edit 4 skills through the WebApp: identity info (`who-am-i`), work-progress (`work-progress`), refine (`refine`), and quote (`quote`). This expands the current 3 user-editable prompts to 4 by adding identity.

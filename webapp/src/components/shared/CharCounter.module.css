@@ -1,0 +1,14 @@
+.counter {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--hint);
+}
+
+.counter[data-near] {
+  color: var(--warning);
+}
+
+.counter[data-over] {
+  color: var(--destructive);
+  font-weight: var(--font-weight-bold);
+}

@@ -1,0 +1,12 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+  padding: var(--sp-lg) var(--sp-lg) var(--sp-sm);
+}

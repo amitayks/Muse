@@ -74,11 +74,16 @@ setup only**. They are NOT what runs in production. There is no `migrations_dir`
      npx wrangler d1 execute content-bot-db --remote \
        --command "ALTER TABLE users ADD COLUMN my_new_col INTEGER DEFAULT 0;"
      ```
-   - **Via the endpoint** — after deploying the updated `migrate.ts`, hit:
+   - **Via the endpoint** — after deploying the updated `migrate.ts`, hit it with the
+     secret in the **`X-Admin-Secret` header** (NOT a `?secret=` query param — the route
+     reads `request.headers.get('X-Admin-Secret')`; a query param returns `Unauthorized`):
      ```bash
-     curl "https://content-bot.keisarcontentcreator.workers.dev/migrate?secret=$ADMIN_SECRET"
+     curl -H "X-Admin-Secret: $ADMIN_SECRET" \
+       "https://content-bot.keisarcontentcreator.workers.dev/migrate"
      ```
-     This is idempotent (the PRAGMA-check skips columns that already exist).
+     `$ADMIN_SECRET` must exactly match the Worker's configured `ADMIN_SECRET`
+     (`timingSafeEqual`). This also re-seeds `default_prompts` (bumping skill versions).
+     Idempotent — the PRAGMA-check skips columns that already exist.
 
 4. **Verify:**
    ```bash

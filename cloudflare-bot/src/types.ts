@@ -162,35 +162,10 @@ export interface Tweet {
     media?: TweetMedia[];
 }
 
-// Structured image prompt for AI image generation
-export interface ImagePromptData {
-    concept: {
-        main_subject: string;
-        symbolic_elements: string;
-        mood: string;
-    };
-    composition: {
-        style: string;
-        perspective: string;
-        focal_point: string;
-    };
-    environment: {
-        setting: string;
-        lighting: string;
-        color_palette: string;
-    };
-    technical: {
-        medium: string;
-        quality: string;
-        negative: string;
-    };
-}
-
 // Draft content structure
 export interface DraftContent {
     format: DraftFormat;
     tweets: Tweet[];
-    imagePrompt?: ImagePromptData | string; // Structured object (new) or string (legacy)
 }
 
 // Extended content response that includes overview patches

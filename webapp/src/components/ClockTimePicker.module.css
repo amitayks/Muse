@@ -1,0 +1,107 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-lg);
+  /* Time always reads HH:MM left-to-right, even in RTL locales. */
+  direction: ltr;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.timeField {
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--sp-xs) var(--sp-sm);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeField[data-active='true'] {
+  background: var(--accent);
+  color: var(--btn-text);
+}
+
+.colon {
+  font-size: 36px;
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+  padding: 0 2px;
+}
+
+.ampm {
+  display: flex;
+  flex-direction: column;
+  margin-inline-start: var(--sp-sm);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ampmBtn {
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--subtitle);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  padding: var(--sp-xs) var(--sp-md);
+  cursor: pointer;
+}
+
+.ampmBtn[data-active='true'] {
+  background: var(--accent);
+  color: var(--btn-text);
+}
+
+.dial {
+  width: 264px;
+  max-width: 74vw;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  /* Prevent the surrounding sheet from scrolling while dragging the dial. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.face {
+  fill: var(--secondary-bg);
+}
+
+.hand {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.hub {
+  fill: var(--accent);
+}
+
+.selector {
+  fill: var(--accent);
+}
+
+.minuteDot {
+  fill: var(--btn-text);
+}
+
+.num {
+  fill: var(--text);
+  font-size: 17px;
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font);
+}
+
+.num[data-active='true'] {
+  fill: var(--btn-text);
+  font-weight: var(--font-weight-bold);
+}

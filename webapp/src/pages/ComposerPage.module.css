@@ -1,0 +1,419 @@
+/* Composer / Draft-viewer — co-located styles for the unified core screen. */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: var(--content-safe-bottom);
+  background: var(--secondary-bg);
+}
+
+/* ---- Banners (scheduled / published / publishing / error) ---- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-lg);
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--separator);
+}
+
+.banner[data-tone='scheduled'] {
+  color: var(--accent);
+}
+
+.banner[data-tone='published'] {
+  color: var(--success);
+}
+
+.banner[data-tone='error'] {
+  color: var(--destructive);
+}
+
+.bannerSpacer {
+  flex: 1;
+}
+
+.bannerAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  border: none;
+  background: transparent;
+  color: var(--link);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  padding: var(--sp-xs) var(--sp-sm);
+  border-radius: var(--radius-sm);
+}
+
+.bannerAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Top action row (delete · schedule · refine) ---- */
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-lg);
+  justify-content: flex-end;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--separator);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.actionBtn[data-tone='destructive'] {
+  color: var(--destructive);
+}
+
+/* ---- Inline add-tweet fallback (only on clients without a SecondaryButton) ---- */
+.addInline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  align-self: flex-start;
+  margin: 0 var(--sp-lg) var(--sp-md);
+  padding: var(--sp-xs) var(--sp-md);
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--separator);
+  background: transparent;
+  color: var(--link);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font);
+  cursor: pointer;
+}
+
+/* ---- Tweet editor card ---- */
+.card {
+  background: var(--section-bg);
+  margin: 0 var(--sp-lg) var(--sp-md);
+  border-radius: var(--radius-md);
+  padding: var(--sp-md);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-xs);
+}
+
+.cardLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--section-header-text);
+}
+
+.removeTweet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  border: none;
+  background: transparent;
+  color: var(--destructive);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: var(--sp-xs);
+  border-radius: var(--radius-sm);
+}
+
+.textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: 1.4;
+  padding: 0;
+  min-height: 3.5rem;
+}
+
+.textarea::placeholder {
+  color: var(--hint);
+}
+
+.textarea:disabled {
+  color: var(--text);
+  opacity: 1;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--sp-sm);
+  gap: var(--sp-sm);
+}
+
+.reorder {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
+.reorderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--separator);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reorderBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.mediaArea {
+  margin-top: var(--sp-md);
+}
+
+/* ---- Full-size media (existing-draft / published viewer) ---- */
+.mediaFull {
+  display: grid;
+  gap: var(--sp-sm);
+  margin-top: var(--sp-md);
+}
+
+.mediaFull[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+
+.mediaFull[data-count='2'],
+.mediaFull[data-count='4'] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.mediaFull[data-count='3'] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.mediaItem {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.mediaImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.mediaVideo {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--bg-elevated);
+}
+
+.mediaRemove {
+  position: absolute;
+  top: var(--sp-sm);
+  inset-inline-end: var(--sp-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--destructive);
+  color: var(--btn-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ---- Commit source summary ---- */
+.commitCard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-sm);
+  background: var(--section-bg);
+  margin: 0 var(--sp-lg) var(--sp-md);
+  border-radius: var(--radius-md);
+  padding: var(--sp-md);
+}
+
+.commitIcon {
+  color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.commitBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.commitTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  word-break: break-word;
+}
+
+.commitMeta {
+  font-size: var(--text-xs);
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.commitSummary {
+  font-size: var(--text-sm);
+  color: var(--subtitle);
+  margin-top: var(--sp-xs);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.commitLink {
+  display: inline-block;
+  font-size: var(--text-xs);
+  color: var(--link);
+  margin-top: var(--sp-xs);
+  word-break: break-all;
+}
+
+.commitRemove {
+  border: none;
+  background: transparent;
+  color: var(--hint);
+  cursor: pointer;
+  padding: var(--sp-xs);
+  flex: 0 0 auto;
+}
+
+/* ---- Customize row ([+ commit] · ai · image · language) ---- */
+.customize {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--sp-lg) var(--sp-md);
+}
+
+/* Icon-only round toggles (commit · AI · image/analyze · language). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--separator);
+  background: var(--bg-elevated);
+  color: var(--subtitle);
+  cursor: pointer;
+}
+
+.chip[data-active='true'] {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-color: var(--accent);
+}
+
+.chip:active {
+  transform: scale(0.92);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- Platforms ---- */
+.platforms {
+  padding: var(--sp-sm) var(--sp-lg) var(--sp-md);
+}
+
+.platformsHeader {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--section-header-text);
+  margin-bottom: var(--sp-sm);
+}
+
+.platformPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+}
+
+/* ---- Published results / links ---- */
+.results {
+  padding: var(--sp-sm) var(--sp-lg) var(--sp-md);
+}
+
+.resultsHeader {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--section-header-text);
+  margin-bottom: var(--sp-sm);
+}
+
+.resultLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+}
+
+.resultLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding: var(--sp-xs) var(--sp-md);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--separator);
+  background: var(--bg-elevated);
+  color: var(--link);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.resultError {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  font-size: var(--text-sm);
+  color: var(--destructive);
+  margin-top: var(--sp-xs);
+}
+
+/* ---- Inline error (mutation failure feedback) ---- */
+.inlineError {
+  color: var(--destructive);
+  font-size: var(--text-sm);
+  padding: var(--sp-sm) var(--sp-lg);
+}

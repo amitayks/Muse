@@ -3,7 +3,7 @@ import { ImagePlus, Video, Clapperboard } from 'lucide-react';
 import { useMediaUpload, type UploadedMedia } from '../hooks/useMediaUpload';
 import { validateVideoForX } from '../lib/validateVideo';
 import { useTranslation } from '../i18n';
-import { Spinner } from './ui';
+import { Spinner } from './shared/Spinner';
 
 /** What kind of media this drop zone offers to add. */
 export type MediaAccept = 'image' | 'video' | 'both';
@@ -97,7 +97,7 @@ export function ImageDropZone({ onUpload, disabled, accept = 'both' }: Props) {
         onChange={e => handleFiles(e.target.files)}
       />
       {uploading ? (
-        <Spinner size={20} />
+        <Spinner size="s" />
       ) : (
         <span style={{ color: 'var(--hint)', fontSize: 'var(--text-sm)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           <Icon size={16} /> {label}

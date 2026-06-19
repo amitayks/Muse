@@ -90,6 +90,19 @@ export async function getCommitEvent(env: Env, chatId: string, eventId: string):
 }
 
 /**
+ * Get pending commit events for the Home notifications feed:
+ * events that were notified but have NOT yet been turned into a draft.
+ */
+export async function getPendingCommitEvents(env: Env, chatId: string, limit = 50): Promise<CommitEvent[]> {
+    const result = await env.DB.prepare(
+        "SELECT * FROM commit_events WHERE chat_id = ? AND draft_id IS NULL AND status = 'notified' ORDER BY created_at DESC LIMIT ?"
+    )
+        .bind(chatId, limit)
+        .all<CommitEvent>();
+    return result.results || [];
+}
+
+/**
  * Get a commit event by commit SHA for deduplication
  */
 export async function getCommitEventByCommitSha(env: Env, chatId: string, commitSha: string): Promise<CommitEvent | null> {

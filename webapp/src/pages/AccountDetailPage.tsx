@@ -1,150 +1,248 @@
-import { useState } from 'react';
+import { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { Avatar, Button, Caption } from '@telegram-apps/telegram-ui';
+import { Section, Cell, Toggle, PageLoading, EmptyState } from '../components/shared';
+import { api, ApiError } from '../api/client';
 import { useTranslation } from '../i18n';
-import { PageLoading, ErrorBanner, Toggle, ConfirmDialog, useToast } from '../components/ui';
+import {
+  useBackButton,
+  useMainButton,
+  confirmDestructive,
+  notifyError,
+  popup,
+  haptics,
+} from '../shell';
+import {
+  parseAccountConfig,
+  type AccountDetail,
+  type TwitterAccountConfig,
+} from './accounts/types';
+import styles from './AccountDetailPage.module.css';
 
-interface AccountDetail {
-  id: string;
-  username: string;
-  display_name: string | null;
-  is_watching: number;
-  config: string;
-  profile_image_url: string | null;
-  overview: { persona: string | null; topics: string | null; communication_style: string | null; notable_context: string | null } | null;
-}
-
+/** Account detail (`/account/:id`) — mirrors the bot's account detail exactly. Flow screen. */
 export function AccountDetailPage() {
-  const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
+  const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { show: showToast, element: toastEl } = useToast();
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const { data: account, isLoading, error, refetch } = useQuery({
+  useBackButton();
+
+  const { data: account, isLoading, isError, refetch } = useQuery({
     queryKey: ['account', id],
     queryFn: () => api.get<AccountDetail>(`/api/v1/accounts/${id}`),
-    enabled: !!id,
+    enabled: id.length > 0,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: (updates: Record<string, unknown>) => api.put(`/api/v1/accounts/${id}`, updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['account', id] });
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      showToast(t('common.saved'), 'success');
+  // Persist a config change via PUT /accounts/:id { config }.
+  const configMutation = useMutation({
+    mutationFn: (config: TwitterAccountConfig) =>
+      api.put<{ success: boolean }>(`/api/v1/accounts/${id}`, { config }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['account', id] });
+    },
+    onError: async (err) => {
+      haptics.notification('error');
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
+      await queryClient.invalidateQueries({ queryKey: ['account', id] });
+    },
+  });
+
+  // Toggle watch (follow/unfollow) via PUT /accounts/:id { is_watching }.
+  const watchMutation = useMutation({
+    mutationFn: (isWatching: boolean) =>
+      api.put<{ success: boolean }>(`/api/v1/accounts/${id}`, {
+        is_watching: isWatching ? 1 : 0,
+      }),
+    onSuccess: async () => {
+      haptics.notification('success');
+      await queryClient.invalidateQueries({ queryKey: ['account', id] });
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: async (err) => {
+      haptics.notification('error');
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
+      await queryClient.invalidateQueries({ queryKey: ['account', id] });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.delete(`/api/v1/accounts/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    mutationFn: () => api.delete<{ success: boolean }>(`/api/v1/accounts/${id}`),
+    onSuccess: async () => {
+      haptics.notification('success');
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
       navigate('/accounts');
+    },
+    onError: async (err) => {
+      haptics.notification('error');
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
     },
   });
 
-  if (isLoading) return <PageLoading />;
-  if (error || !account) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
+  const isWatching = account ? account.is_watching === 1 : false;
 
-  const config = typeof account.config === 'string' ? JSON.parse(account.config) : account.config;
+  // Primary action (system MainButton) = follow / unfollow, mirroring the bot's
+  // primary positive/danger control. Hidden until the account is loaded.
+  const handleToggleWatch = useCallback(() => {
+    if (!account) return;
+    watchMutation.mutate(!isWatching);
+  }, [account, isWatching, watchMutation]);
+
+  useMainButton(
+    account
+      ? {
+          text: isWatching ? t('accounts.unfollow') : t('accounts.follow'),
+          onClick: handleToggleWatch,
+          loading: watchMutation.isPending,
+          enabled: !watchMutation.isPending,
+        }
+      : null,
+  );
+
+  if (isLoading) return <PageLoading />;
+
+  if (isError || !account) {
+    return (
+      <EmptyState
+        title={t('common.error')}
+        action={
+          <Button size="m" onClick={() => refetch()}>
+            {t('common.retry')}
+          </Button>
+        }
+      />
+    );
+  }
+
+  const config = parseAccountConfig(account);
+
+  // Mirror the bot: tapping the threshold cycles 1..10, wrapping 10 -> 1.
+  const cycleThreshold = () => {
+    haptics.selectionChanged();
+    const next = config.relevanceThreshold >= 10 ? 1 : config.relevanceThreshold + 1;
+    configMutation.mutate({ ...config, relevanceThreshold: next });
+  };
+
+  const setAutoApprove = (value: boolean) => {
+    configMutation.mutate({ ...config, autoApprove: value });
+  };
+
+  const setAnalyzeMedia = (value: boolean) => {
+    configMutation.mutate({ ...config, analyzeMedia: value });
+  };
+
+  // Persona / bootstrap: the bot runs an AI analysis job server-side (no HTTP
+  // endpoint exists). We surface the persona read-only and explain that the
+  // analysis is initiated from the bot.
+  const persona = account.overview?.persona ?? null;
+  const handlePersona = async () => {
+    haptics.impact('light');
+    await popup({
+      title: persona ? t('accounts.updatePersona') : t('accounts.bootstrapPersona'),
+      message: t('accounts.noPersona'),
+    });
+  };
+
+  const handleDelete = async () => {
+    const ok = await confirmDestructive(t('accounts.confirmDelete'), t('common.delete'));
+    if (!ok) return;
+    deleteMutation.mutate();
+  };
+
+  const configBusy = configMutation.isPending;
 
   return (
-    <div>
-      <button className="btn btn-ghost" onClick={() => navigate('/accounts')} style={{ marginBottom: 'var(--sp-md)' }}>
-        {t('common.back')}
-      </button>
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-md)', marginBottom: 'var(--sp-lg)' }}>
-        {account.profile_image_url && (
-          <img src={account.profile_image_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%' }} />
-        )}
-        <div>
-          <h1 style={{ fontSize: 'var(--text-xl)' }}>@{account.username}</h1>
-          {account.display_name && <div style={{ color: 'var(--hint)' }}>{account.display_name}</div>}
-        </div>
-        <span className={`badge ${account.is_watching ? 'badge-approved' : 'badge-draft'}`} style={{ marginInlineStart: 'auto' }}>
-          {account.is_watching ? t('accounts.following') : t('accounts.unfollowed')}
-        </span>
-      </div>
-
-      {/* Config */}
-      <div className="card" style={{ marginBottom: 'var(--sp-lg)' }}>
-        {/* Relevance threshold slider */}
-        <div style={{ marginBottom: 'var(--sp-md)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-xs)' }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>{t('accounts.relevance')}</span>
-            <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{config.relevanceThreshold}/10</span>
-          </div>
-          <input
-            type="range" min="1" max="10" value={config.relevanceThreshold}
-            onChange={e => updateMutation.mutate({ config: { ...config, relevanceThreshold: parseInt(e.target.value) } })}
-            style={{ width: '100%' }}
-          />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-sm)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>{t('accounts.autoApprove')}</span>
-            <Toggle checked={config.autoApprove} onChange={v => updateMutation.mutate({ config: { ...config, autoApprove: v } })} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>{t('accounts.analyzeMedia')}</span>
-            <Toggle checked={config.analyzeMedia} onChange={v => updateMutation.mutate({ config: { ...config, analyzeMedia: v } })} />
-          </div>
+    <div className={styles.screen}>
+      <div className={styles.header}>
+        <Avatar
+          size={48}
+          src={account.profile_image_url ?? undefined}
+          acronym={account.username.slice(0, 1).toUpperCase()}
+        />
+        <div className={styles.headerText}>
+          <a
+            className={styles.handle}
+            href={`https://x.com/${account.username}`}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            @{account.username}
+          </a>
+          {account.display_name && (
+            <span className={styles.displayName}>{account.display_name}</span>
+          )}
+          <span
+            className={styles.watchStatus}
+            data-watching={isWatching ? 'on' : 'off'}
+          >
+            {isWatching ? t('repos.watching') : t('repos.paused')}
+          </span>
         </div>
       </div>
 
-      {/* Persona */}
-      <div className="card" style={{ marginBottom: 'var(--sp-lg)' }}>
-        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-sm)' }}>{t('accounts.persona')}</div>
-        {account.overview?.persona ? (
-          <>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--hint)', whiteSpace: 'pre-wrap' }}>{account.overview.persona}</p>
-            {account.overview.communication_style && (
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--hint)', marginTop: 'var(--sp-sm)' }}>
-                <strong>Style:</strong> {account.overview.communication_style}
-              </p>
-            )}
-            <button className="btn btn-outline" style={{ marginTop: 'var(--sp-sm)' }}
-              onClick={() => { updateMutation.mutate({ bootstrap_persona: true }); }}>
-              {t('accounts.updatePersona')}
-            </button>
-          </>
-        ) : (
-          <>
-            <p style={{ color: 'var(--hint)', fontSize: 'var(--text-sm)' }}>{t('accounts.noPersona')}</p>
-            <button className="btn btn-primary" style={{ marginTop: 'var(--sp-sm)' }}
-              onClick={() => { updateMutation.mutate({ bootstrap_persona: true }); }}>
-              {t('accounts.bootstrapPersona')}
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 'var(--sp-sm)' }}>
-        <button
-          className={`btn ${account.is_watching ? 'btn-outline' : 'btn-success'}`}
-          onClick={() => updateMutation.mutate({ is_watching: account.is_watching ? 0 : 1 })}
+      <Section header={t('accounts.title')}>
+        <Cell
+          interactive
+          onClick={cycleThreshold}
+          after={<span className={styles.value}>{config.relevanceThreshold}/10</span>}
+          subtitle={configBusy ? t('common.loading') : undefined}
         >
-          {account.is_watching ? t('accounts.unfollow') : t('accounts.follow')}
-        </button>
-        <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
-          {t('common.delete')}
-        </button>
-      </div>
+          {t('accounts.relevance')}
+        </Cell>
+        <Cell
+          after={
+            <Toggle
+              checked={config.autoApprove}
+              disabled={configBusy}
+              onChange={setAutoApprove}
+            />
+          }
+        >
+          {t('accounts.autoApprove')}
+        </Cell>
+        <Cell
+          after={
+            <Toggle
+              checked={config.analyzeMedia}
+              disabled={configBusy}
+              onChange={setAnalyzeMedia}
+            />
+          }
+        >
+          {t('accounts.analyzeMedia')}
+        </Cell>
+      </Section>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        message={t('accounts.confirmDelete')}
-        confirmText={t('common.delete')}
-        onConfirm={() => deleteMutation.mutate()}
-        onCancel={() => setConfirmDelete(false)}
-      />
-      {toastEl}
+      <Section header={t('accounts.persona')}>
+        {persona ? (
+          <div className={styles.persona}>
+            <Caption className={styles.personaText}>{persona}</Caption>
+          </div>
+        ) : (
+          <Cell subtitle={t('accounts.noPersona')}>{t('accounts.persona')}</Cell>
+        )}
+        <div className={styles.actionRow}>
+          <Button mode="bezeled" size="m" stretched onClick={() => void handlePersona()}>
+            {persona ? t('accounts.updatePersona') : t('accounts.bootstrapPersona')}
+          </Button>
+        </div>
+      </Section>
+
+      <Section>
+        <div className={styles.actionRow}>
+          <Button
+            mode="bezeled"
+            size="m"
+            stretched
+            loading={deleteMutation.isPending}
+            disabled={deleteMutation.isPending}
+            onClick={() => void handleDelete()}
+          >
+            <span className={styles.destructive}>{t('common.delete')}</span>
+          </Button>
+        </div>
+      </Section>
     </div>
   );
 }

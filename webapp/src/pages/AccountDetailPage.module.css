@@ -1,0 +1,65 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: var(--content-safe-bottom);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-lg) var(--sp-lg) var(--sp-md);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.handle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--link);
+  text-decoration: none;
+}
+
+.displayName {
+  font-size: var(--text-sm);
+  color: var(--subtitle);
+}
+
+.watchStatus {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--hint);
+}
+
+.watchStatus[data-watching='on'] {
+  color: var(--success);
+}
+
+.value {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--accent);
+}
+
+.persona {
+  padding: var(--sp-sm) var(--sp-lg) var(--sp-md);
+}
+
+.personaText {
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.actionRow {
+  padding: var(--sp-sm) var(--sp-md);
+}
+
+.destructive {
+  color: var(--destructive);
+}

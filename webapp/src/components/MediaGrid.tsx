@@ -3,6 +3,7 @@ import type { TweetMedia } from '../types/draft';
 import type { UploadedMedia } from '../hooks/useMediaUpload';
 import { ImageDropZone } from './ImageDropZone';
 import { useTranslation } from '../i18n';
+import styles from './MediaGrid.module.css';
 
 interface Props {
   media: TweetMedia[];
@@ -25,9 +26,9 @@ export function MediaGrid({ media, maxImages = 4, onAdd, onRemove, disabled, bas
   const accept = media.length === 0 ? 'both' : 'image';
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-sm)', alignItems: 'flex-start' }}>
+    <div className={styles.grid}>
       {media.map((m, i) => (
-        <div key={m.key} style={{ position: 'relative', width: 80, height: 80 }}>
+        <div key={m.key} className={styles.item}>
           {m.type === 'video' ? (
             <>
               <video
@@ -35,61 +36,33 @@ export function MediaGrid({ media, maxImages = 4, onAdd, onRemove, disabled, bas
                 muted
                 playsInline
                 preload="metadata"
-                style={{
-                  width: 80, height: 80,
-                  objectFit: 'cover',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: '#000',
-                }}
+                className={`${styles.thumb} ${styles.video}`}
               />
-              <div style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                pointerEvents: 'none',
-              }}>
-                <Play size={22} fill="#fff" color="#fff" style={{ opacity: 0.9, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }} />
+              <div className={styles.playOverlay}>
+                <Play size={22} fill="currentColor" />
               </div>
             </>
           ) : (
             <img
               src={`${baseMediaUrl}/media/${m.key}`}
               alt=""
-              style={{
-                width: 80, height: 80,
-                objectFit: 'cover',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)',
-              }}
+              className={styles.thumb}
             />
           )}
           {!disabled && (
-            <button
-              onClick={() => onRemove(i)}
-              style={{
-                position: 'absolute', top: -6, right: -6,
-                width: 20, height: 20,
-                borderRadius: '50%',
-                background: 'var(--destructive)', color: '#fff',
-                border: 'none', cursor: 'pointer',
-                fontSize: '12px', lineHeight: '20px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
+            <button onClick={() => onRemove(i)} className={styles.remove} aria-label={t('common.remove')}>
               ×
             </button>
           )}
         </div>
       ))}
       {canAdd && (
-        <div style={{ width: 80, height: 80 }}>
+        <div className={styles.dropzone}>
           <ImageDropZone onUpload={onAdd} disabled={!canAdd} accept={accept} />
         </div>
       )}
       {atPhotoMax && !disabled && (
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--hint)', alignSelf: 'center' }}>
-          {t('editor.maxImages')}
-        </span>
+        <span className={styles.maxHint}>{t('editor.maxImages')}</span>
       )}
     </div>
   );

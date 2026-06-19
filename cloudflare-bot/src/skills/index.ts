@@ -6,7 +6,7 @@ export { VIDEO_EN, VIDEO_HE } from './video';
 export { KNOW_MY_PROJECT_EN, KNOW_MY_PROJECT_HE } from './know-my-project';
 export { PERSONA_EN, PERSONA_HE } from './persona';
 export { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
-export { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
+export { IMAGE_GEN } from './image-gen';
 export { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
 export { VOICE_PROTOCOL_EN, VOICE_PROTOCOL_HE } from './voice-protocol';
 export { THUMBNAIL_EN } from './thumbnail';
@@ -19,7 +19,7 @@ import { VIDEO_EN, VIDEO_HE } from './video';
 import { KNOW_MY_PROJECT_EN, KNOW_MY_PROJECT_HE } from './know-my-project';
 import { PERSONA_EN, PERSONA_HE } from './persona';
 import { WHAT_I_LIKE_EN, WHAT_I_LIKE_HE } from './what-i-like';
-import { IMAGE_GEN_EN, IMAGE_GEN_HE } from './image-gen';
+import { IMAGE_GEN } from './image-gen';
 import { IDENTITY_DEFAULT_EN, IDENTITY_DEFAULT_HE } from './identity-default';
 import { VOICE_PROTOCOL_EN, VOICE_PROTOCOL_HE } from './voice-protocol';
 import { THUMBNAIL_EN } from './thumbnail';
@@ -36,7 +36,7 @@ export function getDefaultPromptTexts(): Array<{ type: PromptType; language: str
         { type: 'know-my-project', language: 'en', content: KNOW_MY_PROJECT_EN },
         { type: 'persona', language: 'en', content: PERSONA_EN },
         { type: 'what-i-like', language: 'en', content: WHAT_I_LIKE_EN },
-        { type: 'image-gen', language: 'en', content: IMAGE_GEN_EN },
+        { type: 'image-gen', language: 'en', content: IMAGE_GEN },
         { type: 'identity', language: 'en', content: IDENTITY_DEFAULT_EN },
         { type: 'voice-protocol', language: 'en', content: VOICE_PROTOCOL_EN },
         { type: 'who-am-i', language: 'he', content: WHO_AM_I_HE },
@@ -47,7 +47,10 @@ export function getDefaultPromptTexts(): Array<{ type: PromptType; language: str
         { type: 'know-my-project', language: 'he', content: KNOW_MY_PROJECT_HE },
         { type: 'persona', language: 'he', content: PERSONA_HE },
         { type: 'what-i-like', language: 'he', content: WHAT_I_LIKE_HE },
-        { type: 'image-gen', language: 'he', content: IMAGE_GEN_HE },
+        // Hebrew image-gen seeds the same English methodology — image models are
+        // English-trained and identity/tweet carry language. Re-seeding overwrites
+        // any stale Hebrew prose left in default_prompts from the previous skill.
+        { type: 'image-gen', language: 'he', content: IMAGE_GEN },
         { type: 'identity', language: 'he', content: IDENTITY_DEFAULT_HE },
         { type: 'voice-protocol', language: 'he', content: VOICE_PROTOCOL_HE },
         { type: 'thumbnail', language: 'en', content: THUMBNAIL_EN },

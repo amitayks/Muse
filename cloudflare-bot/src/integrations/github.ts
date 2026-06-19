@@ -422,6 +422,82 @@ export async function fetchRecentMergedPRs(
     }
 }
 
+export interface RepoSearchResult {
+    full_name: string;
+    description: string | null;
+    private: boolean;
+}
+
+/**
+ * Search the owner's accessible repositories by a free-text query.
+ *
+ * Scoped to GITHUB_OWNER via the global GITHUB_TOKEN (same scoping as commit
+ * search). Uses GitHub's /search/repositories with `user:OWNER`, falling back
+ * to listing the owner's repos and filtering client-side if search fails or is
+ * rate-limited. Returns at most 20 results.
+ *
+ * Empty/whitespace queries return an empty result set (callers should also
+ * short-circuit, but this keeps the function safe).
+ */
+export async function searchOwnerRepos(env: Env, query: string): Promise<RepoSearchResult[]> {
+    if (!env.GITHUB_TOKEN) {
+        throw new GitHubTokenMissingError();
+    }
+    const owner = env.GITHUB_OWNER;
+    if (!owner) return [];
+
+    const q = query.trim();
+    if (!q) return [];
+
+    // Strategy 1: GitHub search API scoped to the owner.
+    try {
+        const search = await githubFetch<{
+            items: Array<{ full_name: string; description: string | null; private: boolean }>;
+        }>(
+            env,
+            `/search/repositories?q=${encodeURIComponent(`${q} user:${owner} fork:true`)}&per_page=20`,
+        );
+        if (search.items && search.items.length > 0) {
+            return search.items.map((r) => ({
+                full_name: r.full_name,
+                description: r.description ?? null,
+                private: !!r.private,
+            }));
+        }
+    } catch (error) {
+        console.error('[repoSearch] search API error:', error);
+    }
+
+    // Strategy 2: list the owner's repos (sorted by recent activity) and filter.
+    try {
+        const repos = await githubFetch<Array<{
+            full_name: string;
+            name: string;
+            description: string | null;
+            private: boolean;
+        }>>(
+            env,
+            `/users/${owner}/repos?type=all&sort=pushed&per_page=100`,
+        );
+        const lower = q.toLowerCase();
+        return repos
+            .filter((r) =>
+                r.name.toLowerCase().includes(lower) ||
+                r.full_name.toLowerCase().includes(lower) ||
+                (r.description || '').toLowerCase().includes(lower),
+            )
+            .slice(0, 20)
+            .map((r) => ({
+                full_name: r.full_name,
+                description: r.description ?? null,
+                private: !!r.private,
+            }));
+    } catch (error) {
+        console.error('[repoSearch] repo list error:', error);
+        return [];
+    }
+}
+
 /**
  * Validate that a repository exists and is accessible.
  * Returns the canonical owner/name from GitHub, or null on failure.

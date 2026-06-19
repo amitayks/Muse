@@ -224,7 +224,7 @@ async function handleSubPage(
             const staleCount = await countStalePrompts(env, chatId);
             const isAdminUser = isAdmin(chatId, env);
             const d = await getIdentityTweetCount(env, chatId);
-            return renderSettingsSkills(lang, env.WORKER_URL, staleCount, isAdminUser, d);
+            return renderSettingsSkills(lang, env.WEBAPP_URL, staleCount, isAdminUser, d);
         }
         case 'platforms': {
             const user = await getUser(env, chatId);

@@ -1,0 +1,29 @@
+/* Icon-only round toggle. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--separator);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s;
+}
+
+.pill:active {
+  transform: scale(0.92);
+}
+
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pill[data-active] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-text);
+}

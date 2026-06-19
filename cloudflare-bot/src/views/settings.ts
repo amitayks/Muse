@@ -100,17 +100,19 @@ ${t(lang, 'settings.pageSize')} ${t(lang, 'common.arrow')} <code>${pageSize} ${t
 
 // ==================== SKILLS SUB-PAGE ====================
 
-export function renderSettingsSkills(lang: Lang, workerUrl?: string, staleCount = 0, isAdminUser = false, identityDepth = 200): ViewResult {
+export function renderSettingsSkills(lang: Lang, webappUrl?: string, staleCount = 0, isAdminUser = false, identityDepth = 200): ViewResult {
     const keyboard: InlineButton[][] = [];
 
-    if (workerUrl) {
+    if (webappUrl) {
+        // The standalone HTML prompt editors were replaced by the native webapp Skills screen
+        // (Settings -> Skills). It carries the EN/HE toggle and, for admins, the scope toggle.
         const promptLabel = staleCount > 0
             ? '📝 ' + t(lang, 'settings.btnSystemPrompts') + ' 🔔'
             : '📝 ' + t(lang, 'settings.btnSystemPrompts');
-        keyboard.push([{ text: promptLabel, web_app: { url: `${workerUrl}/app/prompts?lang=${lang}` } }]);
+        keyboard.push([{ text: promptLabel, web_app: { url: `${webappUrl}/#/settings/skills` } }]);
 
         if (isAdminUser) {
-            keyboard.push([{ text: '📝 ' + t(lang, 'settings.btnSystemPromptsAdmin'), web_app: { url: `${workerUrl}/app/admin-prompts` } }]);
+            keyboard.push([{ text: '📝 ' + t(lang, 'settings.btnSystemPromptsAdmin'), web_app: { url: `${webappUrl}/#/settings/skills?scope=global` } }]);
         }
     }
 

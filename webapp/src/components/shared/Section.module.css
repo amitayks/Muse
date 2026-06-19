@@ -1,0 +1,31 @@
+/* Token-driven grouped section: a rounded card of hairline-separated rows. */
+.section {
+  margin: 0 var(--sp-md) var(--sp-lg);
+}
+
+.header {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--section-header-text);
+  padding: var(--sp-md) var(--sp-sm) var(--sp-xs);
+}
+
+.inner {
+  background: var(--section-bg);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Hairline separators between rows (and any other stacked children). */
+.inner > * + * {
+  border-top: 1px solid var(--separator);
+}
+
+.footer {
+  font-size: var(--text-sm);
+  color: var(--hint);
+  padding: var(--sp-xs) var(--sp-sm) 0;
+  line-height: 1.4;
+}

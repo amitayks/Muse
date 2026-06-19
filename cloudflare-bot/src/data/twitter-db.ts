@@ -400,6 +400,29 @@ export async function getRecentTweetsByAccount(env: Env, chatId: string, account
 }
 
 /**
+ * Get pending repost candidates for the Home notifications feed:
+ * scored/notified tweets that have NOT yet been turned into a draft.
+ * Joins the account username for display.
+ */
+export async function getPendingRepostCandidates(
+    env: Env,
+    chatId: string,
+    limit = 50,
+): Promise<Array<TwitterTweet & { account_username: string }>> {
+    const result = await env.DB.prepare(
+        `SELECT t.*, a.username AS account_username
+         FROM twitter_tweets t
+         JOIN twitter_accounts a ON a.id = t.account_id
+         WHERE t.chat_id = ? AND t.draft_id IS NULL AND t.status IN ('scored', 'notified')
+         ORDER BY t.relevance_score DESC, t.created_at DESC
+         LIMIT ?`
+    )
+        .bind(chatId, limit)
+        .all<TwitterTweet & { account_username: string }>();
+    return result.results || [];
+}
+
+/**
  * Get scored tweets by batch message ID — for batch message reconstruction
  */
 export async function getScoredTweetsByBatchMessage(env: Env, chatId: string, batchMessageId: number): Promise<TwitterTweet[]> {

@@ -1,144 +1,352 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { Button, Caption } from '@telegram-apps/telegram-ui';
+import { api, ApiError } from '../api/client';
 import { useTranslation } from '../i18n';
-import { PageLoading, ErrorBanner, Toggle, ConfirmDialog, useToast } from '../components/ui';
-import { Package } from 'lucide-react';
+import {
+  ScreenScaffold,
+  Section,
+  Cell,
+  Toggle,
+  PageLoading,
+  EmptyState,
+  AutoTextarea,
+} from '../components/shared';
+import {
+  useBackButton,
+  useMainButton,
+  confirm,
+  confirmDestructive,
+  notifyError,
+  haptics,
+} from '../shell';
+import styles from './RepoDetailPage.module.css';
 
+/** RepoConfig shape (parsed from the `config` JSON string on the repo row). */
+interface RepoConfig {
+  watchPRs: boolean;
+  watchPushes: boolean;
+  branches: string[];
+  [key: string]: unknown;
+}
+
+/** The Project Overview attached to a repo. */
+interface RepoOverview {
+  summary: string | null;
+  tech_stack: string | null;
+  key_features: string[];
+  target_audience: string | null;
+  brand_voice: string | null;
+  visual_theme: string | null;
+}
+
+/** Editable buffer for the overview — all fields as strings (key_features is newline-separated). */
+interface OverviewDraft {
+  summary: string;
+  tech_stack: string;
+  key_features: string;
+  target_audience: string;
+  brand_voice: string;
+  visual_theme: string;
+}
+
+/** The overview fields, in the same order the bot's "Edit Overview" menu offers them. */
+const OVERVIEW_FIELDS: { key: keyof OverviewDraft; labelKey: string; hintKey?: string }[] = [
+  { key: 'summary', labelKey: 'repos.summary' },
+  { key: 'tech_stack', labelKey: 'repos.techStack' },
+  { key: 'key_features', labelKey: 'repos.keyFeatures', hintKey: 'repos.keyFeaturesHint' },
+  { key: 'target_audience', labelKey: 'repos.targetAudience' },
+  { key: 'brand_voice', labelKey: 'repos.brandVoice' },
+  { key: 'visual_theme', labelKey: 'repos.visualTheme' },
+];
+
+/** GET /api/v1/repos/:id response — the repo row spread plus its overview. */
 interface RepoDetail {
   id: string;
   owner: string;
   repo: string;
   is_watching: number;
   config: string;
-  overview: { summary: string | null; tech_stack: string | null; key_features: string; target_audience: string | null } | null;
+  overview: RepoOverview | null;
 }
 
+/** Parse the JSON `config` blob defensively into a typed RepoConfig. */
+function parseConfig(raw: string): RepoConfig {
+  try {
+    const parsed = JSON.parse(raw) as Partial<RepoConfig>;
+    return {
+      watchPRs: !!parsed.watchPRs,
+      watchPushes: !!parsed.watchPushes,
+      branches: Array.isArray(parsed.branches) ? parsed.branches : [],
+      ...parsed,
+    };
+  } catch {
+    return { watchPRs: false, watchPushes: false, branches: [] };
+  }
+}
+
+/**
+ * Repo detail flow screen (`/repo/:id`).
+ *
+ * Mirrors the bot's repo detail exactly — no more, no less: owner/repo + watching status,
+ * Watch-PRs / Watch-Pushes toggles, branches, the Project Overview (summary / feature count /
+ * visual theme) with Edit + Bootstrap/Re-bootstrap, and Delete. The system MainButton drives the
+ * watch on/off primary action; destructive/regenerative actions go through native confirm.
+ */
 export function RepoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { show: showToast, element: toastEl } = useToast();
+  useBackButton();
 
-  const [editOverview, setEditOverview] = useState(false);
-  const [overviewText, setOverviewText] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Overview edit buffer; non-null = editing. Holds all six fields.
+  const [overviewDraft, setOverviewDraft] = useState<OverviewDraft | null>(null);
 
-  const { data: repo, isLoading, error, refetch } = useQuery({
+  const repoQuery = useQuery({
     queryKey: ['repo', id],
     queryFn: () => api.get<RepoDetail>(`/api/v1/repos/${id}`),
     enabled: !!id,
   });
 
+  const repo = repoQuery.data;
+  const config = repo ? parseConfig(repo.config) : null;
+  const overview = repo?.overview ?? null;
+
   const updateMutation = useMutation({
-    mutationFn: (updates: Record<string, unknown>) => api.put(`/api/v1/repos/${id}`, updates),
+    mutationFn: (updates: Record<string, unknown>) =>
+      api.put(`/api/v1/repos/${id}`, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repo', id] });
       queryClient.invalidateQueries({ queryKey: ['repos'] });
-      showToast(t('common.saved'), 'success');
+    },
+    onError: async (err) => {
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/api/v1/repos/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['repos'] });
+    onSuccess: async () => {
+      haptics.notification('success');
+      await queryClient.invalidateQueries({ queryKey: ['repos'] });
       navigate('/repos');
+    },
+    onError: async (err) => {
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
     },
   });
 
-  if (isLoading) return <PageLoading />;
-  if (error || !repo) return <ErrorBanner message={error instanceof Error ? error.message : t('common.error')} onRetry={() => refetch()} />;
+  // Bootstrap / re-bootstrap (re)generates the overview server-side.
+  const bootstrapMutation = useMutation({
+    mutationFn: () => api.post(`/api/v1/repos/${id}/bootstrap-overview`),
+    onSuccess: () => {
+      haptics.notification('success');
+      queryClient.invalidateQueries({ queryKey: ['repo', id] });
+    },
+    onError: async (err) => {
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
+    },
+  });
 
-  const config = typeof repo.config === 'string' ? JSON.parse(repo.config) : repo.config;
+  // Persist the edited overview — all six fields (key_features split from newline text).
+  const saveOverviewMutation = useMutation({
+    mutationFn: (d: OverviewDraft) =>
+      api.put(`/api/v1/repos/${id}/overview`, {
+        summary: d.summary.trim(),
+        tech_stack: d.tech_stack.trim(),
+        key_features: d.key_features.split('\n').map((s) => s.trim()).filter(Boolean),
+        target_audience: d.target_audience.trim(),
+        brand_voice: d.brand_voice.trim(),
+        visual_theme: d.visual_theme.trim(),
+      }),
+    onSuccess: () => {
+      haptics.notification('success');
+      setOverviewDraft(null);
+      queryClient.invalidateQueries({ queryKey: ['repo', id] });
+    },
+    onError: async (err) => {
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
+    },
+  });
+
+  const watching = !!repo?.is_watching;
+
+  // Primary action = the watch on/off toggle (matches the bot's start/stop-watching button).
+  useMainButton(
+    repo
+      ? {
+          text: watching ? t('repos.pauseWatching') : t('repos.resumeWatching'),
+          onClick: () => updateMutation.mutate({ is_watching: watching ? 0 : 1 }),
+          enabled: !updateMutation.isPending,
+          loading: updateMutation.isPending,
+        }
+      : null,
+  );
+
+  if (repoQuery.isLoading) return <PageLoading />;
+  if (repoQuery.isError || !repo || !config) {
+    return (
+      <ScreenScaffold title={t('repos.title')}>
+        <EmptyState title={t('common.error')} />
+      </ScreenScaffold>
+    );
+  }
+
+  const featureCount = overview?.key_features?.length ?? 0;
+
+  const handleToggleConfig = (key: 'watchPRs' | 'watchPushes', next: boolean) => {
+    updateMutation.mutate({ config: { ...config, [key]: next } });
+  };
+
+  const handleBootstrap = async () => {
+    if (overview) {
+      const ok = await confirm(t('repos.confirmRebootstrap'));
+      if (!ok) return;
+    }
+    bootstrapMutation.mutate();
+  };
+
+  const handleStartEdit = () => {
+    setOverviewDraft({
+      summary: overview?.summary ?? '',
+      tech_stack: overview?.tech_stack ?? '',
+      key_features: (overview?.key_features ?? []).join('\n'),
+      target_audience: overview?.target_audience ?? '',
+      brand_voice: overview?.brand_voice ?? '',
+      visual_theme: overview?.visual_theme ?? '',
+    });
+  };
+
+  const handleDelete = async () => {
+    const ok = await confirmDestructive(t('repos.confirmDelete'), t('common.delete'));
+    if (ok) deleteMutation.mutate();
+  };
 
   return (
-    <div>
-      <button className="btn btn-ghost" onClick={() => navigate('/repos')} style={{ marginBottom: 'var(--sp-md)' }}>
-        {t('common.back')}
-      </button>
+    <ScreenScaffold>
+      <header className={styles.header}>
+        <h1 className={styles.repoName}>
+          {repo.owner}/{repo.repo}
+        </h1>
+        <span className={styles.watchPill} data-watching={watching}>
+          {watching ? t('repos.watching') : t('repos.paused')}
+        </span>
+      </header>
 
-      <h1 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--sp-md)', display: 'flex', alignItems: 'center', gap: '6px' }}><Package size={16} /> {repo.owner}/{repo.repo}</h1>
-
-      <span className={`badge ${repo.is_watching ? 'badge-approved' : 'badge-draft'}`} style={{ marginBottom: 'var(--sp-lg)', display: 'inline-block' }}>
-        {repo.is_watching ? t('repos.watching') : t('repos.paused')}
-      </span>
-
-      {/* Config toggles */}
-      <div className="card" style={{ marginBottom: 'var(--sp-lg)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-sm)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>{t('repos.watchPrs')}</span>
-            <Toggle checked={config.watchPRs} onChange={v => updateMutation.mutate({ config: { ...config, watchPRs: v } })} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 'var(--text-sm)' }}>{t('repos.watchPushes')}</span>
-            <Toggle checked={config.watchPushes} onChange={v => updateMutation.mutate({ config: { ...config, watchPushes: v } })} />
-          </div>
-        </div>
-      </div>
-
-      {/* Overview */}
-      <div className="card" style={{ marginBottom: 'var(--sp-lg)' }}>
-        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-sm)' }}>{t('repos.overview')}</div>
-        {repo.overview?.summary ? (
-          editOverview ? (
-            <>
-              <textarea
-                value={overviewText}
-                onChange={e => setOverviewText(e.target.value)}
-                rows={8}
-                style={{
-                  width: '100%', padding: 'var(--sp-sm)',
-                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg)', color: 'var(--text)',
-                  fontSize: 'var(--text-sm)', fontFamily: 'var(--font)',
-                  resize: 'vertical', outline: 'none', marginBottom: 'var(--sp-sm)',
-                }}
-              />
-              <div style={{ display: 'flex', gap: 'var(--sp-sm)' }}>
-                <button className="btn btn-success" onClick={() => { setEditOverview(false); showToast(t('common.saved'), 'success'); }}>
-                  {t('common.save')}
-                </button>
-                <button className="btn btn-outline" onClick={() => setEditOverview(false)}>{t('common.cancel')}</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--hint)', whiteSpace: 'pre-wrap' }}>{repo.overview.summary}</p>
-              <button className="btn btn-ghost" style={{ marginTop: 'var(--sp-sm)' }} onClick={() => { setOverviewText(repo.overview?.summary || ''); setEditOverview(true); }}>
-                {t('repos.editOverview')}
-              </button>
-            </>
-          )
-        ) : (
-          <p style={{ color: 'var(--hint)', fontSize: 'var(--text-sm)' }}>{t('repos.noOverview')}</p>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 'var(--sp-sm)' }}>
-        <button
-          className={`btn ${repo.is_watching ? 'btn-outline' : 'btn-success'}`}
-          onClick={() => updateMutation.mutate({ is_watching: repo.is_watching ? 0 : 1 })}
+      <Section header={t('repos.watchSettings')}>
+        <Cell
+          after={
+            <Toggle
+              checked={config.watchPRs}
+              onChange={(v) => handleToggleConfig('watchPRs', v)}
+              disabled={updateMutation.isPending}
+            />
+          }
         >
-          {repo.is_watching ? t('repos.pauseWatching') : t('repos.resumeWatching')}
-        </button>
-        <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
-          {t('common.delete')}
-        </button>
-      </div>
+          {t('repos.watchPrs')}
+        </Cell>
+        <Cell
+          after={
+            <Toggle
+              checked={config.watchPushes}
+              onChange={(v) => handleToggleConfig('watchPushes', v)}
+              disabled={updateMutation.isPending}
+            />
+          }
+        >
+          {t('repos.watchPushes')}
+        </Cell>
+        <Cell
+          after={
+            <Caption className={styles.branchValue}>
+              {config.branches.length ? config.branches.join(', ') : '—'}
+            </Caption>
+          }
+        >
+          {t('repos.branches')}
+        </Cell>
+      </Section>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        message={t('repos.confirmDelete')}
-        confirmText={t('common.delete')}
-        onConfirm={() => deleteMutation.mutate()}
-        onCancel={() => setConfirmDelete(false)}
-      />
-      {toastEl}
-    </div>
+      <Section
+        header={t('repos.projectOverview')}
+        footer={
+          overview?.visual_theme
+            ? `${t('repos.visualTheme')}: ${overview.visual_theme}`
+            : undefined
+        }
+      >
+        {overviewDraft ? (
+          <div className={styles.editWrap}>
+            {OVERVIEW_FIELDS.map((f) => (
+              <div key={f.key} className={styles.field}>
+                <label className={styles.fieldLabel}>{t(f.labelKey)}</label>
+                <AutoTextarea
+                  value={overviewDraft[f.key]}
+                  onChange={(e) =>
+                    setOverviewDraft((d) => (d ? { ...d, [f.key]: e.target.value } : d))
+                  }
+                  className={styles.editArea}
+                />
+                {f.hintKey && <span className={styles.fieldHint}>{t(f.hintKey)}</span>}
+              </div>
+            ))}
+            <div className={styles.editActions}>
+              <Button
+                size="m"
+                stretched
+                loading={saveOverviewMutation.isPending}
+                disabled={saveOverviewMutation.isPending}
+                onClick={() => overviewDraft && saveOverviewMutation.mutate(overviewDraft)}
+              >
+                {t('common.save')}
+              </Button>
+              <Button
+                size="m"
+                mode="plain"
+                disabled={saveOverviewMutation.isPending}
+                onClick={() => setOverviewDraft(null)}
+              >
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.overviewBlock}>
+            <p className={styles.summary}>
+              {overview?.summary ? overview.summary : t('repos.noOverview')}
+            </p>
+            {overview && (
+              <Caption className={styles.featureCount}>
+                {`${featureCount} ${featureCount === 1 ? t('repos.featureSingular') : t('repos.featurePlural')}`}
+              </Caption>
+            )}
+            <div className={styles.overviewActions}>
+              {overview && (
+                <Button size="s" mode="bezeled" onClick={handleStartEdit}>
+                  {t('repos.editOverview')}
+                </Button>
+              )}
+              <Button
+                size="s"
+                mode="bezeled"
+                loading={bootstrapMutation.isPending}
+                disabled={bootstrapMutation.isPending}
+                onClick={handleBootstrap}
+              >
+                {overview ? t('repos.rebootstrap') : t('repos.bootstrap')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section>
+        <Cell interactive onClick={handleDelete}>
+          <span className={styles.deleteLabel}>{t('common.delete')}</span>
+        </Cell>
+      </Section>
+    </ScreenScaffold>
   );
 }

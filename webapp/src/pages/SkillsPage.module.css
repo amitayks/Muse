@@ -1,0 +1,137 @@
+/* List view: fills the screen, scrolls internally (fill route). */
+.screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--content-safe-bottom);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+  padding: var(--sp-md) var(--sp-md) var(--sp-xs);
+}
+
+/* The editor view (single skill open): full-height column so the textarea fills the screen. */
+.editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--sp-md);
+  padding: var(--sp-md);
+}
+
+.editorHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+}
+
+.editorTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+}
+
+.editorDescription {
+  font-size: var(--text-sm);
+  color: var(--hint);
+}
+
+.identityHint {
+  font-size: var(--text-sm);
+  color: var(--subtitle);
+  background: var(--secondary-bg);
+  border-radius: var(--radius-md);
+  padding: var(--sp-sm) var(--sp-md);
+  line-height: 1.5;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 120px;
+  resize: none;
+  padding: var(--sp-md);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--section-bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: 1.55;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.textarea:disabled {
+  opacity: 0.6;
+}
+
+/* Resolved-default preview, shown when "View Default" is tapped */
+.defaultPreview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  background: var(--secondary-bg);
+  border-radius: var(--radius-md);
+  padding: var(--sp-md);
+}
+
+.defaultPreviewHeader {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--section-header-text);
+}
+
+.defaultPreviewBody {
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.55;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Action rows below the textarea (Reset / Save&Push live here; primary Save uses MainButton) */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+
+.staleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  padding: var(--sp-md);
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-2xl) var(--sp-md);
+}
+
+.errorBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+  padding: var(--sp-md);
+  text-align: center;
+}
+
+.errorText {
+  font-size: var(--text-sm);
+  color: var(--destructive);
+}

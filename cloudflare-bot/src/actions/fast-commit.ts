@@ -15,8 +15,8 @@ import { getUser } from '../data/user-db';
 import { getCommitDefaults } from '../data/user-settings-db';
 import { getCommitEvent, updateCommitEvent } from '../data/commit-events-db';
 import { generateContent } from '../ai/gemini';
+import { generateTweetImage } from '../ai/tweet-image';
 import { sendMessage, editMessage, sendPhoto, deleteMessage } from '../integrations/telegram';
-import { ensureImage } from '../data/storage';
 import { renderError, renderDraftDetail } from '../views';
 import { truncateHtml } from '../ui/utils';
 import { sanitizeError } from '../infra/security';
@@ -49,7 +49,6 @@ export async function fastCommitAction(ctx: HandlerContext & { extra?: string })
     const contentSource: ContentSource = JSON.parse(event.source_data);
     const result = await generateContent(
         ctx.env, contentSource, event.repo_id, lang, ctx.chatId,
-        { generateImagePrompt: commitDefaults.commitFastImage ? undefined : false },
     );
     const content = result.content;
 
@@ -77,18 +76,18 @@ export async function fastCommitAction(ctx: HandlerContext & { extra?: string })
     // Update event status
     await updateCommitEvent(ctx.env, eventId, { status: 'drafted', draftId });
 
-    // Image generation (update progress in-place)
+    // Image generation (update progress in-place) — per-tweet pipeline into tweets[0].media
     let imageUrl: string | null = null;
-    if (commitDefaults.commitFastImage && content.imagePrompt) {
+    if (commitDefaults.commitFastImage) {
         if (msgId) {
             try {
                 await editMessage(ctx.env, ctx.chatId, msgId, t(lang, 'compose.generatingImage'));
             } catch { /* ignore */ }
         }
         try {
-            const ensuredUrl = await ensureImage(ctx.env, ctx.chatId, { id: draftId, content: JSON.stringify(content) });
-            if (ensuredUrl && ctx.env.WORKER_URL) {
-                imageUrl = `${ctx.env.WORKER_URL}${ensuredUrl}`;
+            const generated = await generateTweetImage(ctx.env, ctx.chatId, draftId, 0);
+            if (ctx.env.WORKER_URL) {
+                imageUrl = `${ctx.env.WORKER_URL}/media/${generated.media.key}`;
             }
         } catch (imgError) {
             console.error('[fast_commit] Image generation failed:', sanitizeError(imgError));

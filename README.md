@@ -199,8 +199,8 @@ Each user provides their own API keys during onboarding:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/ozkeisar/MusePostBot.git
-cd MusePostBot
+git clone https://github.com/amitayks/Muse.git
+cd Muse
 ```
 
 ### 2. Install Dependencies
@@ -273,16 +273,20 @@ npx wrangler deploy
 
 ### 7. Initialize the Bot
 
-Hit the setup endpoint to register the Telegram webhook and bot commands:
+Hit the setup endpoint to register the Telegram webhook and bot commands. The
+secret goes in the **`X-Admin-Secret` header** (not a `?secret=` query param — the
+route reads the header, so a query param returns `Unauthorized`):
 
 ```bash
-curl "https://content-bot.YOUR_SUBDOMAIN.workers.dev/setup?secret=YOUR_ADMIN_SECRET"
+curl -H "X-Admin-Secret: YOUR_ADMIN_SECRET" \
+  "https://content-bot.YOUR_SUBDOMAIN.workers.dev/setup"
 ```
 
 ### 8. Run Migrations
 
 ```bash
-curl "https://content-bot.YOUR_SUBDOMAIN.workers.dev/migrate?secret=YOUR_ADMIN_SECRET"
+curl -H "X-Admin-Secret: YOUR_ADMIN_SECRET" \
+  "https://content-bot.YOUR_SUBDOMAIN.workers.dev/migrate"
 ```
 
 ### 9. Set Up GitHub Webhooks
@@ -383,7 +387,7 @@ Each followed X account has independent configuration:
 ## Architecture
 
 ```
-MusePostBot/
+Muse/
 ├── cloudflare-bot/                # Single Cloudflare Worker
 │   ├── src/
 │   │   ├── index.ts               # HTTP router + cron entry point

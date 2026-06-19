@@ -14,8 +14,8 @@ import { getTwitterTweet, getTwitterAccount, updateTwitterTweet, createDraft, pa
 import { getUser } from '../data/user-db';
 import { getRepostDefaults } from '../data/user-settings-db';
 import { generateRepostContent } from '../ai/repost-generate';
+import { generateTweetImage } from '../ai/tweet-image';
 import { sendMessage } from '../integrations/telegram';
-import { ensureImage } from '../data/storage';
 import { renderError } from '../views';
 import { sanitizeError } from '../infra/security';
 
@@ -76,10 +76,10 @@ export async function fastGenerateAction(ctx: HandlerContext & { extra?: string 
         }
     }
 
-    // Lazy image generation if user has fast_generate_image enabled
-    if (defaults.fastGenerateImage && content.imagePrompt) {
+    // Image generation if user has fast_generate_image enabled — per-tweet pipeline into tweets[0].media
+    if (defaults.fastGenerateImage) {
         try {
-            await ensureImage(ctx.env, ctx.chatId, { id: draftId, content: JSON.stringify(content) });
+            await generateTweetImage(ctx.env, ctx.chatId, draftId, 0);
         } catch (imgError) {
             console.error('[fast_gen] Image generation failed:', sanitizeError(imgError));
         }

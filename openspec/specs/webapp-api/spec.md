@@ -102,18 +102,26 @@ The system SHALL provide full CRUD operations for drafts.
 - **THEN** the system SHALL call the AI refinement function with the instruction and current content, update the draft, and return the new content
 
 ### Requirement: Compose API
-The system SHALL provide an endpoint to create drafts from the webapp compose flow.
+The system SHALL provide an endpoint to create drafts from the webapp compose flow. The request options SHALL NOT include an image-generation flag; AI image generation is a separate per-tweet endpoint. Supported options are `aiRefine`, `analyzeImages`, `instruction`, and `langOverride`.
 
 #### Scenario: POST /api/v1/compose
-- **WHEN** a POST request is made with `{ tweets: [{text, media}], options: {aiRefine, imageGen, analyzeImages, instruction} }` body
-- **THEN** the system SHALL create a new draft (with optional AI refinement), store it in D1, and return the draft ID
+- **WHEN** a POST request is made with `{ tweets: [{text, media}], options: {aiRefine, analyzeImages, instruction, langOverride} }` body
+- **THEN** the system SHALL create a new draft (with optional AI refinement and image analysis), store it in D1, and return the draft ID
+
+#### Scenario: Image-generation flag ignored
+- **WHEN** a legacy client sends an `imageGen` option
+- **THEN** the endpoint SHALL ignore it and SHALL NOT generate an AI image during compose
 
 ### Requirement: Generate API
-The system SHALL provide an endpoint to generate a draft from a commit source for the Composer's `[+ commit]` flow. It SHALL accept a partial commit SHA (resolved server-side via the existing `findCommitBysha`/`getContentSource`), optional user message text, optional AI instruction, a language override, and image/AI options. It SHALL create a draft and return its id, driving bot sync.
+The system SHALL provide an endpoint to generate a draft from a commit source for the Composer's `[+ commit]` flow. It SHALL accept a partial commit SHA (resolved server-side via the existing `findCommitBysha`/`getContentSource`), optional user message text, optional AI instruction, and a language override. The request options SHALL NOT include an image-generation flag; image generation is a separate per-tweet endpoint invoked after the draft exists. It SHALL create a draft and return its id, driving bot sync.
 
 #### Scenario: POST /api/v1/generate with partial SHA
-- **WHEN** a POST request is made with `{ sha, message?, instruction?, options: { ai?, image?, langOverride? } }`
+- **WHEN** a POST request is made with `{ sha, message?, instruction?, options: { ai?, langOverride? } }`
 - **THEN** the system SHALL resolve the commit (repo + details) from the partial SHA, generate content combining the commit with any message/instruction, create a draft, and return `{ draftId }`
+
+#### Scenario: Image-generation flag ignored
+- **WHEN** a legacy client sends an `image` option
+- **THEN** the endpoint SHALL ignore it and SHALL NOT generate an AI image during generation
 
 #### Scenario: Unresolvable SHA
 - **WHEN** the partial SHA cannot be resolved in any accessible repo
@@ -122,6 +130,17 @@ The system SHALL provide an endpoint to generate a draft from a commit source fo
 #### Scenario: Generation drives bot sync
 - **WHEN** the draft is created from generation
 - **THEN** the existing bot-message sync SHALL run so the bot reflects the new draft
+
+### Requirement: Per-tweet image generation API
+The system SHALL provide `POST /api/v1/drafts/:id/tweets/:idx/image`, an authenticated endpoint that generates an AI image for the tweet at `idx` in draft `id`, attaches it to that tweet's `media`, persists the draft, drives bot sync, and returns the new media reference. The full behavior is defined by the `per-tweet-image-generation` capability.
+
+#### Scenario: Endpoint is registered under /api/v1/
+- **WHEN** the API routes are registered
+- **THEN** `POST /api/v1/drafts/:id/tweets/:idx/image` SHALL be routed to the per-tweet image generation handler with Telegram initData authentication applied
+
+#### Scenario: Returns the new media reference
+- **WHEN** generation succeeds for a draft the caller owns
+- **THEN** the response SHALL include the new media `{ key, type: 'photo' }` attached to `content.tweets[idx].media`
 
 ### Requirement: Schedule API honors the user's configured timezone
 The `POST /api/v1/drafts/:id/schedule` endpoint SHALL interpret the submitted datetime as a wall-clock time in the user's configured `users.timezone` offset and convert it to UTC for storage — the same conversion the bot's own schedule input performs — rather than trusting a client-side UTC value. The webapp SHALL send the raw wall-clock datetime from its picker (no device-timezone conversion), and SHALL render scheduled times in the configured offset, not the device timezone.

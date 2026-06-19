@@ -11,7 +11,7 @@ export async function handleTestGenerate(request: Request, url: URL, env: Env): 
     }
 
     const { getContentSource } = await import('../integrations/github');
-    const { generateContent, generateImage } = await import('../ai/gemini');
+    const { generateContent } = await import('../ai/gemini');
 
     const steps: Record<string, unknown> = {};
 
@@ -30,12 +30,8 @@ export async function handleTestGenerate(request: Request, url: URL, env: Env): 
         steps.generatedContent = result.content;
         steps.overviewUpdates = result.overviewUpdates;
 
-        logInfo('Test: Generating image via Gemini...');
-        const imageResult = await generateImage(env, result.content);
-        steps.imageGenerated = !!imageResult;
-        steps.imageMimeType = imageResult?.mimeType;
-        steps.imageSize = imageResult?.data.byteLength;
-
+        // Image generation is now a per-slot action on a saved draft (ai/tweet-image.ts),
+        // not derivable from raw content here — content generation is what this route tests.
         return secureJsonResponse({ success: true, sha, steps });
     } catch (error) {
         return secureJsonResponse({

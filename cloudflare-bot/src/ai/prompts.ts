@@ -76,15 +76,18 @@ export async function getPrompt(
 
 /**
  * Assemble a complete system instruction for a Gemini call.
- * For identity-attached skills: skill prompt + identity document + optional image-gen.
+ * For identity-attached skills: skill prompt + identity document (+ voice protocol).
  * For utility skills (persona): skill prompt only.
+ *
+ * The `/image-gen` skill is itself identity-attached, so calling this with
+ * type='image-gen' yields the image-prompt-builder methodology + identity — the
+ * standalone system instruction used by the per-tweet image pipeline.
  */
 export async function assembleSystemInstruction(
     env: Env,
     chatId: string,
     type: PromptType,
     lang: string,
-    options?: { attachImageGen?: boolean },
 ): Promise<string> {
     const skill = await getPrompt(env, chatId, type, lang);
     const parts = [skill];
@@ -101,12 +104,6 @@ export async function assembleSystemInstruction(
             const voiceProtocol = await getPrompt(env, chatId, 'voice-protocol', lang);
             if (voiceProtocol) parts.push(voiceProtocol);
         }
-    }
-
-    // Optional image-gen attachment
-    if (options?.attachImageGen) {
-        const imageGen = await getPrompt(env, chatId, 'image-gen', lang);
-        parts.push(imageGen);
     }
 
     return parts.filter(Boolean).join('\n\n');

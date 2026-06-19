@@ -9,10 +9,13 @@ import type { Env } from '../types';
 import { validateInitData } from '../integrations/telegram-auth';
 import { isAdmin } from '../infra/security';
 import { handleDashboardApi } from './api-v1-dashboard';
+import { handleHomeApi } from './api-v1-home';
 import { handleDraftsApi } from './api-v1-drafts';
 import { handleSettingsApi } from './api-v1-settings';
 import { handleReposApi } from './api-v1-repos';
 import { handleAccountsApi } from './api-v1-accounts';
+import { handleCommitsApi } from './api-v1-commits';
+import { handleIdentityApi } from './api-v1-identity';
 import { handleMediaUploadApi } from './api-v1-media';
 import { handleComposeApi } from './api-v1-compose';
 import { handlePromptsApi } from './api-v1-prompts';
@@ -31,7 +34,7 @@ function corsHeaders(env: Env): Record<string, string> {
 }
 
 /** Add CORS headers to a response */
-function withCors(response: Response, env: Env): Response {
+export function withCors(response: Response, env: Env): Response {
     const headers = new Headers(response.headers);
     for (const [k, v] of Object.entries(corsHeaders(env))) {
         headers.set(k, v);
@@ -107,6 +110,8 @@ export async function handleApiV1(
     try {
         if (path === '/dashboard') {
             response = await handleDashboardApi(apiCtx);
+        } else if (path === '/home') {
+            response = await handleHomeApi(apiCtx);
         } else if (path.startsWith('/drafts')) {
             response = await handleDraftsApi(apiCtx, path);
         } else if (path.startsWith('/settings')) {
@@ -115,6 +120,10 @@ export async function handleApiV1(
             response = await handleReposApi(apiCtx, path);
         } else if (path.startsWith('/accounts')) {
             response = await handleAccountsApi(apiCtx, path);
+        } else if (path.startsWith('/commits')) {
+            response = await handleCommitsApi(apiCtx, path);
+        } else if (path.startsWith('/identity')) {
+            response = await handleIdentityApi(apiCtx, path);
         } else if (path === '/media/upload') {
             response = await handleMediaUploadApi(apiCtx);
         } else if (path === '/compose') {

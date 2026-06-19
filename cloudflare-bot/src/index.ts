@@ -27,10 +27,8 @@ import { handleTestGenerate } from './routes/test-generate';
 import { handleImageRequest } from './routes/image';
 import { handleHeyGenWebhook } from './routes/heygen-webhook';
 import { handleMediaRequest } from './routes/media';
-import { handlePromptEditorPage } from './routes/app';
-import { handleAdminPromptEditorPage } from './routes/app-admin';
 import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdminPromptApi, handleIdentityApi } from './routes/api-prompt';
-import { handleApiV1 } from './routes/api-v1';
+import { handleApiV1, withCors } from './routes/api-v1';
 import { handleXOAuthCallback } from './routes/x-oauth';
 import { handleLinkedInOAuthCallback } from './routes/linkedin-oauth';
 
@@ -165,20 +163,17 @@ export default {
                 return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
             }
 
-            // WebApp routes — no X-Frame-Options (loaded in Telegram iframe)
-            if (url.pathname === '/app/prompts') {
-                const rateLimit = checkRateLimit(`app:${clientIP}`, RATE_LIMITS.api);
-                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
-                const response = addSecurityHeaders(handlePromptEditorPage(), { skipFrameOptions: true });
-                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
-            }
-
-            // Admin WebApp route — no X-Frame-Options (loaded in Telegram iframe)
-            if (url.pathname === '/app/admin-prompts') {
-                const rateLimit = checkRateLimit(`app:${clientIP}`, RATE_LIMITS.api);
-                if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
-                const response = addSecurityHeaders(handleAdminPromptEditorPage(), { skipFrameOptions: true });
-                return addRateLimitHeaders(response, rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
+            // CORS preflight for the legacy (non-v1) webapp API routes (prompt + identity).
+            // These are now called cross-origin from the Pages webapp, so they need the same CORS
+            // treatment as /api/v1/* — the Authorization header forces an OPTIONS preflight.
+            if (
+                request.method === 'OPTIONS' &&
+                (url.pathname === '/api/prompt' ||
+                    url.pathname.startsWith('/api/prompt/') ||
+                    url.pathname === '/api/identity' ||
+                    url.pathname.startsWith('/api/admin/prompt'))
+            ) {
+                return withCors(new Response(null, { status: 204 }), env);
             }
 
             // Prompt API routes
@@ -187,7 +182,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handlePromptApi(request, env);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }
@@ -198,7 +193,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleStaleCountApi(request, env);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }
@@ -209,7 +204,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleAcknowledgeApi(request, env);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }
@@ -220,7 +215,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleIdentityApi(request, env);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }
@@ -231,7 +226,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleAdminPromptApi(request, env, true);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }
@@ -241,7 +236,7 @@ export default {
                 if (!rateLimit.allowed) return rateLimitResponse(rateLimit.resetAt, RATE_LIMITS.api.maxRequests);
                 const response = await handleAdminPromptApi(request, env, false);
                 return addRateLimitHeaders(
-                    addSecurityHeaders(response, { skipFrameOptions: true }),
+                    withCors(addSecurityHeaders(response, { skipFrameOptions: true }), env),
                     rateLimit.remaining, rateLimit.resetAt, RATE_LIMITS.api.maxRequests,
                 );
             }

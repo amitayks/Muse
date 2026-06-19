@@ -92,23 +92,20 @@ The system SHALL allow attaching images or a single video to each tweet during c
 - **AND WHEN** a tweet has photos attached, the video option SHALL NOT be offered
 
 ### Requirement: Compose toggles (AI, Image Gen, Analyze)
-The system SHALL present compose customization as a bottom **customize row** containing `[+ commit]` and the toggles `ai | image | language`, each with a default that the user can flip. The `image` toggle SHALL behave as Image Generation when no media is attached and as Analyze Images when one or more images are attached; it SHALL be unavailable when only a video is attached. The `language` toggle SHALL override the AI generation language for the session. Toggling SHALL emit haptic feedback.
+The system SHALL present compose customization as a bottom **customize row** containing `[+ commit]` and the toggles `ai | language`, each with a default that the user can flip. The **image-generation toggle SHALL be removed** — AI image generation is a per-slot action on each image placeholder (see the `webapp-media` and `per-tweet-image-generation` capabilities), not a compose-time toggle. The `language` toggle SHALL override the AI generation language for the session. Toggling SHALL emit haptic feedback.
 
 #### Scenario: AI toggle
 - **WHEN** the user enables the `ai` toggle
 - **THEN** the content SHALL be refined by AI when the user saves/generates the draft
 
-#### Scenario: Image toggle generates when no media
-- **WHEN** the user enables the `image` toggle with no media attached
-- **THEN** the system SHALL generate an AI image prompt from the content when saving/generating
+#### Scenario: No image toggle in the customize row
+- **WHEN** the composer renders the customize row
+- **THEN** there SHALL be no image-generation (or image-analyze) toggle
+- **AND** the save/generate requests SHALL NOT include an `imageGen`/`image` option
 
-#### Scenario: Image toggle analyzes when images attached
-- **WHEN** one or more images ARE attached and the `image` toggle is enabled
-- **THEN** the system SHALL include the attached images in the AI refinement context (analyze), and the generate-image behavior SHALL be suppressed because media is already attached
-
-#### Scenario: Image toggle unavailable for video-only
-- **WHEN** the only media attached is a video
-- **THEN** the `image` toggle SHALL be unavailable (video frames are not analyzed and generation is suppressed)
+#### Scenario: Image generation is a per-slot action
+- **WHEN** the user wants an AI-generated image
+- **THEN** they SHALL use the per-slot Generate action on an image placeholder rather than a compose toggle
 
 #### Scenario: Language toggle override
 - **WHEN** the user flips the `language` toggle to the non-default language

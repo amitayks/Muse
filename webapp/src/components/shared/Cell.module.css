@@ -1,0 +1,70 @@
+/* Token-driven list row (matches the app's dark surfaces). */
+.cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  width: 100%;
+  padding: var(--sp-md) var(--sp-lg);
+  border: none;
+  background: var(--section-bg);
+  color: var(--text);
+  text-align: start;
+  font-family: var(--font);
+  font-size: var(--text-base);
+}
+
+.cell[data-interactive] {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.cell[data-interactive]:active {
+  background: var(--secondary-bg);
+}
+
+.before {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hint);
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.after {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  color: var(--hint);
+}
+
+.description {
+  font-size: var(--text-sm);
+  color: var(--hint);
+}
+
+.chevron {
+  color: var(--hint);
+  flex: 0 0 auto;
+}

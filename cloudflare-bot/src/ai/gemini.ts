@@ -4,7 +4,7 @@
  * SECURITY: Uses secure logging and sanitizes API error responses
  */
 
-import type { Env, ContentSource, DraftContent, ImagePromptData, RepoOverview, OverviewPatch, ContentResponse, VideoScriptResponse, VideoScene, HeyGenEmotion } from '../types';
+import type { Env, ContentSource, DraftContent, RepoOverview, OverviewPatch, ContentResponse, VideoScriptResponse, VideoScene, HeyGenEmotion } from '../types';
 import { logInfo, logError, sanitizeContent } from '../infra/security';
 import { getRepoOverview } from '../data/db';
 import { getPrompt, assembleSystemInstruction } from './prompts';
@@ -77,57 +77,12 @@ export async function extractRepoOverview(
 }
 
 /**
- * Validate that an object matches the ImagePromptData shape
- */
-function isValidImagePromptData(obj: unknown): obj is ImagePromptData {
-    if (!obj || typeof obj !== 'object') return false;
-    const o = obj as Record<string, unknown>;
-    return (
-        typeof o.concept === 'object' && o.concept !== null &&
-        typeof o.composition === 'object' && o.composition !== null &&
-        typeof o.environment === 'object' && o.environment !== null &&
-        typeof o.technical === 'object' && o.technical !== null
-    );
-}
-
-/**
- * Build a fallback ImagePromptData from tweet content
- */
-function buildImagePrompt(content: DraftContent): ImagePromptData {
-    const topic = content.tweets[0]?.text || 'software development';
-
-    return {
-        concept: {
-            main_subject: `Visual metaphor inspired by: ${topic.substring(0, 100)}`,
-            symbolic_elements: 'Organic forms suggesting growth and transformation — unfurling leaves, branching patterns, crystalline structures forming',
-            mood: 'The quiet confidence of something well-crafted — precision meeting elegance',
-        },
-        composition: {
-            style: 'Editorial illustration with influences from mid-century scientific diagrams — clean linework with rich color fills',
-            perspective: 'Centered composition with generous negative space, golden ratio proportions',
-            focal_point: 'A single striking central element surrounded by purposeful whitespace',
-        },
-        environment: {
-            setting: 'Warm workshop atmosphere — a craftsperson\'s bench with tools of precision, rich wood grain textures, soft natural materials',
-            lighting: 'Warm golden hour light from the left (3200K key), with soft cool fill (5500K) creating gentle dimensional shadows',
-            color_palette: 'Warm ivory (space, breath), deep indigo (depth, intelligence), burnished copper (craft, warmth), sage green (growth, balance)',
-        },
-        technical: {
-            medium: 'Mixed media — ink line drawing with watercolor washes and subtle gold leaf accents',
-            quality: 'Hand-crafted feel with visible material texture, slight paper grain, intentional imperfection that conveys human touch',
-            negative: 'Avoid generic stock-photo aesthetics, no neon, no circuit boards, no holographic effects',
-        },
-    };
-}
-
-/**
  * Options for generateContent — user context from compose mode
  */
 export interface GenerateContentOptions {
     userTweets?: string[];
     instruction?: string;
     userImageParts?: ImagePart[];
-    generateImagePrompt?: boolean;
 }
 
 /**
@@ -147,8 +102,7 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
     }
 
     const prompt = buildContentPrompt(source, overview, language, options);
-    const attachImageGen = options ? (options.generateImagePrompt !== false) : true;
-    const contentSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'work-progress', language || 'en', { attachImageGen });
+    const contentSystemPrompt = await assembleSystemInstruction(env, chatId || '', 'work-progress', language || 'en');
 
     // Build multimodal prompt when user images are present
     let userPrompt: string | Array<{ text: string } | ImagePart>;
@@ -166,12 +120,6 @@ export async function generateContent(env: Env, source: ContentSource, repoId?: 
         tools: [{ googleSearch: {} }],
     });
     const result = parseContentResponse(responseText);
-
-    // Strip imagePrompt when generateImagePrompt is explicitly false
-    if (options?.generateImagePrompt === false && result.content.imagePrompt) {
-        delete result.content.imagePrompt;
-    }
-
     return result;
 }
 
@@ -192,7 +140,11 @@ export async function callGeminiText(
     options?: GeminiOptions,
 ): Promise<string> {
     const temperature = options?.temperature ?? 0.7;
-    const jsonMode = options?.jsonMode ?? true;
+    // Gemini does NOT allow responseMimeType:'application/json' (structured output) together with
+    // tools like googleSearch (grounding) — the combination degrades the output (empty/truncated
+    // JSON). When grounding is on, drop JSON mode and rely on the prompt-instructed format +
+    // parseContentResponse's extraction/repair instead.
+    const jsonMode = (options?.jsonMode ?? true) && !options?.tools?.length;
 
     const parts = typeof userPrompt === 'string' ? [{ text: userPrompt }] : userPrompt;
 
@@ -248,13 +200,15 @@ export async function callGeminiText(
         logError('[gemini] ⚠️ Response TRUNCATED (MAX_TOKENS). Output may be incomplete.');
     }
 
-    // Filter out thinking parts — only use the actual text response
-    const textParts = allParts.filter(p => !p.thought);
-    let text = textParts.find(p => p.text)?.text;
+    // Concatenate ALL non-thought text parts. Grounded responses (googleSearch tool) and long
+    // outputs can be split across multiple text parts; taking only the FIRST truncates the answer
+    // — commonly dropping the trailing closing brace, which then breaks JSON parsing downstream.
+    const textParts = allParts.filter(p => !p.thought && typeof p.text === 'string');
+    let text = textParts.map(p => p.text).join('');
 
     if (!text) {
-        // Fallback: if no non-thought text found, try all parts
-        text = allParts.find(p => p.text)?.text;
+        // Last resort: no non-thought text — join whatever text parts exist (may include thinking).
+        text = allParts.filter(p => typeof p.text === 'string').map(p => p.text).join('');
         logError('[gemini] No non-thought text part found.',
             'thoughtParts:', allParts.filter(p => p.thought).length,
             'textParts:', textParts.length,
@@ -325,6 +279,50 @@ export async function validateGeminiKey(key: string): Promise<boolean> {
 /**
  * Parse content response from Gemini into DraftContent and optional overviewUpdates
  */
+/**
+ * Append the closing brackets/braces needed to balance a truncated JSON string. Walks the string
+ * tracking string literals/escapes so braces inside text aren't counted, then closes any still-open
+ * `{`/`[` (and a dangling string). Best-effort recovery for LLM output cut off before it finished.
+ */
+function balanceBrackets(s: string): string {
+    const stack: string[] = [];
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) {
+            if (esc) esc = false;
+            else if (ch === '\\') esc = true;
+            else if (ch === '"') inStr = false;
+        } else if (ch === '"') inStr = true;
+        else if (ch === '{') stack.push('}');
+        else if (ch === '[') stack.push(']');
+        else if (ch === '}' || ch === ']') stack.pop();
+    }
+    let out = s;
+    if (inStr) out += '"';
+    while (stack.length) out += stack.pop();
+    return out;
+}
+
+/**
+ * Parse the extracted JSON; if that fails (commonly a truncated response missing trailing braces),
+ * re-extract from the first `{` of the full cleaned text and balance the brackets before retrying.
+ * Throws if neither parses, so the caller's fallback still runs.
+ */
+function parseJsonWithRepair(primary: string, full: string): any {
+    try {
+        return JSON.parse(primary);
+    } catch {
+        const start = full.indexOf('{');
+        if (start === -1) throw new Error('no object start');
+        const repaired = balanceBrackets(full.slice(start));
+        const parsed = JSON.parse(repaired);
+        logInfo('[parse] recovered truncated JSON via bracket balancing');
+        return parsed;
+    }
+}
+
 function parseContentResponse(content: string): ContentResponse {
     logInfo('[parse] input length:', content.length, 'preview:', content.substring(0, 300));
 
@@ -344,17 +342,21 @@ function parseContentResponse(content: string): ContentResponse {
             format: 'single',
             tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],
         };
-        fallbackContent.imagePrompt = buildImagePrompt(fallbackContent);
         return { content: fallbackContent, overviewUpdates: null };
     }
 
     logInfo('[parse] JSON match length:', jsonMatch[0].length, 'starts:', jsonMatch[0].substring(0, 100));
 
     try {
-        const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = parseJsonWithRepair(jsonMatch[0], cleaned);
 
-        if (!parsed.format || !Array.isArray(parsed.tweets)) {
-            logError('[parse] Invalid structure — format:', parsed.format, 'tweets type:', typeof parsed.tweets,
+        // Reject missing structure AND empty/all-blank generations (e.g. {"tweets":[]}) — those must
+        // not become a silent empty draft; fall through to the raw-text fallback so something shows.
+        const hasContent = Array.isArray(parsed.tweets)
+            && parsed.tweets.some((t: { text?: string }) => typeof t?.text === 'string' && t.text.trim().length > 0);
+        if (!parsed.format || !hasContent) {
+            logError('[parse] Invalid/empty structure — format:', parsed.format, 'tweets type:', typeof parsed.tweets,
+                'tweetCount:', Array.isArray(parsed.tweets) ? parsed.tweets.length : 'n/a',
                 'top-level keys:', Object.keys(parsed).join(', '));
             throw new Error('Invalid content structure');
         }
@@ -368,15 +370,7 @@ function parseContentResponse(content: string): ContentResponse {
         };
 
         logInfo('[parse] ✅ parsed OK — format:', parsed.format, 'tweets:', parsed.tweets.length,
-            'hasImagePrompt:', !!parsed.imagePrompt, 'hasOverviewUpdates:', !!parsed.overviewUpdates);
-
-        if (parsed.imagePrompt && isValidImagePromptData(parsed.imagePrompt)) {
-            draftContent.imagePrompt = parsed.imagePrompt;
-        } else {
-            if (parsed.imagePrompt) logInfo('imagePrompt failed validation, using fallback');
-            else logInfo('No imagePrompt in response, generating fallback');
-            draftContent.imagePrompt = buildImagePrompt(draftContent);
-        }
+            'hasOverviewUpdates:', !!parsed.overviewUpdates);
 
         // Extract overviewUpdates if present
         let overviewUpdates: OverviewPatch | null = null;
@@ -394,7 +388,6 @@ function parseContentResponse(content: string): ContentResponse {
             format: 'single',
             tweets: [{ text: content.replace(/```[\s\S]*?```/g, '').trim(), index: 0 }],
         };
-        fallbackContent.imagePrompt = buildImagePrompt(fallbackContent);
         return { content: fallbackContent, overviewUpdates: null };
     }
 }
@@ -411,7 +404,6 @@ export async function refineContent(
     content: DraftContent,
     options: {
         instruction?: string;
-        generateImagePrompt?: boolean;
         chatId?: string;
         language?: string;
         imageParts?: ImagePart[];
@@ -421,10 +413,8 @@ export async function refineContent(
     const cId = options.chatId || '';
     const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
 
-    // Build system instruction with identity + optional image-gen
-    const systemPrompt = await assembleSystemInstruction(env, cId, 'refine', lang, {
-        attachImageGen: options.generateImagePrompt,
-    });
+    // Build system instruction with identity (text refinement only — image generation is per-slot)
+    const systemPrompt = await assembleSystemInstruction(env, cId, 'refine', lang);
 
     // Build user prompt — instruction framed as self-directed if present
     let userPromptText: string;
@@ -451,12 +441,6 @@ export async function refineContent(
         tools: [{ googleSearch: {} }],
     });
     const result = parseContentResponse(responseText).content;
-
-    // Strip imagePrompt if not requested
-    if (!options.generateImagePrompt) {
-        delete result.imagePrompt;
-    }
-
     return result;
 }
 
@@ -518,26 +502,6 @@ export async function editContent(
     language?: string,
 ): Promise<DraftContent> {
     return refineContent(env, currentContent, { instruction, chatId, language });
-}
-
-/**
- * Build a natural language prompt string from ImagePromptData.
- * Joins all fields into a flowing description for the image model.
- */
-function consolidateImagePrompt(data: ImagePromptData): string {
-    return [
-        data.concept.main_subject,
-        data.concept.symbolic_elements,
-        data.concept.mood,
-        data.composition.style,
-        data.composition.perspective,
-        data.environment.setting,
-        data.environment.lighting,
-        data.environment.color_palette,
-        data.technical.medium,
-        data.technical.quality,
-        data.technical.negative,
-    ].join('. ');
 }
 
 // ==================== RESILIENT GEMINI IMAGE GENERATION ====================
@@ -678,71 +642,21 @@ export async function generateGeminiImage(
 }
 
 /**
- * Generate an image using Gemini image generation.
- * Returns the raw image data as ArrayBuffer, or null if failed.
+ * Refine handwritten content (text only). Image generation is no longer part of
+ * this path — it is a per-slot action (see ai/tweet-image.ts). When refineText is
+ * false there is nothing to do and the content is returned unchanged.
  */
-export async function generateImage(env: Env, content: DraftContent): Promise<{ data: ArrayBuffer; mimeType: string } | null> {
-    // Build the prompt string
-    let promptStr: string;
-    if (content.imagePrompt) {
-        if (typeof content.imagePrompt === 'string') {
-            promptStr = content.imagePrompt;
-        } else {
-            promptStr = consolidateImagePrompt(content.imagePrompt);
-        }
-    } else {
-        promptStr = consolidateImagePrompt(buildImagePrompt(content));
-    }
-
-    logInfo('Generating image with Gemini, prompt length:', promptStr.length);
-
-    try {
-        const image = await generateGeminiImage(env, [{ text: `Generate an image: ${promptStr}` }]);
-        logInfo('Image generated successfully, size:', image.data.length);
-        return { data: image.data.buffer, mimeType: image.mimeType };
-    } catch (error) {
-        if (error instanceof GeminiImageError) {
-            logError('Image generation failed:', error.status, error.detail.substring(0, 200));
-        } else {
-            logError('Image generation error:', error instanceof Error ? error.message : String(error));
-        }
-        return null;
-    }
-}
-
 export async function refineHandwrittenContent(
     env: Env,
     content: DraftContent,
-    options: { refineText: boolean; generateImagePrompt: boolean; instruction?: string; imageParts?: ImagePart[] },
+    options: { refineText: boolean; instruction?: string; imageParts?: ImagePart[] },
     language?: string,
     chatId?: string,
 ): Promise<DraftContent> {
-    if (!options.refineText && options.generateImagePrompt) {
-        // Image-only mode: image-gen skill + identity (no refine skill)
-        const lang = language || 'en';
-        const systemPrompt = await assembleSystemInstruction(env, chatId || '', 'image-gen', lang);
-        const tweetsText = content.tweets.map((t, i) => `Tweet ${i + 1}: ${t.text}`).join('\n');
-        let userPromptText = options.instruction
-            ? `I don't want to change the tweet text. I want an image for this direction: ${options.instruction}\n\n${tweetsText}`
-            : `I don't want to change the tweet text. I want an image that captures the theme.\n\n${tweetsText}`;
-
-        let userPrompt: string | Array<{ text: string } | ImagePart>;
-        if (options.imageParts && options.imageParts.length > 0) {
-            const mapping = buildImageMapping(content.tweets);
-            if (mapping) userPromptText += `\n\n${mapping}`;
-            userPromptText += '\n\nI\'m attaching these images as reference.';
-            userPrompt = [{ text: userPromptText }, ...options.imageParts];
-        } else {
-            userPrompt = userPromptText;
-        }
-
-        const responseText = await callLLMText(env, systemPrompt, userPrompt);
-        return parseContentResponse(responseText).content;
-    }
+    if (!options.refineText) return content;
 
     return refineContent(env, content, {
         instruction: options.instruction,
-        generateImagePrompt: options.generateImagePrompt,
         imageParts: options.imageParts,
         chatId,
         language,

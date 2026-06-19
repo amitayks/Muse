@@ -1,0 +1,66 @@
+/* MediaGrid — compact thumbnail grid for the composing state. Token-driven; no hardcoded palette. */
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  align-items: flex-start;
+}
+
+.item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.thumb {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.video {
+  background: var(--secondary-bg);
+}
+
+.playOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--btn-text);
+  filter: drop-shadow(0 1px 2px var(--separator));
+}
+
+.remove {
+  position: absolute;
+  top: -6px;
+  inset-inline-end: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--destructive);
+  color: var(--btn-text);
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  line-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzone {
+  width: 80px;
+  height: 80px;
+}
+
+.maxHint {
+  font-size: var(--text-sm);
+  color: var(--hint);
+  align-self: center;
+}

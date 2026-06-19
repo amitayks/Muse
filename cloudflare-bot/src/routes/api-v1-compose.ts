@@ -6,6 +6,7 @@
 
 import type { DraftContent, Tweet } from '../types';
 import { createDraft } from '../data/db';
+import { syncBotMessage } from '../services/webapp-sync';
 import type { ApiContext } from './api-v1';
 import { jsonResponse, errorResponse } from './api-v1';
 
@@ -24,7 +25,8 @@ export async function handleComposeApi(ctx: ApiContext, path: string): Promise<R
 async function handleCompose(ctx: ApiContext): Promise<Response> {
     const body = await ctx.request.json() as {
         tweets: Array<{ text: string; media?: Array<{ key: string; type: 'photo' | 'video' }> }>;
-        options?: { aiRefine?: boolean; imageGen?: boolean; instruction?: string; langOverride?: 'en' | 'he' };
+        // `imageGen` is no longer accepted — image generation is a per-tweet action (POST /drafts/:id/tweets/:idx/image).
+        options?: { aiRefine?: boolean; analyzeImages?: boolean; instruction?: string; langOverride?: 'en' | 'he' };
     };
 
     if (!body.tweets?.length) return errorResponse('At least one tweet is required', 400);
@@ -52,7 +54,7 @@ async function handleCompose(ctx: ApiContext): Promise<Response> {
             const { refineHandwrittenContent } = await import('../ai/gemini');
             const refined = await refineHandwrittenContent(
                 userEnv, content,
-                { refineText: true, generateImagePrompt: !!body.options?.imageGen, instruction: body.options?.instruction },
+                { refineText: true, instruction: body.options?.instruction },
                 effectiveLang, ctx.chatId,
             );
             if (refined) content = refined;
@@ -71,22 +73,38 @@ async function handleCompose(ctx: ApiContext): Promise<Response> {
         content: JSON.stringify(content),
     });
 
+    // Drive the existing bot-message sync so the bot reflects the new draft.
+    ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
+
     return jsonResponse({ success: true, draftId });
 }
 
 async function handleGenerate(ctx: ApiContext): Promise<Response> {
+    // Accept both the v2 shape `{ sha, message?, instruction?, options: { ai?, image?, langOverride? } }`
+    // and the legacy shape `{ repoId, commitSha, fastImage?, fastAi?, langOverride? }`.
     const body = await ctx.request.json() as {
-        repoId: string;
-        commitSha: string;
-        fastImage?: boolean;
+        // v2 shape — `image` is no longer accepted (image generation is a per-tweet action).
+        sha?: string;
+        message?: string;
+        instruction?: string;
+        options?: { ai?: boolean; langOverride?: 'en' | 'he' };
+        // legacy shape
+        repoId?: string;
+        commitSha?: string;
         fastAi?: boolean;
         langOverride?: 'en' | 'he';
     };
 
-    if (!body.commitSha) return errorResponse('commitSha is required', 400);
+    // Normalize across both shapes.
+    const sha = (body.sha ?? body.commitSha ?? '').trim();
+    const message = body.message?.trim() || undefined;
+    const instruction = body.instruction?.trim() || undefined;
+    const langOverride = body.options?.langOverride ?? body.langOverride;
 
-    // Validate SHA format
-    if (!/^[0-9a-f]{7,40}$/i.test(body.commitSha)) {
+    if (!sha) return errorResponse('sha is required', 400);
+
+    // Validate SHA format (partial SHAs allowed — resolved server-side).
+    if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
         return errorResponse('Invalid commit SHA format', 400);
     }
 
@@ -100,9 +118,9 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
     // Resolve effective language
     const { getUserLanguage } = await import('../data/user-settings-db');
     const userLang = await getUserLanguage(ctx.env, ctx.chatId);
-    const effectiveLang = body.langOverride ?? userLang;
+    const effectiveLang = langOverride ?? userLang;
 
-    // Find repo context if repoId provided
+    // Find repo context if repoId provided (legacy callers).
     let repoId: string | undefined;
     if (body.repoId) {
         const { getRepo } = await import('../data/db');
@@ -112,10 +130,20 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
 
     let contentResult;
     try {
-        const source = await getContentSource(userEnv, body.commitSha);
-        contentResult = await generateContent(userEnv, source, repoId, effectiveLang, ctx.chatId);
+        // Resolve the (possibly partial) SHA to repo + commit details server-side.
+        const source = await getContentSource(userEnv, sha);
+        contentResult = await generateContent(userEnv, source, repoId, effectiveLang, ctx.chatId, {
+            // Combine the commit with any user message (context) and instruction (steer).
+            userTweets: message ? [message] : undefined,
+            instruction,
+        });
     } catch (err) {
-        return errorResponse(`Generation failed: ${err instanceof Error ? err.message : String(err)}`, 500);
+        const msg = err instanceof Error ? err.message : String(err);
+        // Unresolvable SHA → 404 with an actionable message; other failures → 500.
+        if (/not found in any accessible repo/i.test(msg)) {
+            return errorResponse(`Could not resolve commit ${sha} in any accessible repo`, 404);
+        }
+        return errorResponse(`Generation failed: ${msg}`, 500);
     }
 
     if (!contentResult) {
@@ -125,10 +153,13 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
     const draftId = await createDraft(ctx.env, ctx.chatId, {
         pr_number: 0,
         pr_title: contentResult.content.tweets[0]?.text.substring(0, 80) || 'Generated',
-        commit_sha: body.commitSha,
+        commit_sha: sha,
         source: 'commit',
         content: JSON.stringify(contentResult.content),
     });
+
+    // Drive the existing bot-message sync so the bot reflects the new draft.
+    ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
     return jsonResponse({ success: true, draftId });
 }
@@ -174,6 +205,9 @@ async function handleRepost(ctx: ApiContext): Promise<Response> {
         original_tweet_id: originalTweetId,
         original_tweet_url: body.url,
     });
+
+    // Drive the existing bot-message sync so the bot reflects the new draft.
+    ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
     return jsonResponse({ success: true, draftId });
 }

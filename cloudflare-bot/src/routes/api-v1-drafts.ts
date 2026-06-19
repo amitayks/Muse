@@ -7,10 +7,11 @@ import {
     getDraft, getAllDrafts, countDrafts,
     getDraftsBySource, countDraftsBySource, getHandwriteDraftCount,
     updateDraftContent, updateDraftStatus, updateDraftPublishTargets,
-    scheduleDraft, deleteDraft,
+    scheduleDraft, deleteDraft, getTimezone,
 } from '../data/db';
 import { getUser } from '../data/user-db';
 import { publishDraft } from '../core/publish';
+import { toUTC } from '../infra/timezone';
 import { syncBotMessage, syncBotHome } from '../services/webapp-sync';
 import type { ApiContext } from './api-v1';
 import { jsonResponse, errorResponse } from './api-v1';
@@ -76,6 +77,12 @@ export async function handleDraftsApi(ctx: ApiContext, path: string): Promise<Re
         return updateTargets(ctx, draftId);
     }
 
+    // POST /api/v1/drafts/:id/tweets/:idx/image — generate an AI image into a tweet slot
+    const tweetImageMatch = action?.match(/^tweets\/(\d+)\/image$/);
+    if (tweetImageMatch && method === 'POST') {
+        return generateTweetImageAction(ctx, draftId, Number(tweetImageMatch[1]));
+    }
+
     return errorResponse('Not Found', 404);
 }
 
@@ -93,20 +100,18 @@ async function listDrafts(ctx: ApiContext): Promise<Response> {
     let drafts;
     let total;
 
-    if (source === 'auto' || source === 'commit') {
+    // ALL statuses — used when filtering purely by source (the Drafts-hub "Type" tiles want
+    // every draft of a source, regardless of status). When a status is ALSO supplied (the
+    // Needs-Review source-filter chips), we scope to just that status.
+    const ALL_STATUSES = ['draft', 'approved', 'scheduled', 'published', 'publishing'];
+
+    if (source) {
+        // 'auto' and 'commit' are both code-sourced → treat them together.
+        const sources = source === 'auto' || source === 'commit' ? ['auto', 'commit'] : [source];
+        const statuses = status ? [status] : ALL_STATUSES;
         [drafts, total] = await Promise.all([
-            getDraftsBySource(env, chatId, ['auto', 'commit'], ['draft'], limit, offset),
-            countDraftsBySource(env, chatId, ['auto', 'commit'], ['draft']),
-        ]);
-    } else if (source === 'handwrite') {
-        [drafts, total] = await Promise.all([
-            getDraftsBySource(env, chatId, 'handwrite', ['draft'], limit, offset),
-            countDraftsBySource(env, chatId, 'handwrite', ['draft']),
-        ]);
-    } else if (source === 'repost') {
-        [drafts, total] = await Promise.all([
-            getDraftsBySource(env, chatId, 'repost', ['draft'], limit, offset),
-            countDraftsBySource(env, chatId, 'repost', ['draft']),
+            getDraftsBySource(env, chatId, sources, statuses, limit, offset),
+            countDraftsBySource(env, chatId, sources, statuses),
         ]);
     } else if (status) {
         [drafts, total] = await Promise.all([
@@ -246,10 +251,23 @@ async function scheduleDraftAction(ctx: ApiContext, draftId: string): Promise<Re
     const body = await ctx.request.json() as { scheduled_at: string };
     if (!body.scheduled_at) return errorResponse('scheduled_at is required', 400);
 
-    await scheduleDraft(ctx.env, draftId, ctx.chatId, body.scheduled_at);
+    // The webapp sends a wall-clock datetime (no timezone) from its <input type="datetime-local">.
+    // Interpret it in the user's configured timezone — exactly like the bot's own schedule input
+    // handler (inputs/schedule.ts) — and convert to UTC for storage. The worker runs in UTC, so
+    // `new Date('YYYY-MM-DDTHH:mm')` parses the wall-clock as UTC; toUTC then subtracts the offset.
+    const tz = await getTimezone(ctx.env, ctx.chatId);
+    const localDate = new Date(body.scheduled_at);
+    if (isNaN(localDate.getTime())) return errorResponse('Invalid scheduled_at', 400);
+    const scheduledAtUTC = toUTC(localDate, tz);
+    if (scheduledAtUTC.getTime() <= Date.now()) {
+        return errorResponse('scheduled_at must be in the future', 400);
+    }
+
+    const scheduledAtISO = scheduledAtUTC.toISOString();
+    await scheduleDraft(ctx.env, draftId, ctx.chatId, scheduledAtISO);
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
-    return jsonResponse({ success: true, status: 'scheduled', scheduled_at: body.scheduled_at });
+    return jsonResponse({ success: true, status: 'scheduled', scheduled_at: scheduledAtISO });
 }
 
 async function unscheduleDraft(ctx: ApiContext, draftId: string): Promise<Response> {
@@ -304,6 +322,27 @@ async function updateTargets(ctx: ApiContext, draftId: string): Promise<Response
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
     return jsonResponse({ success: true, publish_targets: body.publish_targets });
+}
+
+// ==================== Per-tweet image generation ====================
+
+async function generateTweetImageAction(ctx: ApiContext, draftId: string, tweetIndex: number): Promise<Response> {
+    // Hydrate per-user keys (GOOGLE_API_KEY/AI_PROVIDER/X bearer) — the raw API env has none.
+    const { hydrateEnv } = await import('../data/user-keys');
+    const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
+    const { generateTweetImage, TweetImageError } = await import('../ai/tweet-image');
+    try {
+        const result = await generateTweetImage(userEnv, ctx.chatId, draftId, tweetIndex);
+        // Reflect the newly generated media on the Telegram bot message.
+        ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
+        return jsonResponse({ success: true, media: result.media });
+    } catch (err) {
+        if (err instanceof TweetImageError) {
+            return errorResponse(err.message, err.status);
+        }
+        console.error('[tweet-image] generation failed:', err);
+        return errorResponse(`Image generation failed: ${err instanceof Error ? err.message : String(err)}`, 500);
+    }
 }
 
 // ==================== Delete ====================

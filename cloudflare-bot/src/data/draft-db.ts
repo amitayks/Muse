@@ -101,6 +101,19 @@ export async function getNextScheduledDraft(env: Env, chatId: string): Promise<D
 }
 
 /**
+ * Get all scheduled drafts ordered by soonest scheduled_at first.
+ * Used by the webapp Home timeline to render the full upcoming queue.
+ */
+export async function getScheduledDrafts(env: Env, chatId: string, limit = 50): Promise<Draft[]> {
+    const result = await env.DB.prepare(
+        "SELECT * FROM drafts WHERE chat_id = ? AND status = 'scheduled' ORDER BY scheduled_at ASC LIMIT ?"
+    )
+        .bind(chatId, limit)
+        .all<Draft>();
+    return result.results || [];
+}
+
+/**
  * Get draft counts grouped by status
  */
 export async function getDraftStatusCounts(env: Env, chatId: string): Promise<Record<string, number>> {
@@ -112,6 +125,23 @@ export async function getDraftStatusCounts(env: Env, chatId: string): Promise<Re
     const counts: Record<string, number> = {};
     for (const row of result.results || []) {
         counts[row.status] = row.count;
+    }
+    return counts;
+}
+
+/**
+ * Get draft counts grouped by source (across all statuses).
+ * `auto` and `commit` are both code-sourced; callers typically merge them into "commit".
+ */
+export async function getDraftSourceCounts(env: Env, chatId: string): Promise<Record<string, number>> {
+    const result = await env.DB.prepare(
+        'SELECT source, COUNT(*) as count FROM drafts WHERE chat_id = ? GROUP BY source'
+    )
+        .bind(chatId)
+        .all<{ source: string; count: number }>();
+    const counts: Record<string, number> = {};
+    for (const row of result.results || []) {
+        counts[row.source] = row.count;
     }
     return counts;
 }

@@ -158,3 +158,34 @@ The media upload endpoint (`POST /api/v1/media/upload`) SHALL route `video/mp4` 
 - **WHEN** transcoding the uploaded video fails or times out
 - **THEN** the endpoint SHALL return an actionable error (e.g. 422/500 with a clear message) and SHALL NOT store the original out-of-spec file as the media
 
+### Requirement: Generate image into a tweet slot
+The system SHALL offer a one-click **Generate** action on every image placeholder in the composer, alongside the upload affordance. Activating it SHALL call `POST /api/v1/drafts/:id/tweets/:idx/image` for the current draft and tweet, and on success SHALL drop the returned media `{ key, type: 'photo' }` into that tweet's slot — symmetric with how an upload lands. Generation SHALL require a saved draft (a draft id must exist); if the draft is unsaved, the webapp SHALL save it first and then generate. Photo/video exclusivity and the per-tweet image limit SHALL apply identically to generated and uploaded images.
+
+#### Scenario: Generate on an empty image slot
+- **WHEN** the user taps Generate on an image placeholder of a saved draft
+- **THEN** the webapp SHALL call the per-tweet image endpoint and, on success, display the returned image in that slot
+
+#### Scenario: Generate requires a saved draft
+- **WHEN** the user taps Generate while the draft has not yet been saved
+- **THEN** the webapp SHALL save the draft to obtain an id, then generate the image for the targeted tweet
+
+#### Scenario: Generation in progress
+- **WHEN** a per-slot image generation is running
+- **THEN** a loading indicator SHALL be displayed on that image slot and the action SHALL be disabled until it resolves
+
+#### Scenario: Generation error handling
+- **WHEN** a per-slot image generation fails (model error, safety block, network)
+- **THEN** an error message SHALL be displayed inline on that slot and the user SHALL be able to retry, with the slot's existing media unchanged
+
+#### Scenario: Generated image respects media limits
+- **WHEN** a generated image would exceed the per-tweet image limit or violate photo/video exclusivity
+- **THEN** the Generate action SHALL be unavailable for that slot, consistent with the upload rules
+
+### Requirement: Video generation placeholder
+The system SHALL display a video-generation affordance on video placeholders as a non-functional placeholder only (e.g. disabled or "coming soon"). Activating it SHALL NOT call any backend and SHALL NOT generate a video; real video generation is deferred to a separate future change.
+
+#### Scenario: Video generate affordance is a stub
+- **WHEN** the user views a video placeholder in the composer
+- **THEN** a video-generation affordance SHALL be shown in a non-functional state
+- **AND** interacting with it SHALL NOT trigger any backend request or video generation
+

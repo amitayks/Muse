@@ -9,7 +9,7 @@ import { t } from '../ui/strings';
 import { getChatState, parseContext, updateChatState, createDraft, getTimezone, applyOverviewPatches } from '../data/db';
 import { getUser } from '../data/user-db';
 import { sendMessage, editMessage, deleteMessage, sendPhoto, sendMediaGroup } from '../integrations/telegram';
-import { ensureImage } from '../data/storage';
+import { generateTweetImage } from '../ai/tweet-image';
 import { renderCompose, renderDraftDetail } from '../views';
 import { truncateHtml } from '../ui/utils';
 import { renderHome } from '../views/home';
@@ -189,13 +189,13 @@ async function handleHandwritePenDown(
         tweets,
     };
 
-    if (compose.aiRefine || compose.imageGen) {
+    // Text refinement only — image generation is handled per-tweet in finalizeDraft.
+    if (compose.aiRefine) {
         try {
             const { refineHandwrittenContent } = await import('../ai/gemini');
             const imageParts = await buildUserImageParts(env, compose, allOriginalMedia);
             content = await refineHandwrittenContent(env, content, {
                 refineText: compose.aiRefine,
-                generateImagePrompt: compose.imageGen,
                 instruction: compose.instruction,
                 imageParts,
             }, effectiveLang, chatId);
@@ -388,7 +388,6 @@ async function handleCommitPenDown(
                     userTweets: userTweetTexts.length > 0 ? userTweetTexts : undefined,
                     instruction: compose.instruction,
                     userImageParts,
-                    generateImagePrompt: compose.imageGen,
                 },
             );
 
@@ -526,16 +525,16 @@ async function finalizeDraft(
         }
     }
 
-    // Generate image if needed
+    // Image: use an uploaded image if present, else generate one per-tweet when requested.
     let imageUrl: string | null = null;
     if (perTweetMediaUrls.length > 0) {
         imageUrl = perTweetMediaUrls[0];
-    } else if (content.imagePrompt) {
+    } else if (compose.imageGen) {
         await editMessage(env, chatId, statusMsgId, t(lang, 'compose.generatingImage'));
         try {
-            const ensuredUrl = await ensureImage(env, chatId, { id: draftId, content: JSON.stringify(content) });
-            if (ensuredUrl) {
-                imageUrl = `${env.WORKER_URL}${ensuredUrl}`;
+            const generated = await generateTweetImage(env, chatId, draftId, 0);
+            if (env.WORKER_URL) {
+                imageUrl = `${env.WORKER_URL}/media/${generated.media.key}`;
             }
         } catch (imgError) {
             console.error('Image generation failed:', sanitizeError(imgError));

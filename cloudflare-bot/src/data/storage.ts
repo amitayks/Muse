@@ -5,97 +5,9 @@
  * env.IMAGES (R2) for persistence.
  */
 
-import type { Env, DraftContent } from '../types';
-import { generateImage } from '../ai/gemini';
-import { logInfo, logError, isValidImageContentType, isValidFileSize } from '../infra/security';
+import type { Env } from '../types';
+import { logInfo, logError, isValidFileSize } from '../infra/security';
 import { getFileUrl } from '../integrations/telegram';
-
-/**
- * Generate an image and store it in R2
- * @returns R2 key path for the stored image, or null if failed
- */
-export async function generateAndStoreImage(
-    env: Env,
-    content: DraftContent,
-    draftId: string
-): Promise<string | null> {
-    try {
-        const result = await generateImage(env, content);
-        if (!result) {
-            logInfo('No image data returned from generation');
-            return null;
-        }
-
-        // SECURITY: Validate image content type
-        if (!isValidImageContentType(result.mimeType)) {
-            logError('Invalid image content type:', result.mimeType);
-            return null;
-        }
-
-        // SECURITY: Validate file size (max 10MB)
-        if (!isValidFileSize(result.data.byteLength)) {
-            logError('Image file too large:', result.data.byteLength);
-            return null;
-        }
-
-        // Store in R2
-        const ext = result.mimeType === 'image/jpeg' ? 'jpg' : 'png';
-        const key = `drafts/${draftId}/image.${ext}`;
-        await env.IMAGES.put(key, result.data, {
-            httpMetadata: { contentType: result.mimeType },
-        });
-
-        logInfo('Image stored in R2 for draft:', draftId);
-        return key;
-    } catch (error) {
-        logError('generateAndStoreImage error:', error instanceof Error ? error.message : String(error));
-        return null;
-    }
-}
-
-/**
- * Ensure a draft has an image - check R2 first, generate if missing
- * @returns The image URL to display, or null if generation failed
- */
-export async function ensureImage(
-    env: Env,
-    chatId: string,
-    draft: { id: string; content: string; image_url?: string | null }
-): Promise<string | null> {
-    // If draft already has an image key, build the URL
-    if (draft.image_url) {
-        const existing = await env.IMAGES.get(draft.image_url);
-        if (existing) {
-            logInfo('Using existing R2 image for draft:', draft.id);
-            return `/image/${draft.image_url}`;
-        }
-        logInfo('Image key exists but file missing, regenerating for draft:', draft.id);
-    }
-
-    // Parse content to generate image
-    let content: DraftContent;
-    try {
-        content = JSON.parse(draft.content) as DraftContent;
-    } catch {
-        logError('Failed to parse draft content for image generation');
-        return null;
-    }
-
-    // Generate and store
-    logInfo('Generating image on-demand for draft:', draft.id);
-    const imageKey = await generateAndStoreImage(env, content, draft.id);
-
-    if (!imageKey) {
-        return null;
-    }
-
-    // Save the image key to the database
-    const { updateDraft } = await import('./db');
-    await updateDraft(env, draft.id, chatId, { image_url: imageKey });
-    logInfo('Saved image key to draft:', draft.id);
-
-    return `/image/${imageKey}`;
-}
 
 /**
  * Download a user-sent photo from Telegram and store in R2

@@ -1,0 +1,36 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 100%;
+  background: var(--secondary-bg);
+}
+
+.content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: var(--safe-top);
+}
+
+/* Reserve space for the fixed Tabbar (+ device safe area) on top-level screens. */
+.content[data-with-tabbar] {
+  padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom) + var(--content-safe-bottom));
+}
+
+/* Fill screens own their internal scroll: make the content a non-scrolling flex column so the
+   page fills the area above the tabbar exactly (header pinned top, footer flush above the nav,
+   list scrolls between them). The Tabbar is position:fixed (wrapped in FixedLayout), so the
+   data-with-tabbar padding-bottom reservation above is what keeps the content-box — and thus the
+   pinned footer (e.g. Home's compose bar) — sitting flush ABOVE the fixed nav rather than under it. */
+.content[data-fill] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tabbar {
+  /* telegram-ui's Tabbar is position:fixed and safe-area aware by default; this is a hook
+     for any future per-app overrides without touching the kit internals. */
+  z-index: 2;
+}
