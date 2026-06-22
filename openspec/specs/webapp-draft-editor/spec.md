@@ -178,3 +178,29 @@ The system SHALL display per-platform publish results for published drafts.
 - **WHEN** the draft editor opens for a published draft
 - **THEN** the tweet textareas SHALL be read-only (not editable), and action buttons (approve, schedule, delete) SHALL be hidden
 
+### Requirement: Per-media platform targeting row
+Below each attached media item in the composer, the system SHALL render a row of platform toggle pills (reusing `PlatformTogglePill`) — one pill per platform that is enabled on the draft's Platforms row (`x`, `instagram_post`, `instagram_story`, `instagram_reel`, `linkedin`). Each pill SHALL be active when that media is targeted to the platform (`media.targets?.[platform] ?? true`, so media with no `targets` shows every enabled pill active). Toggling a pill SHALL update that media item's `targets[platform]` and persist via the existing debounced content save. The draft-level Platforms row SHALL remain the global on/off master — pills appear only for platforms it has enabled.
+
+#### Scenario: New media defaults to all enabled platforms
+- **WHEN** a media item with no `targets` is shown and the draft has X and Instagram Post enabled
+- **THEN** the media's row SHALL show an active X pill and an active Instagram Post pill (and no pills for disabled platforms)
+
+#### Scenario: Toggling a pill updates and persists targeting
+- **WHEN** the user taps the LinkedIn pill on a media item to turn it off
+- **THEN** that item's `targets.linkedin` SHALL become `false` and the draft content SHALL be saved via the debounced content save
+
+#### Scenario: Pills reflect only enabled platforms
+- **WHEN** the draft has LinkedIn disabled on the Platforms row
+- **THEN** no LinkedIn pill SHALL appear in any media item's row
+
+#### Scenario: A media item targeted nowhere
+- **WHEN** the user turns off every pill on a media item
+- **THEN** the item SHALL be allowed to remain with all targets off (it will attach to no platform at publish), with no validation error
+
+### Requirement: X platform rendered with the X wordmark icon
+Everywhere the webapp represents the X platform with an icon — the composer Platforms row, the per-media targeting row, the schedule calendar, and the home view — it SHALL use a real X wordmark SVG icon, not the `@` glyph (lucide `AtSign`). A shared `XIcon` component SHALL provide the mark.
+
+#### Scenario: X platform shows the wordmark
+- **WHEN** any X platform pill or badge is rendered in the webapp
+- **THEN** it SHALL display the X wordmark icon, not the `@` symbol
+

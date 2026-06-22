@@ -4,7 +4,7 @@
  * POST /api/v1/repost — Create repost draft from URL
  */
 
-import type { DraftContent, Tweet } from '../types';
+import type { DraftContent, Tweet, TweetMedia } from '../types';
 import { createDraft } from '../data/db';
 import { syncBotMessage } from '../services/webapp-sync';
 import type { ApiContext } from './api-v1';
@@ -24,7 +24,8 @@ export async function handleComposeApi(ctx: ApiContext, path: string): Promise<R
 
 async function handleCompose(ctx: ApiContext): Promise<Response> {
     const body = await ctx.request.json() as {
-        tweets: Array<{ text: string; media?: Array<{ key: string; type: 'photo' | 'video' }> }>;
+        // `media` carries optional per-item `targets` (TweetMedia) — passed through to stored content.
+        tweets: Array<{ text: string; media?: TweetMedia[] }>;
         // `imageGen` is no longer accepted — image generation is a per-tweet action (POST /drafts/:id/tweets/:idx/image).
         options?: { aiRefine?: boolean; analyzeImages?: boolean; instruction?: string; langOverride?: 'en' | 'he' };
     };

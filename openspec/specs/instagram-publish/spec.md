@@ -25,24 +25,32 @@ The system SHALL provide a function `publishToInstagramPost(env, imageUrl, capti
 - **THEN** the system SHALL return a timeout error
 
 ### Requirement: Instagram carousel post publishing (multiple images)
-The system SHALL provide a function `publishToInstagramCarousel(env, imageUrls, caption)` that publishes multiple images as a carousel feed post.
+The system SHALL provide a function `publishToInstagramCarousel(env, items, caption)` that publishes multiple media items as a carousel feed post, where each item is `{ url, type: 'photo' | 'video' }` and a carousel MAY mix photos and videos.
 
-#### Scenario: Successful carousel post with 3 images
-- **WHEN** `publishToInstagramCarousel()` is called with 3 valid public image URLs
-- **THEN** the system SHALL create a child container for each image via `POST /{account}/media` with `image_url` and `is_carousel_item: true`
+#### Scenario: Successful carousel post with 3 items
+- **WHEN** `publishToInstagramCarousel()` is called with 3 valid public media items
+- **THEN** the system SHALL create a child container for each item via `POST /{account}/media` with `is_carousel_item: true` — photo children sending `image_url`, video children sending `media_type: VIDEO` and `video_url`
 - **AND** create a carousel container via `POST /{account}/media` with `media_type: CAROUSEL` and `children` array of child container IDs
 - **AND** publish the carousel container via `POST /{account}/media_publish`
 - **AND** return `{ post_id: string, url: string }`
 
+#### Scenario: Mixed photo and video carousel
+- **WHEN** `publishToInstagramCarousel()` is called with a video item and a photo item
+- **THEN** the carousel SHALL contain BOTH — a VIDEO child and an image child — and publish as a single mixed carousel
+
 #### Scenario: One child container fails
 - **WHEN** one of the child container creations fails
-- **THEN** the system SHALL skip that image and continue with the remaining images
-- **AND** if at least 2 images succeed, publish the carousel with the successful images
-- **AND** if fewer than 2 images succeed, fall back to single image post with the first successful image
+- **THEN** the system SHALL skip that item and continue with the remaining items
+- **AND** if at least 2 children succeed, publish the carousel with the successful items
+- **AND** if fewer than 2 children succeed, fall back to a single post with the first successful item (image post for a photo, video feed post for a video)
 
-#### Scenario: Carousel with 10 images (Instagram maximum)
-- **WHEN** more than 10 images are provided
-- **THEN** the system SHALL use only the first 10 images
+#### Scenario: Carousel with 10 items (Instagram maximum)
+- **WHEN** more than 10 items are provided
+- **THEN** the system SHALL use only the first 10 items
+
+#### Scenario: Video child processing is polled to completion
+- **WHEN** a carousel contains a video child
+- **THEN** the system SHALL poll that child's container status until `FINISHED` (videos take longer than images) before assembling the carousel, consistent with the existing per-child poll
 
 ### Requirement: Instagram story publishing
 The system SHALL provide a function `publishToInstagramStory(env, imageUrl)` that publishes an image as an Instagram Story.
@@ -131,4 +139,31 @@ When an Instagram publish fails due to an auth error (expired/invalid token), th
 - **WHEN** an Instagram publish fails for a non-auth reason (e.g., aspect ratio, processing timeout)
 - **THEN** the failure message SHALL show the specific reason
 - **AND** SHALL NOT present the reconnect action (which would not resolve the problem)
+
+### Requirement: A single Instagram video publishes as a Reel
+When the media targeted to Instagram reduces to exactly one video — regardless of what other platforms or other media the thread carries — the system SHALL publish that video as a **Reel**: create a `REELS` container with `video_url` and the caption, poll to `FINISHED`, publish via `media_publish`, and return `{ post_id, url }` with a `/reel/` URL. It SHALL NOT publish the lone video as a regular feed post or fold it into a carousel.
+
+#### Scenario: One video targeted to Instagram
+- **WHEN** the Instagram-Post branch resolves to exactly one targeted media item and it is a video
+- **THEN** the system SHALL publish it as a Reel (REELS container), not as an image, a regular feed post, or a tweet card
+- **AND** the returned URL SHALL be a `/reel/` URL
+
+#### Scenario: Other platforms' media does not change the rule
+- **WHEN** a thread carries images for X or LinkedIn but only a single video is targeted to Instagram
+- **THEN** Instagram SHALL still publish that video as a Reel
+
+#### Scenario: Video container processing failure
+- **WHEN** the video container status becomes `ERROR` during polling
+- **THEN** the system SHALL surface a structured Instagram error (message/code/isAuthError), consistent with the other Instagram publish functions
+
+### Requirement: Instagram story supports video
+`publishToInstagramStory` SHALL accept either an image or a video. For a video story it SHALL create the story container with `media_type: STORIES` and `video_url` (instead of `image_url`), poll to completion, and publish. On video-story failure the publish flow SHALL fall back to the existing image/card story path rather than failing the whole publish.
+
+#### Scenario: Video targeted to Instagram Story
+- **WHEN** the Story target is enabled and a video is targeted to `instagram_story`
+- **THEN** the story SHALL be created from that video via `media_type: STORIES` with `video_url`
+
+#### Scenario: Video story fails → image fallback
+- **WHEN** a video story container reports `ERROR`
+- **THEN** the system SHALL fall back to an image/card story rather than failing the publish
 

@@ -16,7 +16,7 @@
 import type { Env, Draft, DraftContent, TweetMedia, RepoOverview } from '../types';
 import { assembleSystemInstruction } from './prompts';
 import { callLLMText, generateGeminiImage, GeminiImageError } from './gemini';
-import { getDraft, updateDraft } from '../data/draft-db';
+import { getDraft, appendTweetMedia } from '../data/draft-db';
 import { getContentSource } from '../integrations/github';
 import { getRepoByOwnerRepo, getRepoOverview } from '../data/repo-db';
 import { getTweetById } from '../integrations/x';
@@ -109,11 +109,21 @@ export async function generateTweetImage(
     await env.IMAGES.put(key, image.data, { httpMetadata: { contentType: image.mimeType } });
     logInfo('[tweet-image] stored image in R2:', key, 'bytes', image.data.byteLength);
 
-    // 7. Append to the tweet's media[] and persist (never writes draft.image_url)
+    // 7. Append to the tweet's media[] and persist (never writes draft.image_url).
+    // Persist via an ATOMIC single-statement append (json_set/json_insert) rather than a
+    // read-whole-content / write-whole-content cycle, so two generations overlapping in time
+    // cannot clobber each other's media (see appendTweetMedia for the concurrency rationale).
+    // No `targets` ⇒ all-on (isMediaTargeted defaults to true). A freshly generated image should
+    // go everywhere by default; the user narrows it via the per-media pills in the composer.
     const media: TweetMedia = { key, type: 'photo' };
+    const persisted = await appendTweetMedia(env, draftId, chatId, tweetIndex, media);
+    if (!persisted) throw new TweetImageError('Draft not found', 404);
+
+    // Mirror the append onto our in-memory copy for the return value only — callers use `content`
+    // for local editor state / bot render; the persisted source of truth was written atomically
+    // above (this copy may lag on OTHER tweets touched concurrently, which is fine for that use).
     tweet.media = [...(tweet.media ?? []), media];
     content.tweets[tweetIndex] = tweet;
-    await updateDraft(env, draftId, chatId, { content: JSON.stringify(content) });
 
     return { media, content };
 }

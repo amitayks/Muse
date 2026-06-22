@@ -148,11 +148,26 @@ export type DraftStatus = 'draft' | 'approved' | 'publishing' | 'published' | 's
 export type DraftFormat = 'single' | 'thread';
 
 // Media item attached to a tweet
+/**
+ * Per-media platform targeting. Each flag decides whether THIS media item attaches to that
+ * platform's post. Absent object / absent field ⇒ targeted (see isMediaTargeted in core/media-targets).
+ * Keys mirror PublishTargets so a media item and the draft use the same platform names.
+ */
+export interface MediaTargets {
+    x?: boolean;
+    instagram_post?: boolean;
+    instagram_story?: boolean;
+    instagram_reel?: boolean;
+    linkedin?: boolean;
+}
+
 export interface TweetMedia {
     key: string;       // R2 key
     type: 'photo' | 'video';
     width?: number;
     height?: number;
+    /** Per-item platform targeting; absent ⇒ all platforms (back-compat). */
+    targets?: MediaTargets;
 }
 
 // Tweet in a draft

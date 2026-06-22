@@ -139,28 +139,32 @@ The `drafts` table SHALL have a `source` column (`TEXT DEFAULT 'auto'`) to disti
 - **THEN** it SHALL return only drafts matching the given source value
 
 ### Requirement: Per-tweet media in publish flow
-The `publishDraft()` function SHALL support media attachments per tweet via the `Tweet.media[]` field, branching by media type — uploading photos via the simple media upload (max 4 per tweet) and uploading a single video via the chunked X upload — and enforcing the platform rule that a tweet carries EITHER up to 4 photos OR exactly 1 video.
+The `publishDraft()` function SHALL support media attachments per tweet via the `Tweet.media[]` field, branching by media type — uploading photos via the simple media upload (max 4 per tweet) and uploading a single video via the chunked X upload — and enforcing the platform rule that a tweet carries EITHER up to 4 photos OR exactly 1 video. Before applying these rules, each tweet's `media[]` SHALL be filtered to the items targeted to X (`isMediaTargeted(m, 'x')`); media not targeted to X SHALL NOT be uploaded or attached for that tweet.
 
 #### Scenario: Publish thread with multiple images per tweet
-- **WHEN** `publishDraft()` processes a thread where a tweet has `media: [{key:'a',type:'photo'}, {key:'b',type:'photo'}, {key:'c',type:'photo'}]`
+- **WHEN** `publishDraft()` processes a thread where a tweet has `media: [{key:'a',type:'photo'}, {key:'b',type:'photo'}, {key:'c',type:'photo'}]` all targeted to X
 - **THEN** all 3 photos SHALL be read from R2 and uploaded to X via `uploadMediaFromBuffer`
 - **AND** all 3 media IDs SHALL be passed to `postTweet` as `mediaIds: ["id_a", "id_b", "id_c"]`
 
+#### Scenario: Media deselected for X is not attached
+- **WHEN** a tweet's only media item has `targets.x = false`
+- **THEN** that tweet SHALL be posted on X with no media attached, and the deselected item SHALL NOT be uploaded to X
+
 #### Scenario: Publish tweet with a video
-- **WHEN** `publishDraft()` processes a tweet whose media contains an item with `type: 'video'`
+- **WHEN** `publishDraft()` processes a tweet whose media contains an item with `type: 'video'` targeted to X
 - **THEN** that video SHALL be uploaded to X via the shared chunked uploader (`uploadVideoToX`), and the resulting single media ID SHALL be attached to that tweet
 
 #### Scenario: Video exclusivity at publish
-- **WHEN** a tweet's `media[]` contains a video alongside photos (an invalid combination)
+- **WHEN** a tweet's X-targeted `media[]` contains a video alongside photos (an invalid combination)
 - **THEN** the video SHALL take precedence — only the video SHALL be uploaded and attached, and the photos on that tweet SHALL be skipped (the UI prevents this combination, but publish enforces it defensively)
 
 #### Scenario: Tweet with more than 4 images truncates for X
-- **WHEN** a tweet has 6 photos in `media[]`
+- **WHEN** a tweet has 6 X-targeted photos in `media[]`
 - **THEN** only the first 4 SHALL be uploaded and attached for X publishing
 - **AND** the remaining 2 SHALL be silently skipped (no error thrown)
 
 #### Scenario: Thread with mixed media counts
-- **WHEN** a thread has tweet 1 with 3 photos, tweet 2 with no media, tweet 3 with 1 video
+- **WHEN** a thread has tweet 1 with 3 photos, tweet 2 with no media, tweet 3 with 1 video (all targeted to X)
 - **THEN** tweet 1 SHALL have 3 photo media IDs attached, tweet 2 SHALL have none, tweet 3 SHALL have its single video media ID attached
 
 #### Scenario: Video processing failure on X
@@ -172,13 +176,13 @@ The `publishDraft()` function SHALL support media attachments per tweet via the 
 - **THEN** the existing behavior SHALL apply: the draft-level image is attached to the first tweet only
 
 #### Scenario: Repost quote tweet carries per-tweet media
-- **WHEN** `publishDraft()` publishes a repost draft (`source = 'repost'`) whose commentary tweet has per-tweet media (photos or a video)
+- **WHEN** `publishDraft()` publishes a repost draft (`source = 'repost'`) whose commentary tweet has X-targeted per-tweet media (photos or a video)
 - **THEN** that media SHALL be attached to the quote tweet (X supports media on quote tweets via `postQuoteTweet`), preferring the commentary tweet's `perTweetMediaIds[0]` over the legacy draft-level `image_url`
 - **AND** if the quote tweet falls back to a URL-appended regular tweet on a 403, the media SHALL still be attached
 
-#### Scenario: Instagram collects all images across tweets
-- **WHEN** `publishToIGPost()` processes a thread with multi-image tweets
-- **THEN** ALL images across all tweets SHALL be collected for the carousel (up to Instagram's 10-image limit)
+#### Scenario: Instagram collects all targeted media across tweets
+- **WHEN** `publishToIGPost()` processes a thread with multi-media tweets
+- **THEN** ALL media targeted to `instagram_post` across all tweets — photos AND videos — SHALL be collected for the carousel (up to Instagram's 10-item limit), in thread order
 
 ### Requirement: postThread accepts multi-media per tweet
 The `postThread()` function in `x.ts` SHALL accept `perTweetMediaIds` as `(string[] | null)[]` — an array of media ID arrays per tweet — instead of the current `(string | null)[]`.
@@ -422,21 +426,25 @@ The LinkedIn branch SHALL merge the draft's thread text into one post body by jo
 - **THEN** the commentary SHALL be that tweet's text (trimmed to 3000 characters if needed)
 
 ### Requirement: LinkedIn media combined with image/video exclusivity
-The LinkedIn branch SHALL collect media from the draft and attach it to the single post: if any tweet carries a video, exactly one video SHALL be uploaded and attached (`shareMediaCategory = VIDEO`) and photos SHALL be ignored; otherwise all photos across all tweets SHALL be collected, uploaded, and attached (`shareMediaCategory = IMAGE`); with no per-tweet media, the draft-level `image_url` SHALL be used; with no media at all, a text-only post (`shareMediaCategory = NONE`) SHALL be published. The image source precedence SHALL match the Instagram branch (per-tweet photos → draft image → none).
+The LinkedIn branch SHALL collect media from the draft — restricted to items targeted to LinkedIn (`isMediaTargeted(m, 'linkedin')`) — and attach it to the single post: if any targeted item is a video, exactly one video SHALL be uploaded and attached (`shareMediaCategory = VIDEO`) and targeted photos SHALL be ignored (with the skipped count logged); otherwise all targeted photos across all tweets SHALL be collected, uploaded, and attached (`shareMediaCategory = IMAGE`); with no targeted per-tweet media, the draft-level `image_url` SHALL be used; with no media at all, a text-only post (`shareMediaCategory = NONE`) SHALL be published. The image source precedence SHALL match the Instagram branch (targeted per-tweet photos → draft image → none).
 
 #### Scenario: Thread with photos across tweets
-- **WHEN** a thread's tweets contain photos and no video
-- **THEN** all photos SHALL be uploaded as LinkedIn image assets and attached to the one post as `IMAGE` media
+- **WHEN** a thread's LinkedIn-targeted media are photos and contain no targeted video
+- **THEN** all targeted photos SHALL be uploaded as LinkedIn image assets and attached to the one post as `IMAGE` media
 
-#### Scenario: Thread containing a video
-- **WHEN** any tweet in the draft contains a `type: 'video'` media item
-- **THEN** the video SHALL win: exactly one video SHALL be uploaded and attached as `VIDEO`, and any photos SHALL be skipped
+#### Scenario: Thread containing a targeted video
+- **WHEN** any LinkedIn-targeted media item is a `type: 'video'`
+- **THEN** the video SHALL win: exactly one video SHALL be uploaded and attached as `VIDEO`, and any targeted photos SHALL be skipped and their count logged
+
+#### Scenario: Video present but only images targeted to LinkedIn
+- **WHEN** a thread has a video with `targets.linkedin = false` and photos with `targets.linkedin = true`
+- **THEN** LinkedIn SHALL publish the photos as `IMAGE` media and SHALL NOT publish the video
 
 #### Scenario: Draft-level image fallback
-- **WHEN** the draft has no per-tweet media but has a draft-level `image_url`
+- **WHEN** the draft has no LinkedIn-targeted per-tweet media but has a draft-level `image_url`
 - **THEN** that image SHALL be uploaded and attached to the LinkedIn post
 
 #### Scenario: No media → text-only
-- **WHEN** the draft has no per-tweet media and no draft-level image
+- **WHEN** the draft has no LinkedIn-targeted per-tweet media and no draft-level image
 - **THEN** the LinkedIn post SHALL be published as text-only (`shareMediaCategory = NONE`); the branch SHALL NOT render tweet-card images for LinkedIn
 

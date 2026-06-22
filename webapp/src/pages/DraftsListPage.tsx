@@ -8,6 +8,8 @@ import {
   EmptyState,
   Spinner,
   StatusBadge,
+  XLogo,
+  InstagramLogo,
 } from '../components/shared';
 import { confirmDestructive, notifyError, haptics } from '../shell';
 import { useTranslation } from '../i18n';
@@ -275,8 +277,8 @@ function DraftCard({ draft, t, onOpen, onDelete }: DraftCardProps) {
 function PlatformBadges({ targets }: { targets: PublishTargets }) {
   if (!targets) return null;
   const glyphs: { key: string; node: React.ReactNode }[] = [];
-  if (targets.x) glyphs.push({ key: 'x', node: <span>X</span> });
-  if (targets.instagram_post) glyphs.push({ key: 'ig-post', node: <Image size={14} /> });
+  if (targets.x) glyphs.push({ key: 'x', node: <XLogo size={13} /> });
+  if (targets.instagram_post) glyphs.push({ key: 'ig-post', node: <InstagramLogo size={14} /> });
   if (targets.instagram_story) glyphs.push({ key: 'ig-story', node: <Images size={14} /> });
   if (targets.instagram_reel) glyphs.push({ key: 'ig-reel', node: <Film size={14} /> });
   if (glyphs.length === 0) return null;

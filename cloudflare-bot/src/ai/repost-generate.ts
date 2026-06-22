@@ -9,7 +9,7 @@ import type { Env, DraftContent, TwitterTweet, TwitterAccountConfig } from '../t
 import { getTwitterAccountOverview } from '../data/db';
 import { buildRepostUserPrompt } from './repost-prompt';
 import { assembleSystemInstruction } from './prompts';
-import { callLLMText } from './gemini';
+import { callLLMText, languageDirective } from './gemini';
 import type { ImagePart } from './gemini';
 
 export interface RepostOptions {
@@ -68,7 +68,7 @@ export async function generateRepostContent(
     try {
         // Build parts — text + optional source image + optional user images
         const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
-            { text: userPrompt },
+            { text: userPrompt + languageDirective(language) },
         ];
 
         // Fetch and attach source tweet images if available

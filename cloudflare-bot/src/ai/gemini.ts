@@ -426,6 +426,9 @@ export async function refineContent(
         userPromptText = `Here's a draft. I want to rewrite it in my own voice.\n\n${tweetsText}`;
     }
 
+    // Force the output language explicitly (the loaded prompt version alone doesn't guarantee it).
+    userPromptText += languageDirective(lang);
+
     // If image parts provided, build multimodal prompt with tweet-image mapping
     let userPrompt: string | Array<{ text: string } | ImagePart>;
     if (options.imageParts && options.imageParts.length > 0) {
@@ -668,7 +671,21 @@ export async function refineHandwrittenContent(
  * SECURITY: Sanitizes input content to prevent prompt injection and excessive size
  * Sends ONLY commit messages and file names — no title, body, author, or stats
  */
-function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, _language?: string, options?: GenerateContentOptions): string {
+/**
+ * Explicit output-language directive, written in self-address (first person) to match the rest of
+ * the prompts and the identity voice. The selected language only chooses which prompt VERSION loads
+ * (identity/skill); without this the model writes in whatever language the identity or the source
+ * content is in (so a Hebrew commit stayed Hebrew even when English was selected). Stated in the
+ * target language and at the end so it's the strongest, freshest rule.
+ */
+export function languageDirective(language?: string): string {
+    const isHebrew = (language || 'en').toLowerCase().startsWith('he');
+    return isHebrew
+        ? '\n\nאני כותב את כל הפוסט הזה בעברית בלבד — לא משנה באיזו שפה כתובים הקומיטים, הקבצים, הזהות שלי או כל הקשר אחר.'
+        : '\n\nI write this entire post in English only — no matter what language the commits, files, my identity, or any other context are in.';
+}
+
+function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string, options?: GenerateContentOptions): string {
     const { data } = source;
 
     // Send the FULL message of every commit, uncapped (sanitized, not truncated),
@@ -711,7 +728,7 @@ function buildContentPrompt(source: ContentSource, overview?: RepoOverview | nul
 **Changed Files:**
 - ${safeFileNames || 'No file names available'}
 
-${userSections}`;
+${userSections}${languageDirective(language)}`;
 }
 
 // ==================== VIDEO SCRIPT GENERATION ====================

@@ -1,15 +1,14 @@
 ## Purpose
 
 Skill-based, identity-aware AI image generation for a specific tweet slot. Owns the per-slot API endpoint, source-aware context assembly (handwrite / commit / repost), the `image-prompt-builder` skill invocation, the standalone JSON-prompt LLM call, JSON-as-is delivery to the Gemini image model, R2 storage, attachment to per-tweet `media[]`, and bot sync of the new media.
-
 ## Requirements
-
 ### Requirement: Per-tweet image generation endpoint
-The system SHALL provide `POST /api/v1/drafts/:id/tweets/:idx/image` that generates an AI image for the tweet at index `idx` in draft `id`, attaches it to that tweet's `media`, persists the updated draft content, and returns the new media reference `{ key, type: 'photo' }`. The endpoint SHALL require the same Telegram initData authentication as all other `/api/v1/` routes and SHALL operate only on a draft owned by the authenticated user.
+The system SHALL provide `POST /api/v1/drafts/:id/tweets/:idx/image` that generates an AI image for the tweet at index `idx` in draft `id`, **appends it atomically** to that tweet's `media`, and returns the new media reference `{ key, type: 'photo' }`. Persistence SHALL be a single atomic database operation scoped to `content.tweets[idx].media` (not a read-whole-content / write-whole-content cycle), so a generation cannot overwrite media that another writer persisted between its read and its write. The endpoint SHALL require the same Telegram initData authentication as all other `/api/v1/` routes and SHALL operate only on a draft owned by the authenticated user.
 
 #### Scenario: Generate an image for a tweet slot
 - **WHEN** an authenticated user POSTs to `/api/v1/drafts/:id/tweets/:idx/image` for a draft they own
-- **THEN** the system SHALL generate an image, store it in R2, append `{ key, type: 'photo' }` to `content.tweets[idx].media`, save the draft, and return the new media reference
+- **THEN** the system SHALL generate an image, store it in R2, **atomically append** `{ key, type: 'photo' }` to `content.tweets[idx].media`, and return the new media reference
+- **AND** the append SHALL preserve any media already present on that tweet and on every other tweet
 
 #### Scenario: Draft not found or not owned
 - **WHEN** the draft id does not exist or is not owned by the authenticated user
@@ -117,3 +116,46 @@ The bot flows that previously auto-generated an image via the removed content-co
 - **WHEN** a bot fast-commit flow runs with its image option enabled
 - **THEN** the image SHALL be produced by the unified per-tweet service and attached to `content.tweets[0].media`
 - **AND** `draft.image_url` SHALL NOT be written
+
+### Requirement: Concurrent and out-of-band media writes do not lose generated media
+The system SHALL persist generated media so that two image generations overlapping in time — including on the same draft — both result in their media being stored. The append SHALL be performed as a single atomic statement that reads the current media and writes the appended result together (e.g. an in-place JSON array append in the data store), so no generation overwrites media appended by another generation and no generation is lost to a stale read.
+
+#### Scenario: Two concurrent generations on different tweets both survive
+- **WHEN** generations for two different tweet indices of the same draft are issued so that they overlap (the second begins before the first has persisted)
+- **THEN** after both complete, the stored draft SHALL contain the generated media on **both** tweets
+
+#### Scenario: Append, not replace, when a tweet already has media
+- **WHEN** an image is generated for a tweet whose `media` already contains one or more items
+- **THEN** the new media SHALL be appended to the existing array and no prior item SHALL be removed
+
+#### Scenario: First media on a tweet with none
+- **WHEN** an image is generated for a tweet that has no `media` (absent or empty)
+- **THEN** the stored draft SHALL contain a `media` array on that tweet holding exactly the one new item
+
+#### Scenario: Append only adds photos and never alters the video flag
+- **WHEN** the atomic append runs for a generated `{ type: 'photo' }` item
+- **THEN** the draft's denormalized `has_video` flag SHALL be unchanged by the append
+
+### Requirement: Image generation is serialized in the editor
+The webapp SHALL prevent more than one per-tweet image generation from being in flight at the same time. While a generation is running, all per-tweet "Generate" controls SHALL be disabled and a new generation SHALL NOT be issued until the in-flight one resolves. The editor MAY still indicate which tweet is actively generating.
+
+#### Scenario: Generate controls disabled while a generation runs
+- **WHEN** a per-tweet image generation is in flight
+- **THEN** every tweet's "Generate" control SHALL be disabled until that generation resolves
+- **AND** attempting to start another generation SHALL not issue a second request
+
+#### Scenario: Controls re-enable after completion
+- **WHEN** an in-flight generation resolves (success or failure)
+- **THEN** the "Generate" controls SHALL be re-enabled
+
+### Requirement: Auto-save does not clobber generated media
+While a per-tweet image generation is in flight, the editor's debounced full-content auto-save SHALL NOT persist the draft, so that a stale local snapshot cannot overwrite media the server appended out-of-band. After the generation resolves and its media is reflected in local editor state, normal auto-save SHALL resume, and any edits the user made SHALL still be persisted — carrying the newly generated media.
+
+#### Scenario: Auto-save suppressed during generation
+- **WHEN** a debounced auto-save would fire while a per-tweet image generation is in flight
+- **THEN** the auto-save SHALL be withheld and SHALL NOT overwrite the draft content
+
+#### Scenario: Edits during generation are saved afterward without dropping media
+- **WHEN** the user edits tweet text while a generation is in flight, and the generation then resolves
+- **THEN** a subsequent save SHALL persist the user's edits together with the generated media, and the generated media SHALL NOT be lost
+

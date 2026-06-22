@@ -6,17 +6,14 @@ import {
   CalendarClock,
   GitCommitHorizontal,
   Repeat2,
-  AtSign,
-  Camera,
   MonitorPlay,
   Clapperboard,
-  Briefcase,
   Sparkles,
   PenLine,
 } from 'lucide-react';
 import { Badge } from '@telegram-apps/telegram-ui';
 import { api, ApiError } from '../api/client';
-import { PageLoading, EmptyState, TimelineRow } from '../components/shared';
+import { PageLoading, EmptyState, TimelineRow, XLogo, InstagramLogo, LinkedInLogo } from '../components/shared';
 import { haptics } from '../shell';
 import { useTimezone } from '../hooks/useTimezone';
 import { dayDeltaInTz, formatTimeInTz, formatDateInTz, parseUTC } from '../lib/timezone';
@@ -103,11 +100,11 @@ const PLATFORM_ICON_SIZE = 16;
 
 function PlatformIcons({ targets }: { targets: ScheduledTargets }) {
   const icons: ReactNode[] = [];
-  if (targets.x) icons.push(<AtSign key="x" size={PLATFORM_ICON_SIZE} aria-label="X" />);
-  if (targets.instagram_post) icons.push(<Camera key="ig" size={PLATFORM_ICON_SIZE} aria-label="Instagram" />);
+  if (targets.x) icons.push(<XLogo key="x" size={PLATFORM_ICON_SIZE} />);
+  if (targets.instagram_post) icons.push(<InstagramLogo key="ig" size={PLATFORM_ICON_SIZE} />);
   if (targets.instagram_story) icons.push(<MonitorPlay key="igs" size={PLATFORM_ICON_SIZE} aria-label="Instagram Story" />);
   if (targets.instagram_reel) icons.push(<Clapperboard key="igr" size={PLATFORM_ICON_SIZE} aria-label="Instagram Reel" />);
-  if (targets.linkedin) icons.push(<Briefcase key="li" size={PLATFORM_ICON_SIZE} aria-label="LinkedIn" />);
+  if (targets.linkedin) icons.push(<LinkedInLogo key="li" size={PLATFORM_ICON_SIZE} />);
   if (icons.length === 0) return null;
   return <span className={styles.platforms}>{icons}</span>;
 }

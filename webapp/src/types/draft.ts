@@ -3,11 +3,21 @@
 export type DraftStatus = 'draft' | 'approved' | 'publishing' | 'published' | 'scheduled';
 export type DraftFormat = 'single' | 'thread';
 
+/** Per-item platform targeting; absent object / absent key ⇒ targeted (see lib/mediaTargets). */
+export interface MediaTargets {
+  x?: boolean;
+  instagram_post?: boolean;
+  instagram_story?: boolean;
+  instagram_reel?: boolean;
+  linkedin?: boolean;
+}
+
 export interface TweetMedia {
   key: string;
   type: 'photo' | 'video';
   width?: number;
   height?: number;
+  targets?: MediaTargets;
 }
 
 export interface Tweet {

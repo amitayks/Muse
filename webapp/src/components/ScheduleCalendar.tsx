@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, X, AtSign, Camera, MonitorPlay, Clapperboard, Briefcase, Plus, Minus, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, MonitorPlay, Clapperboard, Plus, Minus, Check } from 'lucide-react';
+import { XLogo, InstagramLogo, LinkedInLogo } from './shared';
 import { useTranslation } from '../i18n';
 import {
   applyOffset,
@@ -413,11 +414,11 @@ const ICON_SIZE = 14;
 
 function PlatformIcons({ targets }: { targets: CalendarTargets }) {
   const icons: ReactNode[] = [];
-  if (targets.x) icons.push(<AtSign key="x" size={ICON_SIZE} aria-label="X" />);
-  if (targets.instagram_post) icons.push(<Camera key="ig" size={ICON_SIZE} aria-label="Instagram" />);
+  if (targets.x) icons.push(<XLogo key="x" size={ICON_SIZE} />);
+  if (targets.instagram_post) icons.push(<InstagramLogo key="ig" size={ICON_SIZE} />);
   if (targets.instagram_story) icons.push(<MonitorPlay key="igs" size={ICON_SIZE} aria-label="Instagram Story" />);
   if (targets.instagram_reel) icons.push(<Clapperboard key="igr" size={ICON_SIZE} aria-label="Instagram Reel" />);
-  if (targets.linkedin) icons.push(<Briefcase key="li" size={ICON_SIZE} aria-label="LinkedIn" />);
+  if (targets.linkedin) icons.push(<LinkedInLogo key="li" size={ICON_SIZE} />);
   if (icons.length === 0) return null;
   return <span className={styles.platforms}>{icons}</span>;
 }

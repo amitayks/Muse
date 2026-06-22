@@ -5,7 +5,7 @@ import {
   Trash2, CalendarClock, Sparkles, GitCommitHorizontal, Repeat2, Plus, X as XIcon,
   ChevronUp, ChevronDown, ExternalLink, AlertTriangle, Clock, CheckCircle2,
   Languages,
-  AtSign, Camera, MonitorPlay, Clapperboard, Briefcase,
+  MonitorPlay, Clapperboard,
 } from 'lucide-react';
 
 import { api, ApiError } from '../api/client';
@@ -13,6 +13,9 @@ import type { Draft, DraftContent, Tweet, TweetMedia } from '../types/draft';
 import type { UploadedMedia } from '../hooks/useMediaUpload';
 import { useGenerateImage } from '../hooks/useGenerateImage';
 import { getTextDirection } from '../lib/textDirection';
+import { withTarget, type MediaPlatform } from '../lib/mediaTargets';
+import { MediaTargetRow } from '../components/MediaTargetRow';
+import { createDeferredSave, type DeferredSave } from '../lib/deferredSave';
 import { dayDeltaInTz, formatTimeInTz, formatDateInTz, parseUTC } from '../lib/timezone';
 import { SecondaryButton } from '../lib/telegram';
 import { useTimezone } from '../hooks/useTimezone';
@@ -21,7 +24,7 @@ import { useBackButton, useMainButton, useSecondaryButton } from '../shell';
 import {
   confirmDestructive, confirm, popup, notifyError, haptics,
 } from '../shell';
-import { PageLoading, CharCounter, PlatformTogglePill, MediaGrid, ImageDropZone, Spinner } from '../components/shared';
+import { PageLoading, CharCounter, PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, MediaGrid, ImageDropZone, Spinner } from '../components/shared';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { resolveLifecycle } from './composerLifecycle';
 import styles from './ComposerPage.module.css';
@@ -184,6 +187,15 @@ export function ComposerPage() {
   const hasInstagram = draft?.user_profile?.has_instagram ?? capsQuery.data?.has_instagram ?? false;
   const hasLinkedIn = capsQuery.data?.has_linkedin ?? false;
 
+  // ALL connected platforms — each renders a pill on every media item (highlighted = a destination
+  // this media is targeted to). X is always available; IG/LinkedIn require a connection.
+  const connectedMediaPlatforms = useMemo<MediaPlatform[]>(() => {
+    const ps: MediaPlatform[] = ['x'];
+    if (hasInstagram) ps.push('instagram_post', 'instagram_story', 'instagram_reel');
+    if (hasLinkedIn) ps.push('linkedin');
+    return ps;
+  }, [hasInstagram, hasLinkedIn]);
+
   // ============================================================
   // Persistence — every write goes through an existing endpoint.
   // ============================================================
@@ -283,23 +295,48 @@ export function ComposerPage() {
   });
 
   /** Debounced content persistence while editing an existing, editable draft. */
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistContentDebounced = useCallback((nextTweets: Tweet[]) => {
-    if (!draftId || !lifecycle.isExistingDraft || !lifecycle.canEdit) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const finalTweets: Tweet[] = nextTweets
-        .filter((tw, i) => i === 0 || tw.text.trim().length > 0 || (tw.media && tw.media.length > 0))
-        .map((tw, i) => ({ text: tw.text, index: i, media: tw.media }));
-      const content: DraftContent = {
-        format: finalTweets.length === 1 ? 'single' : 'thread',
-        tweets: finalTweets.length ? finalTweets : [{ text: '', index: 0 }],
-      };
-      saveContentMutation.mutate(content);
-    }, 700);
-  }, [draftId, lifecycle.isExistingDraft, lifecycle.canEdit, saveContentMutation]);
+  // Synchronous "a per-tweet image generation is in flight" guard. A ref (not state) so it can't
+  // lag a render: it serializes generation (see generateImageForTweet) AND tells the debounced
+  // save to stand down while the server is appending media out-of-band.
+  const generatingRef = useRef(false);
+  // Always persist the LATEST tweet buffer at fire time, never a snapshot captured when the timer
+  // was armed. This is what stops a save armed before an image finished generating from writing
+  // stale content that drops the freshly-appended media.
+  const tweetsRef = useRef(tweets);
+  useEffect(() => { tweetsRef.current = tweets; }, [tweets]);
+  // Keep the latest mutation reachable from the one stable saver instance below.
+  const saveContentMutationRef = useRef(saveContentMutation);
+  useEffect(() => { saveContentMutationRef.current = saveContentMutation; });
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  /** Build DraftContent from the latest tweet buffer (drops empty trailing tweets). */
+  const buildLatestContent = useCallback((): DraftContent => {
+    const finalTweets: Tweet[] = tweetsRef.current
+      .filter((tw, i) => i === 0 || tw.text.trim().length > 0 || (tw.media && tw.media.length > 0))
+      .map((tw, i) => ({ text: tw.text, index: i, media: tw.media }));
+    return {
+      format: finalTweets.length === 1 ? 'single' : 'thread',
+      tweets: finalTweets.length ? finalTweets : [{ text: '', index: 0 }],
+    };
+  }, []);
+
+  // One stable deferred-save instance. It reads refs lazily, so every fire sees the latest buffer,
+  // the latest mutation, and the live generation flag — deferring the PUT while an image generates
+  // and then persisting the up-to-date content (including the generated media).
+  const deferredSaveRef = useRef<DeferredSave | null>(null);
+  if (!deferredSaveRef.current) {
+    deferredSaveRef.current = createDeferredSave<DraftContent>({
+      isBlocked: () => generatingRef.current,
+      getValue: () => buildLatestContent(),
+      save: (content) => saveContentMutationRef.current.mutate(content),
+    });
+  }
+
+  const persistContentDebounced = useCallback(() => {
+    if (!draftId || !lifecycle.isExistingDraft || !lifecycle.canEdit) return;
+    deferredSaveRef.current!.schedule();
+  }, [draftId, lifecycle.isExistingDraft, lifecycle.canEdit]);
+
+  useEffect(() => () => deferredSaveRef.current?.cancel(), []);
 
   // ---- Approve ----
   const approveMutation = useMutation({
@@ -419,7 +456,7 @@ export function ComposerPage() {
   const updateTweetText = useCallback((index: number, text: string) => {
     setTweets((prev) => {
       const next = prev.map((tw, i) => (i === index ? { ...tw, text } : tw));
-      persistContentDebounced(next);
+      persistContentDebounced();
       return next;
     });
   }, [persistContentDebounced]);
@@ -433,7 +470,7 @@ export function ComposerPage() {
     setTweets((prev) => {
       if (prev.length <= 1) return prev;
       const next = prev.filter((_, i) => i !== index).map((tw, i) => ({ ...tw, index: i }));
-      persistContentDebounced(next);
+      persistContentDebounced();
       return next;
     });
   }, [persistContentDebounced]);
@@ -445,7 +482,7 @@ export function ComposerPage() {
       const next = [...prev];
       [next[index], next[target]] = [next[target], next[index]];
       const reindexed = next.map((tw, i) => ({ ...tw, index: i }));
-      persistContentDebounced(reindexed);
+      persistContentDebounced();
       return reindexed;
     });
     haptics.selectionChanged();
@@ -458,7 +495,7 @@ export function ComposerPage() {
         const media: TweetMedia[] = [...(tw.media ?? []), { key: m.key, type: m.type }];
         return { ...tw, media };
       });
-      persistContentDebounced(next);
+      persistContentDebounced();
       return next;
     });
   }, [persistContentDebounced]);
@@ -470,10 +507,29 @@ export function ComposerPage() {
         const media = (tw.media ?? []).filter((_, mi) => mi !== mediaIndex);
         return { ...tw, media: media.length ? media : undefined };
       });
-      persistContentDebounced(next);
+      persistContentDebounced();
       return next;
     });
   }, [persistContentDebounced]);
+
+  /** Toggle one platform on one media item's per-item targeting, then persist. */
+  const toggleMediaTarget = useCallback((tweetIndex: number, mediaIndex: number, platform: MediaPlatform, next: boolean) => {
+    setTweets((prev) => {
+      const updated = prev.map((tw, i) => {
+        if (i !== tweetIndex) return tw;
+        const media = (tw.media ?? []).map((m, mi) =>
+          mi === mediaIndex ? { ...m, targets: withTarget(m.targets, platform, next) } : m,
+        );
+        return { ...tw, media };
+      });
+      persistContentDebounced();
+      return updated;
+    });
+    // Highlighting a platform also makes it a draft destination, so the highlighted media publishes.
+    // (Only for a saved draft — the draft-level targets endpoint needs an id; pre-save, the media's
+    // own targeting still persists with the draft content on save.)
+    if (draftId && next && !targets[platform]) targetsMutation.mutate({ ...targets, [platform]: true });
+  }, [draftId, persistContentDebounced, targets, targetsMutation]);
 
   // ---- Per-slot AI image generation ----
   const { generate: generateImageForSlot } = useGenerateImage();
@@ -505,24 +561,33 @@ export function ComposerPage() {
   }, [draftId, commitSource, repostSource, buildContent, aiOn, instruction, effectiveLangOverride, navigate, t]);
 
   const generateImageForTweet = useCallback(async (index: number) => {
+    // Serialize generation: only one image may generate at a time. The ref guard is synchronous
+    // (state lags a render, and the user can click a second tweet's button before re-render), so
+    // overlapping requests — which previously raced the draft and dropped media — can't start.
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setImageGenError(null);
-    const id = await ensureDraftForImage();
-    if (!id) return;
-    setGeneratingIndex(index);
-    haptics.impact('medium');
-    const media = await generateImageForSlot(id, index);
-    setGeneratingIndex(null);
-    if (media) {
-      haptics.notification('success');
-      // The server already appended the media to the draft and synced the bot. Update local
-      // state ONLY (no re-persist) — re-persisting would PUT the draft again and trigger a
-      // second bot-sync photo.
-      setTweets((prev) => prev.map((tw, i) =>
-        i === index ? { ...tw, media: [...(tw.media ?? []), { key: media.key, type: media.type }] } : tw,
-      ));
-    } else {
-      haptics.notification('error');
-      setImageGenError({ index, message: t('composer.generateImageFailed') });
+    try {
+      const id = await ensureDraftForImage();
+      if (!id) return;
+      setGeneratingIndex(index);
+      haptics.impact('medium');
+      const media = await generateImageForSlot(id, index);
+      if (media) {
+        haptics.notification('success');
+        // The server already appended the media to the draft (atomically) and synced the bot.
+        // Update local state ONLY (no re-persist) — re-persisting would PUT the draft again and
+        // trigger a second bot-sync photo.
+        setTweets((prev) => prev.map((tw, i) =>
+          i === index ? { ...tw, media: [...(tw.media ?? []), { key: media.key, type: media.type }] } : tw,
+        ));
+      } else {
+        haptics.notification('error');
+        setImageGenError({ index, message: t('composer.generateImageFailed') });
+      }
+    } finally {
+      generatingRef.current = false;
+      setGeneratingIndex(null);
     }
   }, [ensureDraftForImage, generateImageForSlot, t]);
 
@@ -800,8 +865,12 @@ export function ComposerPage() {
           onMove={moveTweet}
           onAddMedia={addMedia}
           onRemoveMedia={removeMedia}
+          mediaPlatforms={connectedMediaPlatforms}
+          mediaEnabledTargets={targets}
+          onToggleMediaTarget={toggleMediaTarget}
           onGenerateImage={generateImageForTweet}
           generating={generatingIndex === i}
+          anyGenerating={generatingIndex !== null}
           generateError={imageGenError?.index === i ? imageGenError.message : null}
         />
       ))}
@@ -868,7 +937,7 @@ export function ComposerPage() {
           <div className={styles.platformPills}>
             <PlatformTogglePill
               label={t('platform.x')}
-              icon={<AtSign size={18} />}
+              icon={<XLogo size={18} />}
               active={targets.x}
               disabled={!lifecycle.canEdit || targetsMutation.isPending}
               onToggle={(next) => commitTargets({ ...targets, x: next })}
@@ -877,7 +946,7 @@ export function ComposerPage() {
               <>
                 <PlatformTogglePill
                   label={t('platform.igPost')}
-                  icon={<Camera size={18} />}
+                  icon={<InstagramLogo size={18} />}
                   active={targets.instagram_post}
                   disabled={!lifecycle.canEdit || targetsMutation.isPending}
                   onToggle={(next) => commitTargets({ ...targets, instagram_post: next })}
@@ -901,7 +970,7 @@ export function ComposerPage() {
             {hasLinkedIn && (
               <PlatformTogglePill
                 label={t('platform.linkedin')}
-                icon={<Briefcase size={18} />}
+                icon={<LinkedInLogo size={18} />}
                 active={targets.linkedin}
                 disabled={!lifecycle.canEdit || targetsMutation.isPending}
                 onToggle={(next) => commitTargets({ ...targets, linkedin: next })}
@@ -959,8 +1028,15 @@ interface TweetCardProps {
   onMove: (index: number, dir: -1 | 1) => void;
   onAddMedia: (index: number, m: UploadedMedia) => void;
   onRemoveMedia: (tweetIndex: number, mediaIndex: number) => void;
+  /** All connected platforms — every one renders a pill under each media item. */
+  mediaPlatforms: MediaPlatform[];
+  /** Draft-enabled destinations — a media pill is highlighted only for these. */
+  mediaEnabledTargets: Targets;
+  onToggleMediaTarget: (tweetIndex: number, mediaIndex: number, platform: MediaPlatform, next: boolean) => void;
   onGenerateImage: (index: number) => void;
   generating: boolean;
+  /** True while ANY tweet's image is generating — disables every Generate button (serialized generation). */
+  anyGenerating: boolean;
   generateError: string | null;
 }
 
@@ -969,7 +1045,8 @@ function TweetCard(props: TweetCardProps) {
   const {
     tweet, index, total, canEdit, showFullMedia, placeholder, removeLabel,
     onText, onRemove, onMove, onAddMedia, onRemoveMedia,
-    onGenerateImage, generating, generateError,
+    mediaPlatforms, mediaEnabledTargets, onToggleMediaTarget,
+    onGenerateImage, generating, anyGenerating, generateError,
   } = props;
 
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -1055,6 +1132,14 @@ function TweetCard(props: TweetCardProps) {
                   <XIcon size={16} />
                 </button>
               )}
+              {canEdit && (
+                <MediaTargetRow
+                  media={m}
+                  platforms={mediaPlatforms}
+                  enabled={mediaEnabledTargets}
+                  onToggle={(platform, next) => onToggleMediaTarget(index, mi, platform, next)}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -1082,8 +1167,8 @@ function TweetCard(props: TweetCardProps) {
             <button
               type="button"
               onClick={() => onGenerateImage(index)}
-              disabled={generating}
-              style={genButtonStyle(generating)}
+              disabled={anyGenerating}
+              style={genButtonStyle(anyGenerating)}
             >
               {generating ? <Spinner size="s" /> : <><Sparkles size={16} /> {t('composer.generateImage')}</>}
             </button>

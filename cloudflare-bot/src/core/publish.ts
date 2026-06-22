@@ -10,7 +10,7 @@ import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '.
 import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia, uploadVideoToX, XReconnectError } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
 import { enqueuePendingXPost, type PendingXPayload } from '../data/x-pending-db';
-import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError } from '../services/instagram-publish';
+import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramReel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError, type InstagramMediaItem } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
 import { postToLinkedIn, uploadImageToLinkedIn, uploadVideoToLinkedIn, LinkedInPublishError, LINKEDIN_MAX_COMMENTARY, type LinkedInMedia } from '../integrations/linkedin';
 // Lazy-imported to avoid loading satori/yoga wasm at module evaluation time (breaks CF Workers)
@@ -21,6 +21,7 @@ async function getTweetCardModule() {
 }
 import { parsePublishTargets } from '../views/platform-toggle';
 import { getUser } from '../data/user-db';
+import { isMediaTargeted, collectTargetedMedia } from './media-targets';
 
 export interface PublishResult {
     success: boolean;
@@ -250,7 +251,8 @@ export async function resolveXMedia(
         // fails X publishing — caught by publishDraft's per-platform try/catch (→ errors.x).
         perTweetMediaIds = await Promise.all(
             content.tweets.map(async (tweet) => {
-                const items = tweet.media || [];
+                // Only media targeted to X is attached; a tweet with no X-targeted media → text-only.
+                const items = (tweet.media || []).filter(m => isMediaTargeted(m, 'x'));
                 const video = items.find(m => m.type === 'video');
                 if (video) {
                     // Video wins: upload exactly one video, ignore any photos on this tweet.
@@ -381,44 +383,35 @@ async function publishToIGPost(
     // Prepare caption from tweet texts
     const caption = formatInstagramCaption(content.tweets.map(t => t.text));
 
-    // Check for existing images
-    const imageUrls: string[] = [];
+    // Collect ALL media targeted to Instagram Post across the thread, in order, keeping type.
+    // Photos AND videos — Instagram carousels can mix them. (Previously this filtered to photos,
+    // silently dropping videos.)
+    const items: InstagramMediaItem[] = collectTargetedMedia(content.tweets, 'instagram_post')
+        .map(media => ({ url: `${workerUrl}/media/${media.key}`, type: media.type }));
 
-    // Check per-tweet media first
-    const hasPerTweetMedia = content.tweets.some(t => t.media?.some(m => m.type === 'photo'));
-    if (hasPerTweetMedia) {
-        for (const tweet of content.tweets) {
-            for (const media of tweet.media || []) {
-                if (media.type === 'photo') {
-                    imageUrls.push(`${workerUrl}/media/${media.key}`);
-                }
-            }
-        }
+    // Fallbacks (images only): draft-level image, then generated tweet cards.
+    if (items.length === 0 && draft.image_url) {
+        items.push({ url: `${workerUrl}/media/${draft.image_url}`, type: 'photo' });
     }
-
-    // Check draft-level image
-    if (imageUrls.length === 0 && draft.image_url) {
-        imageUrls.push(`${workerUrl}/media/${draft.image_url}`);
-    }
-
-    // No images — generate tweet cards
-    if (imageUrls.length === 0) {
+    if (items.length === 0) {
         const cardUrls = await generateTweetCardImages(env, chatId, draft, content);
-        imageUrls.push(...cardUrls);
+        for (const u of cardUrls) items.push({ url: u, type: 'photo' });
     }
 
-    if (imageUrls.length === 0) {
-        throw new Error('No images available for Instagram post');
+    if (items.length === 0) {
+        throw new Error('No media available for Instagram post');
     }
 
-    // Single or carousel
-    if (imageUrls.length === 1) {
-        const result = await publishToInstagramPost(env, imageUrls[0], caption);
-        return { post_id: result.post_id, url: result.url || '' };
-    } else {
-        const result = await publishToInstagramCarousel(env, imageUrls, caption);
+    // A lone video → Reel; a lone photo → image post; otherwise a mixed carousel.
+    if (items.length === 1) {
+        const single = items[0];
+        const result = single.type === 'video'
+            ? await publishToInstagramReel(env, single.url, caption)
+            : await publishToInstagramPost(env, single.url, caption);
         return { post_id: result.post_id, url: result.url || '' };
     }
+    const result = await publishToInstagramCarousel(env, items, caption);
+    return { post_id: result.post_id, url: result.url || '' };
 }
 
 // ==================== Instagram Story Branch ====================
@@ -432,13 +425,31 @@ async function publishToIGStory(
     const workerUrl = env.WORKER_URL;
     if (!workerUrl) throw new Error('WORKER_URL not configured');
 
+    // Per-media targeting (video wins): a video targeted to Story is published directly as a video
+    // story; otherwise prefer a targeted photo; otherwise fall back to card/draft-image.
+    const storyCandidates = collectTargetedMedia(content.tweets, 'instagram_story');
+    const storyVideo = storyCandidates.find(m => m.type === 'video');
+    if (storyVideo) {
+        try {
+            const result = await publishToInstagramStory(env, { url: `${workerUrl}/media/${storyVideo.key}`, type: 'video' });
+            return { post_id: result.post_id, url: null };
+        } catch (err) {
+            console.error('[publish] IG video story failed; falling back to image story:', err instanceof Error ? err.message : String(err));
+        }
+    }
+    const storyPhoto = storyCandidates.find(m => m.type === 'photo');
+
     // Prepare a 9:16 story image
     const { createStoryImage, storeStoryImage, getTweetCard } = await getTweetCardModule();
     let storyImageKey: string;
 
-    // Check for existing tweet card or image
+    // Check for a targeted photo first, then existing tweet card or draft image
+    const targetedPhotoObj = storyPhoto ? await env.IMAGES.get(storyPhoto.key) : null;
     const existingCard = await getTweetCard(env, draft.id, 0);
-    if (existingCard) {
+    if (targetedPhotoObj) {
+        const storyPng = await createStoryImage(env, new Uint8Array(await targetedPhotoObj.arrayBuffer()));
+        storyImageKey = await storeStoryImage(env, draft.id, storyPng);
+    } else if (existingCard) {
         // Create story from existing card
         const storyPng = await createStoryImage(env, existingCard);
         storyImageKey = await storeStoryImage(env, draft.id, storyPng);
@@ -482,11 +493,11 @@ async function publishToIGReel(
 ): Promise<{ post_id: string; url: string } | null> {
     const content = JSON.parse(draft.content) as DraftContent;
 
-    // Find video media
+    // Find the first video targeted to Reel
     let videoKey: string | null = null;
     for (const tweet of content.tweets) {
         for (const media of tweet.media || []) {
-            if (media.type === 'video') {
+            if (media.type === 'video' && isMediaTargeted(media, 'instagram_reel')) {
                 videoKey = media.key;
                 break;
             }
@@ -599,25 +610,23 @@ async function resolveLinkedInMedia(
     draft: Draft,
     content: DraftContent
 ): Promise<LinkedInMedia> {
-    // 1) A video anywhere in the thread takes precedence — upload exactly one.
-    for (const tweet of content.tweets) {
-        const video = tweet.media?.find(m => m.type === 'video');
-        if (video) {
-            console.log(`[publish] LinkedIn: video media detected (key=${video.key}) — uploading`);
-            const r2 = await env.IMAGES.get(video.key);
-            if (!r2) throw new LinkedInPublishError('Video media missing from storage');
-            const asset = await uploadVideoToLinkedIn(env, await r2.arrayBuffer());
-            return { category: 'VIDEO', assetUrns: [asset] };
-        }
+    // Only media targeted to LinkedIn is considered; LinkedIn carries EITHER one video OR images.
+    const candidates = collectTargetedMedia(content.tweets, 'linkedin');
+
+    // 1) A targeted video takes precedence — upload exactly one; skipped photos are logged.
+    const video = candidates.find(m => m.type === 'video');
+    if (video) {
+        const skipped = candidates.filter(m => m.type === 'photo').length;
+        if (skipped > 0) console.log(`[publish] LinkedIn: video wins — skipping ${skipped} targeted photo(s)`);
+        console.log(`[publish] LinkedIn: video media detected (key=${video.key}) — uploading`);
+        const r2 = await env.IMAGES.get(video.key);
+        if (!r2) throw new LinkedInPublishError('Video media missing from storage');
+        const asset = await uploadVideoToLinkedIn(env, await r2.arrayBuffer());
+        return { category: 'VIDEO', assetUrns: [asset] };
     }
 
-    // 2) Photos across all tweets → multi-image post (best-effort per photo).
-    const photoKeys: string[] = [];
-    for (const tweet of content.tweets) {
-        for (const m of tweet.media || []) {
-            if (m.type === 'photo') photoKeys.push(m.key);
-        }
-    }
+    // 2) Targeted photos → multi-image post (best-effort per photo).
+    const photoKeys: string[] = candidates.filter(m => m.type === 'photo').map(m => m.key);
     if (photoKeys.length > 0) {
         const assetUrns: string[] = [];
         for (const key of photoKeys) {

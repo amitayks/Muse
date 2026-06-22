@@ -5,8 +5,9 @@
  * SECURITY: All data operations require and filter by chat_id for ownership verification.
  */
 
-import type { Env, Draft, ChatContext, Published, DraftStatus, PublishTargets, PublishResults } from '../types';
+import type { Env, Draft, ChatContext, Published, DraftStatus, PublishTargets, PublishResults, TweetMedia } from '../types';
 import { logInfo, logError } from '../infra/security';
+import { APPEND_TWEET_MEDIA_SQL, tweetMediaPath } from './append-tweet-media-sql';
 
 /**
  * Generate a UUID v4
@@ -335,6 +336,42 @@ export async function updateDraft(
         `UPDATE drafts SET ${sets.join(', ')} WHERE id = ? AND chat_id = ?`
     )
         .bind(...values)
+        .run();
+    return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * Atomically append ONE media item to a single tweet's `media` array.
+ *
+ * This is a single in-place JSON UPDATE — `json_set(content, '$.tweets[N].media', json_insert(...))`
+ * — so the read of the current media and the write of the appended result happen together inside
+ * one statement. D1/SQLite serializes writes, so two image generations that overlap in time (even
+ * on the same draft, different tweets) can no longer clobber each other: each statement appends to
+ * the other's already-committed result. This replaces the previous read-whole-content /
+ * mutate-in-JS / write-whole-content cycle, whose read→write gap silently dropped media when
+ * generations raced.
+ *
+ * INVARIANT: append is PHOTO-ONLY. Generated media is always `{ type: 'photo' }`, which can never
+ * flip the denormalized `has_video` flag — so this statement intentionally does NOT recompute it.
+ * Any future video append must go through the full-content path (`updateDraftContent`) instead.
+ *
+ * `tweetIndex` is bound as an integer and concatenated into the JSON path; callers MUST pass an
+ * already range-validated, non-negative integer. Ownership is enforced by `id = ? AND chat_id = ?`.
+ * Returns true iff a row was updated (draft exists and is owned by chatId).
+ */
+export async function appendTweetMedia(
+    env: Env,
+    id: string,
+    chatId: string,
+    tweetIndex: number,
+    media: TweetMedia
+): Promise<boolean> {
+    // `'$[#]'` appends to the end of the array; `COALESCE(..., json('[]'))` seeds an empty array
+    // when the tweet has no `media` yet; `json(?)` stores the bound media as a JSON object, not an
+    // escaped string. The path is built in JS and bound as TEXT — see append-tweet-media-sql.ts.
+    const path = tweetMediaPath(tweetIndex);
+    const result = await env.DB.prepare(APPEND_TWEET_MEDIA_SQL)
+        .bind(path, path, JSON.stringify(media), id, chatId)
         .run();
     return (result.meta?.changes ?? 0) > 0;
 }

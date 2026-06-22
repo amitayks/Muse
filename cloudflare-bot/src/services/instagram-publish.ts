@@ -91,71 +91,108 @@ export async function publishToInstagramPost(
     return publishContainer(env, containerId);
 }
 
+// ==================== Single Video → Reel ====================
+
+/** A media item for the feed: a public URL plus its kind. */
+export interface InstagramMediaItem {
+    url: string;
+    type: 'photo' | 'video';
+}
+
+/**
+ * Publish a single video to Instagram as a REEL. A standalone video on Instagram is a Reel, so this
+ * uses a `REELS` container, polls to FINISHED (videos take longer), publishes, and returns a
+ * `/reel/` URL. Used whenever the Instagram content reduces to exactly one video — regardless of
+ * what other platforms or other media the thread carries.
+ */
+export async function publishToInstagramReel(
+    env: Env,
+    videoUrl: string,
+    caption: string
+): Promise<InstagramPublishResult> {
+    requireInstagramConfig(env);
+    console.log('[ig-publish] Single video for Instagram → publishing as Reel');
+    const containerId = await createVideoContainer(env, videoUrl, caption, 'REELS');
+    await ensureProcessed(env, containerId);
+    const result = await publishContainer(env, containerId);
+    // It's a Reel, not a feed post — reflect that in the URL.
+    return { post_id: result.post_id, url: result.post_id ? `https://www.instagram.com/reel/${result.post_id}` : result.url };
+}
+
+/** Publish a single feed item by kind — image post, or a lone video as a Reel. */
+function publishSingleFeedItem(env: Env, item: InstagramMediaItem, caption: string): Promise<InstagramPublishResult> {
+    return item.type === 'video'
+        ? publishToInstagramReel(env, item.url, caption)
+        : publishToInstagramPost(env, item.url, caption);
+}
+
 // ==================== Carousel Post ====================
 
 /**
- * Publish a carousel post (multiple images) to Instagram.
- * All imageUrls must be publicly accessible.
- * Handles partial child failures — falls back to single if <2 succeed.
+ * Publish a carousel post to Instagram. Items may MIX photos and videos. All URLs must be publicly
+ * accessible. Handles partial child failures — falls back to a single post (image or video) if <2
+ * children succeed.
  */
 export async function publishToInstagramCarousel(
     env: Env,
-    imageUrls: string[],
+    items: InstagramMediaItem[],
     caption: string
 ): Promise<InstagramPublishResult> {
     requireInstagramConfig(env);
 
-    const urls = imageUrls.slice(0, MAX_CAROUSEL_ITEMS);
-
-    if (urls.length === 1) {
-        return publishToInstagramPost(env, urls[0], caption);
+    const list = items.slice(0, MAX_CAROUSEL_ITEMS);
+    if (items.length > MAX_CAROUSEL_ITEMS) {
+        console.log(`[ig-publish] Carousel truncated to ${MAX_CAROUSEL_ITEMS} items (had ${items.length})`);
     }
 
-    // Step 1: Create child containers — tolerate per-image failures, but abort on auth errors
-    const children: Array<{ id: string; url: string }> = [];
-    for (const url of urls) {
+    if (list.length === 1) {
+        return publishSingleFeedItem(env, list[0], caption);
+    }
+
+    // Step 1: Create child containers — tolerate per-item failures, but abort on auth errors
+    const children: Array<{ id: string; item: InstagramMediaItem }> = [];
+    for (const item of list) {
         try {
-            const childId = await createCarouselChildContainer(env, url);
-            children.push({ id: childId, url });
+            const childId = await createCarouselChildContainer(env, item);
+            children.push({ id: childId, item });
         } catch (error) {
             if (error instanceof InstagramPublishError && error.isAuthError) throw error;
-            console.error('[ig-publish] Failed to create child container for:', url, error instanceof Error ? error.message : String(error));
+            console.error('[ig-publish] Failed to create child container for:', item.url, error instanceof Error ? error.message : String(error));
         }
     }
 
     if (children.length === 0) {
-        throw new InstagramPublishError('All carousel images failed to upload');
+        throw new InstagramPublishError('All carousel items failed to upload');
     }
 
-    // Fallback to single post if only one child succeeded — use its URL
+    // Fallback to single post if only one child succeeded — by its kind
     if (children.length === 1) {
         console.log('[ig-publish] Only one carousel child, falling back to single post');
-        return publishToInstagramPost(env, children[0].url, caption);
+        return publishSingleFeedItem(env, children[0].item, caption);
     }
 
-    // Step 2: Poll each child for processing, keep only successful ones
-    const readyChildIds: string[] = [];
+    // Step 2: Poll each child for processing, keep only successful ones (videos take longer)
+    const ready: Array<{ id: string; item: InstagramMediaItem }> = [];
     for (const child of children) {
         if (await pollContainerStatus(env, child.id)) {
-            readyChildIds.push(child.id);
+            ready.push(child);
         } else {
             console.error('[ig-publish] Child container processing failed:', child.id);
         }
     }
 
-    if (readyChildIds.length === 0) {
-        throw new InstagramPublishError('All carousel images failed processing');
+    if (ready.length === 0) {
+        throw new InstagramPublishError('All carousel items failed processing');
     }
 
-    // If only one child processed successfully, fall back to single post
-    if (readyChildIds.length === 1) {
-        const successUrl = children.find(c => c.id === readyChildIds[0])!.url;
+    // If only one child processed successfully, fall back to single post by its kind
+    if (ready.length === 1) {
         console.log('[ig-publish] Only one carousel child processed, falling back to single post');
-        return publishToInstagramPost(env, successUrl, caption);
+        return publishSingleFeedItem(env, ready[0].item, caption);
     }
 
     // Step 3-5: Create carousel container, poll, publish
-    const carouselId = await createCarouselContainer(env, readyChildIds, caption);
+    const carouselId = await createCarouselContainer(env, ready.map(c => c.id), caption);
     await ensureProcessed(env, carouselId);
     return publishContainer(env, carouselId);
 }
@@ -163,23 +200,25 @@ export async function publishToInstagramCarousel(
 // ==================== Story ====================
 
 /**
- * Publish an image story to Instagram.
- * imageUrl must be publicly accessible.
+ * Publish a story to Instagram. Accepts an image or a video (both via `media_type: STORIES`,
+ * keyed by `image_url` or `video_url`). A bare string is treated as an image URL for back-compat.
  * Stories have no URL after publishing.
  */
 export async function publishToInstagramStory(
     env: Env,
-    imageUrl: string
+    media: string | InstagramMediaItem
 ): Promise<InstagramPublishResult> {
     requireInstagramConfig(env);
 
-    // Create story container
+    const item: InstagramMediaItem = typeof media === 'string' ? { url: media, type: 'photo' } : media;
+
+    // Create story container — image_url for photos, video_url for videos
     const containerUrl = `${GRAPH_API}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
     const response = await fetch(containerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            image_url: imageUrl,
+            ...(item.type === 'video' ? { video_url: item.url } : { image_url: item.url }),
             media_type: 'STORIES',
             access_token: env.INSTAGRAM_ACCESS_TOKEN,
         }),
@@ -223,21 +262,49 @@ async function createImageContainer(
 
 async function createCarouselChildContainer(
     env: Env,
-    imageUrl: string
+    item: InstagramMediaItem
+): Promise<string> {
+    const url = `${GRAPH_API}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
+    // A video carousel child uses media_type=VIDEO + video_url (NOT REELS — REELS is standalone only);
+    // a photo child uses image_url. Both are flagged is_carousel_item.
+    const body = item.type === 'video'
+        ? { media_type: 'VIDEO', video_url: item.url, is_carousel_item: true, access_token: env.INSTAGRAM_ACCESS_TOKEN }
+        : { image_url: item.url, is_carousel_item: true, access_token: env.INSTAGRAM_ACCESS_TOKEN };
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        throw await igErrorFromResponse(response, 'Carousel child creation failed');
+    }
+
+    const result = await response.json() as { id: string };
+    return result.id;
+}
+
+/** Create a video container (feed Reel or carousel video) and return its id. */
+async function createVideoContainer(
+    env: Env,
+    videoUrl: string,
+    caption: string,
+    mediaType: 'REELS'
 ): Promise<string> {
     const url = `${GRAPH_API}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            image_url: imageUrl,
-            is_carousel_item: true,
+            media_type: mediaType,
+            video_url: videoUrl,
+            caption: caption.substring(0, MAX_CAPTION_LENGTH),
             access_token: env.INSTAGRAM_ACCESS_TOKEN,
         }),
     });
 
     if (!response.ok) {
-        throw await igErrorFromResponse(response, 'Carousel child creation failed');
+        throw await igErrorFromResponse(response, 'Video container creation failed');
     }
 
     const result = await response.json() as { id: string };
