@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { MonitorPlay, Clapperboard } from 'lucide-react';
 import type { TweetMedia } from '../types/draft';
 import { isMediaTargeted, type MediaPlatform } from '../lib/mediaTargets';
-import { PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo } from './shared';
+import { PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, type ProgressState } from './shared';
 import { useTranslation } from '../i18n';
 
 interface Props {
@@ -13,6 +13,11 @@ interface Props {
   enabled: Partial<Record<MediaPlatform, boolean>>;
   onToggle: (platform: MediaPlatform, next: boolean) => void;
   disabled?: boolean;
+  /**
+   * Pre-upload ("warm") progress for THIS media item, per platform. A platform with a state gets a
+   * progress ring around its icon; absent / undefined ⇒ no ring (the pill looks exactly as before).
+   */
+  progress?: Partial<Record<MediaPlatform, ProgressState>>;
 }
 
 const PLATFORM_META: Record<MediaPlatform, { icon: ReactNode; labelKey: string }> = {
@@ -29,7 +34,7 @@ const PLATFORM_META: Record<MediaPlatform, { icon: ReactNode; labelKey: string }
  * Highlighting a dimmed pill makes the platform a destination (handled by the parent) and includes
  * this media; un-highlighting just removes this media from that platform. Nothing is hidden.
  */
-export function MediaTargetRow({ media, platforms, enabled, onToggle, disabled }: Props) {
+export function MediaTargetRow({ media, platforms, enabled, onToggle, disabled, progress }: Props) {
   const { t } = useTranslation();
   if (platforms.length === 0) return null;
   return (
@@ -45,6 +50,7 @@ export function MediaTargetRow({ media, platforms, enabled, onToggle, disabled }
             active={active}
             disabled={disabled}
             onToggle={(next) => onToggle(p, next)}
+            progressState={progress?.[p]}
           />
         );
       })}

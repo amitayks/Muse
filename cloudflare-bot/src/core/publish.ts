@@ -6,28 +6,42 @@
  * Results are stored per-platform on the draft's publish_results column.
  */
 
-import type { Env, Draft, DraftContent, PublishTargets, PublishResults } from '../types';
+import type { Env, Draft, DraftContent, PublishTargets, PublishResults, PublishProgress } from '../types';
 import { postThread, postQuoteTweet, uploadMediaFromBuffer, uploadMedia, uploadVideoToX, XReconnectError } from '../integrations/x';
 import { updateDraftStatus, updateDraftPublishResults, createPublished } from '../data/db';
 import { enqueuePendingXPost, type PendingXPayload } from '../data/x-pending-db';
 import { publishToInstagramPost, publishToInstagramCarousel, publishToInstagramReel, publishToInstagramStory, formatInstagramCaption, InstagramPublishError, parseGraphError, type InstagramMediaItem } from '../services/instagram-publish';
 import { publishVideoToInstagram } from '../services/video-publish';
-import { postToLinkedIn, uploadImageToLinkedIn, uploadVideoToLinkedIn, LinkedInPublishError, LINKEDIN_MAX_COMMENTARY, type LinkedInMedia } from '../integrations/linkedin';
-// Lazy-imported to avoid loading satori/yoga wasm at module evaluation time (breaks CF Workers)
-// import { renderTweetCard, renderThreadCards, renderQuoteTweetCard, createStoryImage, storeTweetCard, storeStoryImage, getTweetCard } from '../services/tweet-card';
-
-async function getTweetCardModule() {
-    return import('../services/tweet-card');
-}
+import { postToLinkedIn, uploadImageToLinkedIn, uploadLinkedInMediaItem, LinkedInPublishError, LINKEDIN_MAX_COMMENTARY, type LinkedInMedia } from '../integrations/linkedin';
+// Rendering now delegates to the render-worker via the RENDER service binding; this is a
+// thin client (no satori/wasm at module-eval), so a plain static import is safe here.
+import { renderTweetCard, renderThreadCards, renderQuoteTweetCard, createStoryImage, storeTweetCard, storeStoryImage, getTweetCard } from '../services/tweet-card';
+import { publishContainer } from '../services/instagram-publish';
 import { parsePublishTargets } from '../views/platform-toggle';
 import { getUser } from '../data/user-db';
 import { isMediaTargeted, collectTargetedMedia } from './media-targets';
+import { getReadyHandlesForDraft, type MediaUploadRow } from '../data/media-uploads-db';
+import { seedProgressFromWarmHandles, mapInstagramWarmHandles, isHandleUsableAtPublish, type InstagramWarmHandle } from './warm-progress';
 
 export interface PublishResult {
     success: boolean;
     results: PublishResults;
     /** Primary URL for backward compat (X URL or first successful platform URL) */
     url: string;
+    /**
+     * Updated progress map: every media upload completed so far, keyed by platform + tweet/media
+     * index. The publish-job processor (core/publish-jobs.ts) persists this between cron chunks so a
+     * resumable re-entry skips uploads already done. Always returned (a fresh map when none passed in).
+     */
+    progress: PublishProgress;
+    /**
+     * False iff the soft `deadline` was hit mid-upload and the publish could NOT finish all uploads
+     * this chunk: terminal finalization (createPublished → updateDraftStatus, or scheduled→approved)
+     * was skipped and the job must be re-claimed to continue. True for a completed (or deferred-X)
+     * publish — i.e. when the caller may treat the publish as finished. Defaults true so an
+     * un-migrated caller (no deadline) always finalizes.
+     */
+    done: boolean;
     /**
      * Set when the X target is a video and its tweet-creation was deferred to the every-minute
      * cron processor (core/x-pending.ts). The draft is left in 'publishing' with a row in
@@ -39,149 +53,342 @@ export interface PublishResult {
     deferredX?: boolean;
 }
 
+/**
+ * Bounded-concurrency pool: run `fn` over `items` with at most `limit` in flight at once, preserving
+ * result order (results[i] corresponds to items[i]). Used so multiple media uploads (per-tweet,
+ * per-carousel, per-image) run in parallel without exceeding Worker subrequest/memory limits.
+ * Rejections propagate (like Promise.all) — callers wrap individual uploads in try/catch where a
+ * single failure must be skipped rather than fail the batch.
+ */
+export async function runPool<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let next = 0;
+    const workers: Promise<void>[] = [];
+    const worker = async (): Promise<void> => {
+        while (true) {
+            const i = next++;
+            if (i >= items.length) return;
+            results[i] = await fn(items[i], i);
+        }
+    };
+    const n = Math.min(Math.max(1, limit), items.length);
+    for (let w = 0; w < n; w++) workers.push(worker());
+    await Promise.all(workers);
+    return results;
+}
+
+/** Bounded-pool concurrency cap for media uploads (design Decision 3 / Open Question: start at 3). */
+const UPLOAD_POOL_LIMIT = 3;
+
 /** True iff any tweet in the draft carries media of type 'video' (X-video target). */
 export function hasVideoTarget(content: DraftContent): boolean {
     return content.tweets.some(t => t.media?.some(m => m.type === 'video'));
 }
 
 /**
- * Publish a draft to all targeted platforms.
- * Each platform is independently tried — partial failures don't block others.
- * Returns success=true if at least one platform succeeded.
+ * True iff EVERY X-targeted video in the draft has a usable PRE-WARMED X handle (a 'ready', unexpired
+ * media_uploads row for platform 'x'). When true, the X branch posts the tweet INLINE instead of
+ * deferring via x_pending — a pre-warmed media_id was uploaded hours ago, so X attachability (the
+ * ~10–60s post-upload wait that forces the cold deferral) has already elapsed.
+ *
+ * Decided from the WARM ROWS directly, NOT from seeded `progress`: a media id in progress.x can also come
+ * from a prior-chunk COLD upload (seconds old, not yet attachable), which must still defer. Only an
+ * actual warm handle proves the attachability window has elapsed. Conservative: any X-video without a
+ * usable warm handle ⇒ false, so the whole X post keeps the deferred path (a thread posts atomically).
+ */
+function isXVideoFullyWarmed(content: DraftContent, warmedRows: MediaUploadRow[]): boolean {
+    const warmedXKeys = new Set(
+        warmedRows.filter(r => r.platform === 'x' && isHandleUsableAtPublish(r)).map(r => r.media_key)
+    );
+    if (warmedXKeys.size === 0) return false;
+    for (const tweet of content.tweets) {
+        for (const media of tweet.media || []) {
+            if (media.type !== 'video' || !isMediaTargeted(media, 'x')) continue;
+            if (!warmedXKeys.has(media.key)) return false; // a cold X video remains → defer
+        }
+    }
+    return true;
+}
+
+/**
+ * Sentinel thrown by an upload helper when the soft `deadline` was reached before starting a new
+ * heavy upload. It is NOT a publish failure: the platform branch catches it, records no error, and
+ * flags the publish "needs more" so the job processor reschedules and resumes from saved `progress`.
+ */
+class DeadlineReachedError extends Error {
+    constructor() {
+        super('publish budget deadline reached');
+        this.name = 'DeadlineReachedError';
+    }
+}
+
+/** True iff the soft budget deadline has been hit — checked before starting any new heavy upload. */
+function deadlinePassed(deadline: number): boolean {
+    return Date.now() >= deadline;
+}
+
+/**
+ * Extract only the per-platform SUCCESS markers from a results object (drops errors + reconnect
+ * flags). Stored in progress.posted so a resumed chunk skips already-posted platforms and merges
+ * their results into the final published record — a failed platform is NOT carried, so it retries.
+ */
+function pickPostedSuccesses(results: PublishResults): PublishResults {
+    const posted: PublishResults = {};
+    if (results.x) posted.x = results.x;
+    if (results.x_pending) posted.x_pending = results.x_pending;
+    if (results.instagram_post) posted.instagram_post = results.instagram_post;
+    if (results.instagram_story) posted.instagram_story = results.instagram_story;
+    if (results.instagram_reel) posted.instagram_reel = results.instagram_reel;
+    if (results.linkedin) posted.linkedin = results.linkedin;
+    return posted;
+}
+
+/**
+ * Publish a draft to all targeted platforms — concurrent, resumable, and idempotent.
+ *
+ * Each platform is tried independently (a bounded `Promise.allSettled` over async thunks) so partial
+ * failures don't block others; per-tweet/per-carousel media uploads inside each branch run through a
+ * bounded pool (cap UPLOAD_POOL_LIMIT) so several videos upload in parallel without exceeding limits.
+ *
+ * Resumable: `progress` carries the media uploads already completed in a prior chunk (keyed by
+ * platform + tweet/media index). A branch SKIPS any upload already present and RECORDS each new one
+ * into `progress` (mutated in place). `deadline` is an epoch-ms soft cap: before starting a new heavy
+ * upload a branch checks it and, if passed, stops starting new uploads and signals "needs more" via
+ * DeadlineReachedError — no upload runs twice across a chunk boundary.
+ *
+ * Returns `{ success, results, url, progress, done, deferredX }`. Terminal DB finalization
+ * (createPublished → updateDraftStatus, or scheduled→approved on all-fail) happens only when
+ * `done === true`. `done` defaults true (no deadline / nothing deferred) so an un-migrated caller
+ * still finalizes. Returns `{ success: false, … }` rather than throwing on platform failures.
  */
 export async function publishDraft(
     env: Env,
     chatId: string,
-    draft: Draft
+    draft: Draft,
+    progress: PublishProgress = {},
+    deadline: number = Infinity
 ): Promise<PublishResult> {
     const content = JSON.parse(draft.content) as DraftContent;
     const targets = parsePublishTargets(draft.publish_targets);
-    const results: PublishResults = {};
-    let primaryUrl = '';
+    // Resume-aware: seed results with platforms that already POSTED in an earlier chunk (persisted in
+    // progress.posted) so each branch can skip itself and we never re-post on resume.
+    const results: PublishResults = progress.posted ? { ...progress.posted } : {};
+
+    // ==================== Pre-warmed media handles (optimization) ====================
+
+    // Load any media handles pre-uploaded by the warm engine (core/media-prewarm.ts) and SEED the
+    // resumable `progress` from the valid ones (status 'ready', outside the publish-time expiry safety
+    // margin — see warm-progress.ts). Each branch's existing skip-if-present logic then skips the upload
+    // and posts directly. X + LinkedIn seed straight into `progress`; Instagram handles are FINISHED
+    // container ids surfaced separately (igWarm*) because progress.instagram_* are posted-markers, not
+    // container slots. Warming is BEST-EFFORT: a missing/expired/failed handle leaves the slot unseeded,
+    // so the branch uploads inline exactly as today (warmedRows defaults empty on any load failure).
+    // Already-passed-in progress (a resumed chunk) is never overwritten — warm handles only fill gaps.
+    let warmedRows: MediaUploadRow[] = [];
+    try {
+        warmedRows = await getReadyHandlesForDraft(env, draft.id, chatId);
+        if (warmedRows.length > 0) seedProgressFromWarmHandles(content, warmedRows, progress);
+    } catch (error) {
+        console.error('[publish] loading pre-warmed handles failed (falling back to inline upload):', error instanceof Error ? error.message : String(error));
+        warmedRows = [];
+    }
+    // Warmed IG container ids per branch (publish-only step: media_publish the FINISHED container,
+    // skipping the slow create+process). Empty ⇒ that branch creates+processes inline as today.
+    const igPostWarm = warmedRows.length > 0 ? mapInstagramWarmHandles(content, warmedRows, 'instagram_post') : [];
+    const igStoryWarm = warmedRows.length > 0 ? mapInstagramWarmHandles(content, warmedRows, 'instagram_story') : [];
+    const igReelWarm = warmedRows.length > 0 ? mapInstagramWarmHandles(content, warmedRows, 'instagram_reel') : [];
 
     // X video posts are deferred: X video media needs ~10–60s after upload before
     // POST /2/tweets accepts it (see add-x-oauth2-media/design-deferred-video-post.md).
     // We upload the media inline (fits the budget) but DEFER the tweet-creation to the
     // every-minute cron processor (core/x-pending.ts). Text/image-only X posts and ALL
-    // Instagram stay inline.
+    // Instagram stay inline. EXCEPTION: a warmed X video media_id has been attachable for hours
+    // (uploaded ahead of publish), so it posts inline — see xVideoFullyWarmed below.
     const xIsVideo = targets.x && hasVideoTarget(content);
+    // A cold X video must STILL defer; a fully pre-warmed X video posts inline. Decided from the warm
+    // rows directly (not seeded progress) so a prior-chunk cold upload is never mistaken for warmed.
+    const xVideoFullyWarmed = xIsVideo && isXVideoFullyWarmed(content, warmedRows);
     let xMedia: ResolvedXMedia | undefined;
+
+    // Set true by any branch that stopped early because the soft deadline was hit mid-upload. When
+    // true we persist `progress` and DEFER finalization (done=false) so a later chunk resumes.
+    let deadlineHit = false;
+
+    // Build one async thunk per targeted platform; they run concurrently via Promise.allSettled.
+    // Each thunk owns the SAME independent try/catch + `results` aggregation as the old sequential
+    // branches — only the ordering changed (concurrent), so partial-failure semantics are identical.
+    const branches: Array<() => Promise<void>> = [];
 
     // ==================== X (Twitter) Publishing ====================
 
     if (targets.x) {
-        try {
-            // Upload all media up-front (video chunked upload + photos). Always inline —
-            // this fits the ~25s budget; only the tweet-creation step is ever deferred.
-            xMedia = await resolveXMedia(env, draft, content);
-            if (!xIsVideo) {
-                // Text/image X: post inline exactly as before.
-                const xResult = await postResolvedX(env, content, draft, xMedia);
-                results.x = xResult;
-                primaryUrl = xResult.url;
+        branches.push(async () => {
+            // Resume guard: X already posted (or its video was already deferred) in an earlier chunk.
+            if (results.x || results.x_pending) return;
+            try {
+                // Upload all media up-front (video chunked upload + photos). Always inline —
+                // this fits the ~25s budget; only the tweet-creation step is ever deferred. Skips
+                // any media already in progress.x and records new uploads back into it.
+                xMedia = await resolveXMedia(env, draft, content, progress, deadline);
+                if (!xIsVideo || xVideoFullyWarmed) {
+                    // Text/image X: post inline exactly as before. ALSO a fully PRE-WARMED X video:
+                    // its media_id was uploaded hours ahead (attachability has elapsed), so the tweet
+                    // posts inline instead of deferring via x_pending — no wait needed.
+                    const xResult = await postResolvedX(env, content, draft, xMedia);
+                    results.x = xResult;
+                    if (xIsVideo) xMedia = undefined; // posted inline → nothing to defer below
+                }
+                // xIsVideo (cold): media is uploaded; the deferred post is enqueued AFTER all branches
+                // settle (below) so the IG/LinkedIn results are available to carry into its payload.
+            } catch (error) {
+                if (error instanceof DeadlineReachedError) {
+                    // Out of budget mid-upload — not a failure. Resume next chunk from progress.
+                    deadlineHit = true;
+                    xMedia = undefined;
+                    return;
+                }
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[publish] X publishing failed:', msg);
+                if (error instanceof XReconnectError) {
+                    results.errors = { ...results.errors, x: 'needs_x_reconnect' };
+                    results.needsXReconnect = true;
+                } else {
+                    results.errors = { ...results.errors, x: msg };
+                }
+                // Upload failed → nothing to defer.
+                xMedia = undefined;
             }
-            // xIsVideo: media is uploaded; the deferred post is enqueued AFTER the Instagram
-            // branches below so the IG results are available to carry into its payload.
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish] X publishing failed:', msg);
-            if (error instanceof XReconnectError) {
-                results.errors = { ...results.errors, x: 'needs_x_reconnect' };
-                results.needsXReconnect = true;
-            } else {
-                results.errors = { ...results.errors, x: msg };
-            }
-            // Upload failed → nothing to defer.
-            xMedia = undefined;
-        }
+        });
     }
 
     // ==================== Instagram Post Publishing ====================
 
     if (targets.instagram_post) {
-        try {
-            const igResult = await publishToIGPost(env, chatId, draft, content);
-            if (igResult) {
-                results.instagram_post = igResult;
-                if (!primaryUrl && igResult.url) primaryUrl = igResult.url;
+        branches.push(async () => {
+            if (results.instagram_post) return; // resume guard: already posted in an earlier chunk
+            try {
+                const igResult = await publishToIGPost(env, chatId, draft, content, progress, deadline, igPostWarm);
+                if (igResult) {
+                    results.instagram_post = igResult;
+                }
+            } catch (error) {
+                if (error instanceof DeadlineReachedError) { deadlineHit = true; return; }
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[publish] Instagram Post publishing failed:', msg);
+                results.errors = { ...results.errors, instagram_post: msg };
+                if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
             }
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish] Instagram Post publishing failed:', msg);
-            results.errors = { ...results.errors, instagram_post: msg };
-            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
-        }
+        });
     }
 
     // ==================== Instagram Story Publishing ====================
 
     if (targets.instagram_story) {
-        try {
-            const storyResult = await publishToIGStory(env, chatId, draft, content);
-            if (storyResult) {
-                results.instagram_story = storyResult;
+        branches.push(async () => {
+            if (results.instagram_story) return; // resume guard: already posted in an earlier chunk
+            try {
+                const storyResult = await publishToIGStory(env, chatId, draft, content, igStoryWarm);
+                if (storyResult) {
+                    results.instagram_story = storyResult;
+                }
+            } catch (error) {
+                if (error instanceof DeadlineReachedError) { deadlineHit = true; return; }
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[publish] Instagram Story publishing failed:', msg);
+                results.errors = { ...results.errors, instagram_story: msg };
+                if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
             }
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish] Instagram Story publishing failed:', msg);
-            results.errors = { ...results.errors, instagram_story: msg };
-            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
-        }
+        });
     }
 
     // ==================== Instagram Reel Publishing ====================
 
     if (targets.instagram_reel && draft.has_video) {
-        try {
-            const reelResult = await publishToIGReel(env, draft);
-            if (reelResult) {
-                results.instagram_reel = reelResult;
-                if (!primaryUrl && reelResult.url) primaryUrl = reelResult.url;
+        branches.push(async () => {
+            if (results.instagram_reel) return; // resume guard: already posted in an earlier chunk
+            try {
+                const reelResult = await publishToIGReel(env, draft, igReelWarm);
+                if (reelResult) {
+                    results.instagram_reel = reelResult;
+                }
+            } catch (error) {
+                if (error instanceof DeadlineReachedError) { deadlineHit = true; return; }
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[publish] Instagram Reel publishing failed:', msg);
+                results.errors = { ...results.errors, instagram_reel: msg };
+                if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
             }
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish] Instagram Reel publishing failed:', msg);
-            results.errors = { ...results.errors, instagram_reel: msg };
-            if (error instanceof InstagramPublishError && error.isAuthError) results.needsInstagramReconnect = true;
-        }
+        });
     }
 
     // ==================== LinkedIn Publishing ====================
 
     // Reshape the draft into ONE native LinkedIn member post: thread text merged into a single
     // commentary, photos combined (or one video) as the post media. Independent of X/Instagram —
-    // its failure is isolated and never blocks the other platforms. Runs before the deferred-X
-    // early-return below so a LinkedIn result is captured even when X video is deferred.
+    // its failure is isolated and never blocks the other platforms. Captured even when X video is
+    // deferred (the deferred-X enqueue below runs only after this branch settles).
     if (targets.linkedin) {
-        try {
-            console.log(`[publish] LinkedIn: starting for draft ${draft.id} (connected=${!!env.LINKEDIN_ACCESS_TOKEN}, urn=${env.LINKEDIN_PERSON_URN ? 'set' : 'missing'})`);
-            const linkedinResult = await publishToLinkedIn(env, draft, content);
-            results.linkedin = linkedinResult;
-            if (!primaryUrl && linkedinResult.url) primaryUrl = linkedinResult.url;
-            console.log(`[publish] LinkedIn: published draft ${draft.id} → ${linkedinResult.url}`);
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish] LinkedIn publishing failed:', msg);
-            results.errors = { ...results.errors, linkedin: msg };
-            if (error instanceof LinkedInPublishError && error.isAuthError) results.needsLinkedInReconnect = true;
-        }
+        branches.push(async () => {
+            if (results.linkedin) return; // resume guard: already posted in an earlier chunk
+            try {
+                console.log(`[publish] LinkedIn: starting for draft ${draft.id} (connected=${!!env.LINKEDIN_ACCESS_TOKEN}, urn=${env.LINKEDIN_PERSON_URN ? 'set' : 'missing'})`);
+                const linkedinResult = await publishToLinkedIn(env, draft, content, progress, deadline);
+                results.linkedin = linkedinResult;
+                console.log(`[publish] LinkedIn: published draft ${draft.id} → ${linkedinResult.url}`);
+            } catch (error) {
+                if (error instanceof DeadlineReachedError) { deadlineHit = true; return; }
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[publish] LinkedIn publishing failed:', msg);
+                results.errors = { ...results.errors, linkedin: msg };
+                if (error instanceof LinkedInPublishError && error.isAuthError) results.needsLinkedInReconnect = true;
+            }
+        });
+    }
+
+    // Run all platform branches concurrently; each owns its own try/catch so a rejection is
+    // impossible here, but allSettled keeps us robust to any unexpected throw.
+    await Promise.allSettled(branches.map(fn => fn()));
+
+    // Compute the primary URL deterministically by platform priority (X → IG post → reel →
+    // LinkedIn → story), independent of concurrent settle order — matches the old precedence.
+    const primaryUrl =
+        results.x?.url
+        || results.instagram_post?.url
+        || results.instagram_reel?.url
+        || results.linkedin?.url
+        || '';
+
+    // ==================== Budget exhausted mid-upload ====================
+
+    // A branch stopped early on the soft deadline → persist what we have and DEFER finalization.
+    // No published record, no status transition; the job processor reschedules and resumes from
+    // `progress`. Nothing was double-uploaded (each upload is skipped when already in progress).
+    if (deadlineHit) {
+        await updateDraftPublishResults(env, draft.id, chatId, results);
+        // Carry the platforms that already POSTED into progress so the resumed chunk skips them
+        // (no re-post) and can merge their results into the final published record.
+        progress.posted = pickPostedSuccesses(results);
+        const anyDone = !!(results.x || results.instagram_post || results.instagram_story || results.instagram_reel || results.linkedin);
+        return { success: anyDone, results, url: primaryUrl, progress, done: false };
     }
 
     // ==================== Deferred X video post ====================
 
-    // X target is a video and its media uploaded successfully → enqueue a pending row so the
+    // X target is a COLD video and its media uploaded successfully → enqueue a pending row so the
     // every-minute cron processor (core/x-pending.ts) posts the tweet once the media becomes
     // attachable. Instagram (if any) has already published inline above; its results are carried
     // into the payload so the processor can build the final published record. The draft stays in
-    // 'publishing' until the processor resolves it.
+    // 'publishing' until the processor resolves it. A fully PRE-WARMED X video posts inline in the
+    // branch above and clears xMedia, so it never reaches here (no deferral).
     if (xIsVideo && xMedia) {
         results.x_pending = true; // UI badge: "X posting…" while the cron processor retries
         await updateDraftPublishResults(env, draft.id, chatId, results);
         await enqueueDeferredXPost(env, chatId, draft, content, xMedia, results);
         // Leave the draft in 'publishing' (already set by callers); success=true so inline callers
         // render "X posting…" rather than a failure. The cron processor sends the final
-        // notification and creates the published record on X success.
-        return { success: true, results, url: primaryUrl, deferredX: true };
+        // notification and creates the published record on X success. done=true: the upload/post
+        // work of THIS job is complete (the X-attachability wait is the x_pending processor's job).
+        return { success: true, results, url: primaryUrl, progress, done: true, deferredX: true };
     }
 
     // ==================== Status Transition ====================
@@ -211,7 +418,7 @@ export async function publishDraft(
         }
     }
 
-    return { success: anySuccess, results, url: primaryUrl };
+    return { success: anySuccess, results, url: primaryUrl, progress, done: true };
 }
 
 // ==================== X (Twitter) Branch ====================
@@ -229,75 +436,111 @@ export interface ResolvedXMedia {
 }
 
 /**
+ * Upload ONE media item (by R2 key) to X and return its `media_id`. The single source of truth for
+ * the X upload encoding, shared by BOTH `resolveXMedia` (publish) and the warm engine
+ * (core/media-prewarm.ts) so a warmed handle is byte-identical to one produced inline at publish.
+ *
+ * Photos use the simple `uploadMediaFromBuffer` (reads the R2 object first); videos use the chunked
+ * `uploadVideoToX` (which reads R2 by key itself). Throws if a photo's R2 object is missing or any
+ * upload step fails — the caller decides whether that's fatal (video) or skippable (photo).
+ */
+export async function uploadXMediaItem(env: Env, mediaKey: string, mediaKind: 'photo' | 'video'): Promise<string> {
+    if (mediaKind === 'video') {
+        return uploadVideoToX(env, mediaKey);
+    }
+    const r2Object = await env.IMAGES.get(mediaKey);
+    if (!r2Object) throw new Error(`Photo media missing from storage: ${mediaKey}`);
+    const buffer = await r2Object.arrayBuffer();
+    return uploadMediaFromBuffer(env, buffer);
+}
+
+/**
  * Upload all X media for a draft and return the resolved media ids.
  * Photo uploads are best-effort (skip failures); a VIDEO upload failure throws.
  * This is the slow step (video chunked upload + processing poll, ~25s) but it fits the
  * publish budget — only the subsequent tweet-creation is deferred for video posts.
+ *
+ * Resumable: per-tweet uploads run through a bounded pool (UPLOAD_POOL_LIMIT) so several videos
+ * upload in parallel; any tweet already resolved in `progress.x.perTweetMediaIds` is reused (no
+ * re-upload). Before starting a NEW per-tweet upload the soft `deadline` is checked — if passed we
+ * throw DeadlineReachedError (caught by publishDraft) so the chunk stops and resumes later. Each
+ * completed tweet's ids are recorded into `progress.x` immediately so a mid-thread stop is durable.
  */
 export async function resolveXMedia(
     env: Env,
     draft: Draft,
-    content: DraftContent
+    content: DraftContent,
+    progress: PublishProgress = {},
+    deadline: number = Infinity
 ): Promise<ResolvedXMedia> {
     // Handle media upload
     const hasPerTweetMedia = content.tweets.some(t => t.media?.length);
-    let mediaId: string | undefined;
-    let perTweetMediaIds: (string[] | null)[] | undefined;
+    const prior = progress.x ?? {};
 
     if (hasPerTweetMedia) {
         // Per-tweet media: a tweet has EITHER exactly 1 video OR up to 4 photos
         // (X's exclusivity rule; the editor enforces it, we enforce it defensively here).
         // Photo uploads are best-effort (skip failures); a VIDEO upload failure throws and
         // fails X publishing — caught by publishDraft's per-platform try/catch (→ errors.x).
-        perTweetMediaIds = await Promise.all(
-            content.tweets.map(async (tweet) => {
-                // Only media targeted to X is attached; a tweet with no X-targeted media → text-only.
-                const items = (tweet.media || []).filter(m => isMediaTargeted(m, 'x'));
-                const video = items.find(m => m.type === 'video');
-                if (video) {
-                    // Video wins: upload exactly one video, ignore any photos on this tweet.
-                    const videoMediaId = await uploadVideoToX(env, video.key);
-                    return [videoMediaId];
-                }
-                // Photos: up to 4 for X — silently truncate the rest, skip individual failures.
-                const photos = items.filter(m => m.type === 'photo').slice(0, 4);
-                if (photos.length === 0) return null;
-                const ids: string[] = [];
-                for (const media of photos) {
-                    try {
-                        const r2Object = await env.IMAGES.get(media.key);
-                        if (!r2Object) continue;
-                        const buffer = await r2Object.arrayBuffer();
-                        const id = await uploadMediaFromBuffer(env, buffer);
-                        ids.push(id);
-                    } catch {
-                        // Skip failed photo uploads, continue with others
-                    }
-                }
-                return ids.length > 0 ? ids : null;
-            })
-        );
-    } else {
-        // Draft-level image for auto-generated drafts (best-effort — publish without on failure).
-        try {
-            if (draft.image_url && draft.image_url.startsWith('drafts/')) {
-                const r2Object = await env.IMAGES.get(draft.image_url);
-                if (r2Object) {
-                    const imageBuffer = await r2Object.arrayBuffer();
-                    mediaId = await uploadMediaFromBuffer(env, imageBuffer);
-                }
-            } else if (draft.image_url) {
-                mediaId = await uploadMedia(env, draft.image_url);
+        const resolved: (string[] | null)[] = (prior.perTweetMediaIds ?? []).slice();
+        // Persist incrementally so a mid-thread deadline stop leaves durable progress.
+        progress.x = { ...prior, perTweetMediaIds: resolved };
+
+        await runPool(content.tweets, UPLOAD_POOL_LIMIT, async (tweet, index) => {
+            // Skip a tweet whose media was already uploaded in a prior chunk (resume).
+            if (resolved[index] !== undefined) return;
+            // Budget guard: stop BEFORE starting a new heavy upload once the deadline passed.
+            if (deadlinePassed(deadline)) throw new DeadlineReachedError();
+
+            // Only media targeted to X is attached; a tweet with no X-targeted media → text-only.
+            const items = (tweet.media || []).filter(m => isMediaTargeted(m, 'x'));
+            const video = items.find(m => m.type === 'video');
+            if (video) {
+                // Video wins: upload exactly one video, ignore any photos on this tweet.
+                const videoMediaId = await uploadXMediaItem(env, video.key, 'video');
+                resolved[index] = [videoMediaId];
+                return;
             }
-            // No forced image generation at publish time — if compose didn't
-            // generate an image, we publish without one.
-        } catch {
-            // Continue without image
-            mediaId = undefined;
-        }
+            // Photos: up to 4 for X — silently truncate the rest, skip individual failures.
+            const photos = items.filter(m => m.type === 'photo').slice(0, 4);
+            if (photos.length === 0) { resolved[index] = null; return; }
+            const ids: string[] = [];
+            for (const media of photos) {
+                try {
+                    const id = await uploadXMediaItem(env, media.key, 'photo');
+                    ids.push(id);
+                } catch {
+                    // Skip failed photo uploads, continue with others
+                }
+            }
+            resolved[index] = ids.length > 0 ? ids : null;
+        });
+
+        return { perTweetMediaIds: resolved };
     }
 
-    return { perTweetMediaIds, mediaId };
+    // Draft-level image for auto-generated drafts (best-effort — publish without on failure).
+    if (prior.mediaId !== undefined) return { mediaId: prior.mediaId };
+    let mediaId: string | undefined;
+    try {
+        if (draft.image_url && draft.image_url.startsWith('drafts/')) {
+            const r2Object = await env.IMAGES.get(draft.image_url);
+            if (r2Object) {
+                const imageBuffer = await r2Object.arrayBuffer();
+                mediaId = await uploadMediaFromBuffer(env, imageBuffer);
+            }
+        } else if (draft.image_url) {
+            mediaId = await uploadMedia(env, draft.image_url);
+        }
+        // No forced image generation at publish time — if compose didn't
+        // generate an image, we publish without one.
+    } catch {
+        // Continue without image
+        mediaId = undefined;
+    }
+
+    if (mediaId !== undefined) progress.x = { ...prior, mediaId };
+    return { mediaId };
 }
 
 /**
@@ -375,10 +618,38 @@ async function publishToIGPost(
     env: Env,
     chatId: string,
     draft: Draft,
-    content: DraftContent
+    content: DraftContent,
+    progress: PublishProgress = {},
+    deadline: number = Infinity,
+    igWarm: InstagramWarmHandle[] = []
 ): Promise<{ post_id: string; url: string } | null> {
     const workerUrl = env.WORKER_URL;
     if (!workerUrl) throw new Error('WORKER_URL not configured');
+
+    // Already published in a prior chunk → reuse (resume; never re-post the carousel). The IG post
+    // publish is one atomic step in the service (no per-image id surfaced back), so progress records
+    // it all-or-nothing as `mediaIds = [post_id, url]` — a non-empty slot means "already posted".
+    const priorIds = progress.instagram_post?.mediaIds;
+    if (priorIds && priorIds[0]) return { post_id: priorIds[0], url: priorIds[1] ?? '' };
+
+    // Pre-warm fast path (single photo): a lone IG-Post-targeted photo is warmed as a FINISHED
+    // 'feed_image' container — publish it directly (media_publish), skipping the slow create+process.
+    // Limited to the single-photo case because that's the only warm encoding directly publishable as a
+    // feed post: a lone video is warmed as a carousel_child (publish makes it a Reel — fall back inline)
+    // and a carousel still needs the parent assembled at publish. Everything else falls through to the
+    // inline path below — warming is an optimization, never a correctness dependency.
+    const igTargeted = collectTargetedMedia(content.tweets, 'instagram_post');
+    if (igTargeted.length === 1 && igTargeted[0].type === 'photo' && igWarm.length === 1 && igWarm[0].type === 'photo' && igWarm[0].mediaKey === igTargeted[0].key) {
+        const result = await publishContainer(env, igWarm[0].containerId);
+        const out = { post_id: result.post_id, url: result.url || '' };
+        progress.instagram_post = { mediaIds: [out.post_id, out.url] };
+        return out;
+    }
+
+    // Budget guard: the IG carousel upload+poll is one heavy atomic step (the service creates child
+    // containers, polls, then publishes). Don't start it once the soft deadline has passed — resume
+    // next chunk. (No partial IG progress is exposed back here, so this whole step is the unit.)
+    if (deadlinePassed(deadline)) throw new DeadlineReachedError();
 
     // Prepare caption from tweet texts
     const caption = formatInstagramCaption(content.tweets.map(t => t.text));
@@ -408,10 +679,14 @@ async function publishToIGPost(
         const result = single.type === 'video'
             ? await publishToInstagramReel(env, single.url, caption)
             : await publishToInstagramPost(env, single.url, caption);
-        return { post_id: result.post_id, url: result.url || '' };
+        const out = { post_id: result.post_id, url: result.url || '' };
+        progress.instagram_post = { mediaIds: [out.post_id, out.url] };
+        return out;
     }
     const result = await publishToInstagramCarousel(env, items, caption);
-    return { post_id: result.post_id, url: result.url || '' };
+    const out = { post_id: result.post_id, url: result.url || '' };
+    progress.instagram_post = { mediaIds: [out.post_id, out.url] };
+    return out;
 }
 
 // ==================== Instagram Story Branch ====================
@@ -420,7 +695,8 @@ async function publishToIGStory(
     env: Env,
     chatId: string,
     draft: Draft,
-    content: DraftContent
+    content: DraftContent,
+    igWarm: InstagramWarmHandle[] = []
 ): Promise<{ post_id: string; url: null } | null> {
     const workerUrl = env.WORKER_URL;
     if (!workerUrl) throw new Error('WORKER_URL not configured');
@@ -430,6 +706,20 @@ async function publishToIGStory(
     const storyCandidates = collectTargetedMedia(content.tweets, 'instagram_story');
     const storyVideo = storyCandidates.find(m => m.type === 'video');
     if (storyVideo) {
+        // Pre-warm fast path: the story VIDEO is warmed as a FINISHED 'story' container — publish it
+        // directly (media_publish), skipping the slow create+process. Only the video case is warm-
+        // reusable: a photo story is re-rendered to a 9:16 image at publish (a different media key than
+        // the warmed original), so warmed photo-story handles are NOT used here. On any failure fall
+        // through to the inline path below.
+        const warmedVideo = igWarm.find(h => h.mediaKey === storyVideo.key && h.type === 'video');
+        if (warmedVideo) {
+            try {
+                const result = await publishContainer(env, warmedVideo.containerId, true);
+                return { post_id: result.post_id, url: null };
+            } catch (err) {
+                console.error('[publish] IG warmed video story publish failed; falling back to inline:', err instanceof Error ? err.message : String(err));
+            }
+        }
         try {
             const result = await publishToInstagramStory(env, { url: `${workerUrl}/media/${storyVideo.key}`, type: 'video' });
             return { post_id: result.post_id, url: null };
@@ -440,7 +730,6 @@ async function publishToIGStory(
     const storyPhoto = storyCandidates.find(m => m.type === 'photo');
 
     // Prepare a 9:16 story image
-    const { createStoryImage, storeStoryImage, getTweetCard } = await getTweetCardModule();
     let storyImageKey: string;
 
     // Check for a targeted photo first, then existing tweet card or draft image
@@ -489,7 +778,8 @@ async function publishToIGStory(
 
 async function publishToIGReel(
     env: Env,
-    draft: Draft
+    draft: Draft,
+    igWarm: InstagramWarmHandle[] = []
 ): Promise<{ post_id: string; url: string } | null> {
     const content = JSON.parse(draft.content) as DraftContent;
 
@@ -507,6 +797,19 @@ async function publishToIGReel(
 
     if (!videoKey) {
         throw new Error('No video found in draft for Reel');
+    }
+
+    // Pre-warm fast path: the Reel video is warmed as a FINISHED 'reel' container — publish it
+    // directly (media_publish), skipping the slow container create + processing poll. On failure fall
+    // through to the inline create+poll+publish below. Warming is an optimization, never a dependency.
+    const warmedReel = igWarm.find(h => h.mediaKey === videoKey && h.type === 'video');
+    if (warmedReel) {
+        try {
+            const result = await publishContainer(env, warmedReel.containerId);
+            return { post_id: result.post_id, url: `https://www.instagram.com/reel/${result.post_id}` };
+        } catch (err) {
+            console.error('[publish] IG warmed Reel publish failed; falling back to inline:', err instanceof Error ? err.message : String(err));
+        }
     }
 
     // Use existing video-publish service
@@ -588,7 +891,9 @@ async function publishToIGReel(
 async function publishToLinkedIn(
     env: Env,
     draft: Draft,
-    content: DraftContent
+    content: DraftContent,
+    progress: PublishProgress = {},
+    deadline: number = Infinity
 ): Promise<{ post_urn: string; url: string }> {
     const commentary = content.tweets
         .map(t => t.text)
@@ -596,7 +901,7 @@ async function publishToLinkedIn(
         .join('\n\n')
         .slice(0, LINKEDIN_MAX_COMMENTARY);
 
-    const media = await resolveLinkedInMedia(env, draft, content);
+    const media = await resolveLinkedInMedia(env, draft, content, progress, deadline);
     return postToLinkedIn(env, commentary, media);
 }
 
@@ -608,7 +913,9 @@ async function publishToLinkedIn(
 async function resolveLinkedInMedia(
     env: Env,
     draft: Draft,
-    content: DraftContent
+    content: DraftContent,
+    progress: PublishProgress = {},
+    deadline: number = Infinity
 ): Promise<LinkedInMedia> {
     // Only media targeted to LinkedIn is considered; LinkedIn carries EITHER one video OR images.
     const candidates = collectTargetedMedia(content.tweets, 'linkedin');
@@ -616,37 +923,51 @@ async function resolveLinkedInMedia(
     // 1) A targeted video takes precedence — upload exactly one; skipped photos are logged.
     const video = candidates.find(m => m.type === 'video');
     if (video) {
+        // Resume: reuse a video asset already uploaded in a prior chunk (never re-upload).
+        const priorVideo = progress.linkedin?.assetUrns?.[0];
+        if (priorVideo) return { category: 'VIDEO', assetUrns: [priorVideo] };
+        // Budget guard: don't start the video upload once the soft deadline passed.
+        if (deadlinePassed(deadline)) throw new DeadlineReachedError();
         const skipped = candidates.filter(m => m.type === 'photo').length;
         if (skipped > 0) console.log(`[publish] LinkedIn: video wins — skipping ${skipped} targeted photo(s)`);
         console.log(`[publish] LinkedIn: video media detected (key=${video.key}) — uploading`);
-        const r2 = await env.IMAGES.get(video.key);
-        if (!r2) throw new LinkedInPublishError('Video media missing from storage');
-        const asset = await uploadVideoToLinkedIn(env, await r2.arrayBuffer());
+        const asset = await uploadLinkedInMediaItem(env, video.key, 'video');
+        progress.linkedin = { assetUrns: [asset] };
         return { category: 'VIDEO', assetUrns: [asset] };
     }
 
-    // 2) Targeted photos → multi-image post (best-effort per photo).
+    // 2) Targeted photos → multi-image post (best-effort per photo). Uploads run through a bounded
+    // pool so several images upload in parallel; an image already uploaded in a prior chunk
+    // (progress.linkedin.assetUrns[i] set) is reused. Before starting a NEW image upload the soft
+    // deadline is checked — if passed, throw so the chunk stops and resumes from saved progress.
     const photoKeys: string[] = candidates.filter(m => m.type === 'photo').map(m => m.key);
     if (photoKeys.length > 0) {
-        const assetUrns: string[] = [];
-        for (const key of photoKeys) {
+        const slots: (string | null)[] = (progress.linkedin?.assetUrns ?? []).slice();
+        progress.linkedin = { assetUrns: slots }; // persist incrementally
+        await runPool(photoKeys, UPLOAD_POOL_LIMIT, async (key, index) => {
+            if (slots[index] !== undefined && slots[index] !== null) return; // already uploaded
+            if (deadlinePassed(deadline)) throw new DeadlineReachedError();
             try {
-                const r2 = await env.IMAGES.get(key);
-                if (!r2) continue;
-                assetUrns.push(await uploadImageToLinkedIn(env, await r2.arrayBuffer()));
+                slots[index] = await uploadLinkedInMediaItem(env, key, 'photo');
             } catch (err) {
                 console.error('[publish] LinkedIn photo upload skipped:', err instanceof Error ? err.message : String(err));
+                slots[index] = null;
             }
-        }
+        });
+        const assetUrns = slots.filter((u): u is string => !!u);
         if (assetUrns.length > 0) return { category: 'IMAGE', assetUrns };
     }
 
     // 3) Draft-level image fallback (auto-generated drafts). R2 key or absolute URL.
     if (draft.image_url) {
+        const priorImage = progress.linkedin?.assetUrns?.[0];
+        if (priorImage) return { category: 'IMAGE', assetUrns: [priorImage] };
+        if (deadlinePassed(deadline)) throw new DeadlineReachedError();
         try {
             const bytes = await loadImageBytes(env, draft.image_url);
             if (bytes) {
                 const asset = await uploadImageToLinkedIn(env, bytes);
+                progress.linkedin = { assetUrns: [asset] };
                 return { category: 'IMAGE', assetUrns: [asset] };
             }
         } catch (err) {
@@ -683,7 +1004,6 @@ async function generateTweetCardImages(
     const workerUrl = env.WORKER_URL;
     if (!workerUrl) return [];
 
-    const { renderTweetCard, renderThreadCards, renderQuoteTweetCard, storeTweetCard, getTweetCard } = await getTweetCardModule();
     let user = await getUser(env, chatId);
     const urls: string[] = [];
 

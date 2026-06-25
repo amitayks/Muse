@@ -6,7 +6,11 @@
   "scripts": {
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "deploy": "npm run deploy:render && npm run deploy:bot",
+    "deploy:render": "cd render-worker && npm run deploy",
+    "deploy:bot": "cd cloudflare-bot && npm run deploy",
+    "typecheck": "cd render-worker && npm run typecheck && cd ../cloudflare-bot && npx tsc --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4"

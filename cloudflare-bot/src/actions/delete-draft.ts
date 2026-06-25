@@ -7,6 +7,7 @@ import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
 import type { DraftListType } from '../views/drafts';
 import { getDraft, deleteDraft, getChatState, parseContext, updateChatState, getTimezone, getPageSize, countDrafts, countDraftsBySource } from '../data/db';
+import { deleteWarmsForDraft } from '../data/media-uploads-db';
 import { deleteMessage, sendMessage } from '../integrations/telegram';
 import { renderDeleteDraftConfirm, renderDraftDetail, renderDraftCategories, renderDraftsList, renderError } from '../views';
 
@@ -51,6 +52,10 @@ export async function confirmDeleteDraftAction(
     }
 
     await deleteDraft(env, draftId, chatId);
+
+    // Clean up any pre-warmed media handles for the deleted draft (best-effort; warming is never a
+    // correctness dependency so a failure here is harmless).
+    try { await deleteWarmsForDraft(env, draftId); } catch { /* ignore */ }
 
     // Render the return destination — clamp page in case we deleted the last item on it
     let view: ViewResult;

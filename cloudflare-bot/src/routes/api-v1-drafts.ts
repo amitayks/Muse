@@ -7,10 +7,14 @@ import {
     getDraft, getAllDrafts, countDrafts,
     getDraftsBySource, countDraftsBySource, getHandwriteDraftCount,
     updateDraftContent, updateDraftStatus, updateDraftPublishTargets,
-    scheduleDraft, deleteDraft, getTimezone,
+    scheduleDraft, deleteDraft, getTimezone, getUserLanguage,
 } from '../data/db';
 import { getUser } from '../data/user-db';
-import { publishDraft } from '../core/publish';
+import { enqueuePublishJob } from '../data/publish-jobs-db';
+import { processPublishJobOnce, INLINE_DEADLINE_MS } from '../core/publish-jobs';
+import { warmDraftMediaInline, reconcileWarmsAfterContentChange, reconcileWarmsAfterTargetsChange } from '../core/media-prewarm';
+import { deleteWarmsForDraft, getWarmRowsForDraft } from '../data/media-uploads-db';
+import type { MediaUploadStatus, MediaWarmPlatform } from '../types';
 import { toUTC } from '../infra/timezone';
 import { syncBotMessage, syncBotHome } from '../services/webapp-sync';
 import type { ApiContext } from './api-v1';
@@ -35,6 +39,11 @@ export async function handleDraftsApi(ctx: ApiContext, path: string): Promise<Re
     // GET /api/v1/drafts/:id — draft detail
     if (!action && method === 'GET') {
         return getDraftDetail(ctx, draftId);
+    }
+
+    // GET /api/v1/drafts/:id/media-progress — per-(media, platform) warm status for the ring
+    if (action === 'media-progress' && method === 'GET') {
+        return getMediaProgress(ctx, draftId);
     }
 
     // PUT /api/v1/drafts/:id — update content
@@ -166,6 +175,28 @@ async function getDraftDetail(ctx: ApiContext, draftId: string): Promise<Respons
     });
 }
 
+// ==================== Media Warm Progress ====================
+
+/**
+ * Read-only pre-upload ("warm") progress for a draft's media, keyed media_key → platform → { status }.
+ * Drives the webapp's circular progress ring around each per-media platform icon. Ownership-scoped by
+ * chat_id; only platforms that have a warm row are included (a missing platform ⇒ no ring). Returns an
+ * empty `media` map when the draft has no warm rows — never an error for a valid, owned draft.
+ */
+async function getMediaProgress(ctx: ApiContext, draftId: string): Promise<Response> {
+    const draft = await getDraft(ctx.env, draftId, ctx.chatId);
+    if (!draft) return errorResponse('Draft not found', 404);
+
+    const rows = await getWarmRowsForDraft(ctx.env, draftId, ctx.chatId);
+    const media: Record<string, Partial<Record<MediaWarmPlatform, { status: MediaUploadStatus }>>> = {};
+    for (const row of rows) {
+        const byPlatform = media[row.media_key] ?? (media[row.media_key] = {});
+        byPlatform[row.platform] = { status: row.status };
+    }
+
+    return jsonResponse({ media });
+}
+
 // ==================== Update Content ====================
 
 async function updateContent(ctx: ApiContext, draftId: string): Promise<Response> {
@@ -181,6 +212,18 @@ async function updateContent(ctx: ApiContext, draftId: string): Promise<Response
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
     const updated = await getDraft(ctx.env, draftId, ctx.chatId);
+
+    // Reconcile pre-warmed media for the (now-saved) content: invalidate handles for removed/replaced
+    // media and for IG rows whose baked caption changed (X/LinkedIn survive a caption edit), then
+    // enqueue 'pending' warm rows for the current (media, platform) set and kick a best-effort first
+    // pass in the background. All no-ops for a far-future scheduled draft (warm-eligibility gate inside
+    // the engine) and never throw into the response path — warming is a pure optimization; publish falls
+    // back to inline upload. Mirrors the publish-action's waitUntil(processPublishJobOnce(...)) kick above.
+    if (updated) {
+        await reconcileWarmsAfterContentChange(ctx.env, updated);
+        ctx.ctx.waitUntil(warmDraftMediaInline(ctx.env, updated));
+    }
+
     return jsonResponse({
         ...updated,
         content: safeJsonParse(updated!.content),
@@ -212,32 +255,18 @@ async function publishDraftAction(ctx: ApiContext, draftId: string): Promise<Res
     }
 
     const priorStatus = draft.status; // 'approved' | 'scheduled' — restored on full failure
+    const lang = await getUserLanguage(ctx.env, ctx.chatId);
 
-    // Mark as publishing immediately so the UI reflects the pending state
+    // Mark as publishing immediately so the UI reflects the pending state, then enqueue a durable
+    // publish job. The processor (core/publish-jobs.ts) owns the publish, partial-failure handling,
+    // status finalization, prior-status restore, and the single user notification — see openspec
+    // durable-publish-queue.
     await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'publishing');
+    await enqueuePublishJob(ctx.env, { draftId, chatId: ctx.chatId, lang, priorStatus });
 
-    // Run the (potentially slow — video upload + X processing) publish pipeline in the
-    // background and return right away, instead of blocking the request. publishDraft()
-    // transitions the draft to 'published' on any success; on full failure we restore the
-    // prior status. syncBotMessage then updates the Telegram message to reflect the outcome.
-    ctx.ctx.waitUntil((async () => {
-        try {
-            const { hydrateEnv } = await import('../data/user-keys');
-            const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
-            const result = await publishDraft(userEnv, ctx.chatId, { ...draft, status: 'publishing' });
-            // Don't revert on a deferred X video post: publishDraft left the draft in 'publishing'
-            // and the every-minute cron processor (core/x-pending.ts) will finalize it
-            // (published / errors.x).
-            if (!result.success && !result.deferredX) {
-                await updateDraftStatus(ctx.env, draftId, ctx.chatId, priorStatus);
-            }
-        } catch (err) {
-            console.error('[api] background publish failed:', err instanceof Error ? err.message : String(err));
-            await updateDraftStatus(ctx.env, draftId, ctx.chatId, priorStatus);
-        } finally {
-            await syncBotMessage(ctx.env, ctx.chatId, draftId);
-        }
-    })());
+    // Kick the first chunk inline so light posts finish without waiting for the next cron tick; the
+    // processor itself runs syncBotMessage after finalizing, so no extra sync is needed here.
+    ctx.ctx.waitUntil(processPublishJobOnce(ctx.env, draftId, Date.now() + INLINE_DEADLINE_MS));
 
     return jsonResponse({ status: 'publishing' });
 }
@@ -282,6 +311,9 @@ async function unscheduleDraft(ctx: ApiContext, draftId: string): Promise<Respon
         .run();
 
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
+    // Now unscheduled ⇒ warm-eligible immediately (a far-future scheduled draft may never have been
+    // warmed). Pass the post-update shape so eligibility sees it as unscheduled; warm is idempotent.
+    ctx.ctx.waitUntil(warmDraftMediaInline(ctx.env, { ...draft, status: 'approved', scheduled_at: null }));
 
     return jsonResponse({ success: true, status: 'approved' });
 }
@@ -306,6 +338,15 @@ async function refineDraft(ctx: ApiContext, draftId: string): Promise<Response> 
     await updateDraftContent(ctx.env, draftId, ctx.chatId, JSON.stringify(updatedContent));
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
 
+    // Reconcile after an AI content edit: an IG caption change invalidates IG rows, removed/replaced
+    // media is orphaned, and new media gets pending rows (X/LinkedIn handles survive caption edits).
+    // Best-effort, never blocks the response.
+    const refined = await getDraft(ctx.env, draftId, ctx.chatId);
+    if (refined) {
+        await reconcileWarmsAfterContentChange(ctx.env, refined);
+        ctx.ctx.waitUntil(warmDraftMediaInline(ctx.env, refined));
+    }
+
     return jsonResponse({ success: true, content: updatedContent });
 }
 
@@ -320,6 +361,15 @@ async function updateTargets(ctx: ApiContext, draftId: string): Promise<Response
 
     await updateDraftPublishTargets(ctx.env, draftId, ctx.chatId, body.publish_targets);
     ctx.ctx.waitUntil(syncBotMessage(ctx.env, ctx.chatId, draftId));
+
+    // Reconcile pre-warmed media for the new target set: orphan handles for de-targeted platforms and
+    // enqueue pending rows for newly-targeted ones, then kick a best-effort first warm pass. Re-fetch so
+    // the reconcile reads the just-saved publish_targets. Best-effort; never throws into the response.
+    const updated = await getDraft(ctx.env, draftId, ctx.chatId);
+    if (updated) {
+        await reconcileWarmsAfterTargetsChange(ctx.env, updated);
+        ctx.ctx.waitUntil(warmDraftMediaInline(ctx.env, updated));
+    }
 
     return jsonResponse({ success: true, publish_targets: body.publish_targets });
 }
@@ -357,6 +407,11 @@ async function removeDraft(ctx: ApiContext, draftId: string): Promise<Response> 
     }
 
     await deleteDraft(ctx.env, draftId, ctx.chatId);
+
+    // Clean up any pre-warmed media handles for the deleted draft (best-effort — orphaned rows would
+    // otherwise linger; warming is never a correctness dependency so a failure here is harmless).
+    try { await deleteWarmsForDraft(ctx.env, draftId); } catch { /* ignore */ }
+
     ctx.ctx.waitUntil(syncBotHome(ctx.env, ctx.chatId));
 
     return jsonResponse({ success: true });

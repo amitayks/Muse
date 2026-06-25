@@ -3,7 +3,7 @@
 Rendering of tweet-style card images (single tweet, connected threads, and quote/repost layouts) and 9:16 story images for Instagram publishing, using Satori (JSX→SVG) + resvg, with Twemoji emoji replacement and BiDi-aware text layout.
 ## Requirements
 ### Requirement: Tweet card image rendering
-The system SHALL provide a function `renderTweetCard(tweetData)` in `services/tweet-card.ts` that renders a single tweet as a styled PNG image using Satori (JSX→SVG) and resvg-wasm (SVG→PNG).
+The system SHALL provide `renderTweetCard(env, tweetData)` in `services/tweet-card.ts` as the bot-side entry point for rendering a single tweet as a styled PNG image. The function SHALL delegate the actual Satori (JSX→SVG) + resvg-wasm (SVG→PNG) rendering to the `render-worker` via the `RENDER` service binding; the bot Worker SHALL NOT perform Satori/resvg work in-process. The produced image SHALL be identical to the pre-split renderer.
 
 #### Scenario: Render single tweet card
 - **WHEN** `renderTweetCard()` is called with tweet text, author username, display name, and profile image
@@ -18,6 +18,11 @@ The system SHALL provide a function `renderTweetCard(tweetData)` in `services/tw
 - **WHEN** the tweet text contains Unicode emoji characters
 - **THEN** the system SHALL replace each emoji with a Twemoji SVG `<img>` element before passing to Satori
 - **AND** the rendered emoji SHALL be visually correct and consistent
+
+#### Scenario: Rendering delegated to render service
+- **WHEN** `renderTweetCard()` runs in the bot Worker
+- **THEN** it SHALL invoke `env.RENDER.renderTweetCard(tweetData)` and return the resulting PNG bytes
+- **AND** no Satori or resvg module SHALL be loaded or executed in the bot Worker
 
 ### Requirement: Thread card rendering with connecting line
 The system SHALL provide a function `renderThreadCards(tweets, authorData)` that renders multiple tweets as individual card images with visual connecting lines between avatars.
@@ -125,4 +130,25 @@ The system SHALL download and cache author profile images in R2 for tweet card r
 #### Scenario: Profile image URL is invalid or expired
 - **WHEN** the profile image URL cannot be fetched (404, expired CDN link)
 - **THEN** the system SHALL fall back to the placeholder avatar
+
+### Requirement: Render and storage split across Workers
+The renderer's compute — single/thread/quote card rendering, story-image creation, and the font, Twemoji, and profile-image helpers — SHALL execute in `render-worker`. The R2 storage helpers `storeTweetCard`, `getTweetCard`, and `storeStoryImage`, together with the `/image/*` and `/media/*` serving routes, SHALL remain in the bot Worker. Public renderer function names and the existing R2 key scheme SHALL be preserved so callers and stored artifacts are unaffected.
+
+#### Scenario: Storage stays bot-side
+- **WHEN** the bot stores or retrieves a rendered card or story image
+- **THEN** `storeTweetCard` / `getTweetCard` / `storeStoryImage` SHALL run in the bot Worker using its own `IMAGES` binding
+- **AND** these operations SHALL NOT require any Satori/resvg dependency
+
+#### Scenario: Output keys unchanged
+- **WHEN** rendered cards or stories are stored after the split
+- **THEN** they SHALL be written to the same R2 keys as before (`tweet-cards/{draftId}/{index}.png` and `tweet-cards/{draftId}/story.png`)
+
+#### Scenario: Publish flow orchestrates render and storage
+- **WHEN** a draft is published to Instagram
+- **THEN** the bot SHALL call the `RENDER` service for rendering and use its own R2 helpers for storage, interleaved as before (e.g., `getTweetCard` → `createStoryImage` → `storeStoryImage`)
+- **AND** the resulting media SHALL be identical to the pre-split output
+
+#### Scenario: Serving routes unaffected
+- **WHEN** a client requests an image via `/image/*` or `/media/*`
+- **THEN** the bot Worker SHALL serve it directly from R2 as before, without involving `render-worker`
 

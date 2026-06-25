@@ -8,9 +8,10 @@ import type { Lang } from '../ui/strings';
 import type { DraftListType } from '../views/drafts';
 import { shortToListType } from '../views/drafts';
 import { getDraft, deleteDraft, updateDraftStatus, getPageSize, countDrafts, countDraftsBySource } from '../data/db';
-import { publishDraft } from '../core/publish';
+import { deleteWarmsForDraft } from '../data/media-uploads-db';
+import { enqueuePublishJob } from '../data/publish-jobs-db';
+import { processPublishJobOnce, INLINE_DEADLINE_MS } from '../core/publish-jobs';
 import { renderDraftsList, renderError } from '../views';
-import { platformEmoji, platformLabel } from '../views/platform-toggle';
 import { t } from '../ui/strings';
 
 /**
@@ -74,19 +75,18 @@ export async function listPublishAction(
     const draft = await getDraft(ctx.env, draftId, ctx.chatId);
     if (!draft) return renderError('Draft not found.', lang);
 
-    // Mark 'publishing' before handing off (caller-owned transition; also satisfies the
-    // deferred-X-video processor's status === 'publishing' idempotency guard). The in-memory
-    // draft keeps its status so publishDraft's scheduled→approved revert is unaffected.
-    await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'publishing');
+    const priorStatus = draft.status; // restored by the processor on full failure
 
-    const result = await publishDraft(ctx.env, ctx.chatId, draft);
-    if (!result.success && !result.deferredX) {
-        // Full failure → restore 'approved' so the user can retry (we forced 'publishing').
-        await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'approved');
-        const errorMessages = Object.entries(result.results.errors || {})
-            .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${msg}`)
-            .join('\n');
-        return renderError(`Publishing failed:\n\n<code>${errorMessages}</code>`, lang);
+    // Mark 'publishing' before handing off (caller-owned transition; also satisfies the
+    // deferred-X-video processor's status === 'publishing' idempotency guard), then enqueue a
+    // durable publish job. The processor (core/publish-jobs.ts) owns the publish, finalization,
+    // prior-status restore, and the single user notification — see openspec durable-publish-queue.
+    await updateDraftStatus(ctx.env, draftId, ctx.chatId, 'publishing');
+    await enqueuePublishJob(ctx.env, { draftId, chatId: ctx.chatId, lang, priorStatus });
+
+    // Kick the first chunk inline so light posts finish without waiting for the next cron tick.
+    if (ctx.executionCtx) {
+        ctx.executionCtx.waitUntil(processPublishJobOnce(ctx.env, draftId, Date.now() + INLINE_DEADLINE_MS));
     }
 
     return reRenderList(ctx.env, ctx.chatId, listType, page, lang);
@@ -138,6 +138,8 @@ export async function listConfirmDeleteAction(
             }
         }
         await deleteDraft(ctx.env, draftId, ctx.chatId);
+        // Clean up any pre-warmed media handles for the deleted draft (best-effort).
+        try { await deleteWarmsForDraft(ctx.env, draftId); } catch { /* ignore */ }
     }
 
     return reRenderList(ctx.env, ctx.chatId, listType, page, lang);

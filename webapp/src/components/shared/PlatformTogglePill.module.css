@@ -1,3 +1,11 @@
+/* Wrapper that lets the optional progress ring overlay the round toggle without resizing it. */
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Icon-only round toggle. */
 .pill {
   display: inline-flex;
@@ -26,4 +34,56 @@
   background: var(--accent);
   border-color: var(--accent);
   color: var(--btn-text);
+}
+
+/* ---- Warm-progress ring (overlays the button, never intercepts taps) ---- */
+.ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+/* Faint background track shown for every progress state. */
+.ringTrack {
+  stroke: var(--separator);
+}
+
+/* Indeterminate 'processing' arc — a snake that spins around the circle. */
+.ringSpin {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transform-origin: center;
+  animation: platform-ring-spin 0.9s linear infinite;
+}
+
+/* 'ready' — a full ring in the success color. Drawn from 12 o'clock. */
+.ringReady {
+  stroke: var(--success);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+/* 'failed' — a full ring in the danger color. */
+.ringFailed {
+  stroke: var(--destructive);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+@keyframes platform-ring-spin {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
+  }
 }

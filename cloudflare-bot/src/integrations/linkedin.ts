@@ -138,6 +138,22 @@ export async function uploadVideoToLinkedIn(env: Env, bytes: ArrayBuffer): Promi
     return registerAndUpload(env, bytes, 'feedshare-video');
 }
 
+/**
+ * Upload ONE media item (by R2 key) to LinkedIn and return its asset URN. The single source of truth
+ * for the LinkedIn upload encoding, shared by BOTH the publish path (resolveLinkedInMedia in
+ * core/publish.ts) and the warm engine (core/media-prewarm.ts). Reads the R2 object first, then
+ * registers+uploads via the photo/video helper. Throws if the R2 object is missing or any upload step
+ * fails. The returned URN is durable (no short expiry), reusable across posts.
+ */
+export async function uploadLinkedInMediaItem(env: Env, mediaKey: string, mediaKind: 'photo' | 'video'): Promise<string> {
+    const r2 = await env.IMAGES.get(mediaKey);
+    if (!r2) throw new LinkedInPublishError(`Media missing from storage: ${mediaKey}`);
+    const bytes = await r2.arrayBuffer();
+    return mediaKind === 'video'
+        ? uploadVideoToLinkedIn(env, bytes)
+        : uploadImageToLinkedIn(env, bytes);
+}
+
 // ==================== Post creation ====================
 
 /**

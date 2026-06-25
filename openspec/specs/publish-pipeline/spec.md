@@ -3,7 +3,7 @@
 Provides a single shared `publishDraft()` pipeline (in `core/publish.ts`) used by all publish flows — callback action, publish-all-approved, cron, and `/approve` — that parses content, prepares media once, publishes independently to X (including quote tweets with 403 URL fallback) and Instagram Post/Story/Reel, collects per-platform results into `draft.publish_results`, and updates draft and `published` records, alongside the supporting `source` field, multi-media-per-tweet handling, refinement of handwritten content, and per-record cron notifications.
 ## Requirements
 ### Requirement: Shared publish pipeline function
-The system SHALL provide a single `publishDraft(env, chatId, draft)` function in `core/publish.ts` that executes the full multi-platform publish flow: parse content → determine targets → prepare media per platform → publish to each target independently → collect results → update DB status → store publish results on draft.
+The system SHALL provide a single `publishDraft(env, chatId, draft, progress?)` function in `core/publish.ts` that executes the full multi-platform publish flow: parse content → determine targets → prepare media per platform → publish to each target **independently and concurrently** (bounded `Promise.allSettled`, with a bounded pool for per-tweet/per-carousel media uploads) → collect results → when complete, update DB status → store publish results on draft. The function SHALL be **resumable and idempotent**: it accepts an optional `progress` map of already-completed uploads (keyed by platform + tweet index + media index), SHALL skip any upload already present in `progress`, and SHALL return the updated `progress` plus whether the publish is `done` or `needs-more` (budget exhausted mid-upload). Terminal DB finalization (published record + status transition) SHALL occur only when `done`.
 
 #### Scenario: Publish draft to X only (backward-compatible default)
 - **WHEN** `publishDraft()` is called and the draft has `publish_targets = { x: true }`
@@ -12,9 +12,25 @@ The system SHALL provide a single `publishDraft(env, chatId, draft)` function in
 
 #### Scenario: Publish draft to X and Instagram Post
 - **WHEN** `publishDraft()` is called with `publish_targets = { x: true, instagram_post: true }`
-- **THEN** it SHALL publish to X first, then to Instagram Post
+- **THEN** it SHALL publish to X and Instagram Post **concurrently**
 - **AND** each platform's success/failure SHALL be independent
 - **AND** results SHALL be stored as `{ x: {...}, instagram_post: {...} }` or with `errors` for failures
+
+#### Scenario: Concurrent multi-video upload
+- **WHEN** a publish targets multiple platforms and/or a thread with several videos
+- **THEN** the media uploads SHALL run concurrently through a bounded pool (cap ~3–4), not strictly sequentially
+- **AND** the total wall-clock SHALL approximate the slowest concurrent batch rather than the sum of all uploads
+
+#### Scenario: Resumable publish skips completed uploads
+- **WHEN** `publishDraft()` is called with a `progress` map from a previous chunk
+- **THEN** it SHALL NOT re-upload any media already recorded in `progress`
+- **AND** it SHALL continue from where the previous chunk stopped
+
+#### Scenario: Budget exhausted mid-upload defers finalization
+- **WHEN** the publish cannot finish all uploads within the invocation's soft deadline
+- **THEN** `publishDraft()` SHALL return the updated `progress` with `done = false`
+- **AND** it SHALL NOT create a published record or transition the draft status
+- **AND** no media SHALL be uploaded twice across the chunk boundary
 
 #### Scenario: Publish draft to Instagram Post without existing image
 - **WHEN** `publishDraft()` is called with Instagram Post target and the draft has no image
@@ -52,7 +68,7 @@ The system SHALL provide a single `publishDraft(env, chatId, draft)` function in
 - **THEN** it SHALL return `{ success: true, results: PublishResults }`
 
 #### Scenario: Status update and published record creation order
-- **WHEN** at least one platform publish succeeds (`anySuccess = true`)
+- **WHEN** the publish is `done` and at least one platform publish succeeds (`anySuccess = true`)
 - **THEN** the system SHALL call `createPublished()` FIRST with the platform results
 - **AND** only after `createPublished()` succeeds SHALL it call `updateDraftStatus('published')`
 - **AND** if `createPublished()` throws, the draft status SHALL remain unchanged (approved or scheduled)
@@ -68,20 +84,25 @@ The system SHALL provide a single `publishDraft(env, chatId, draft)` function in
 - **AND** the user SHALL see the published draft detail (not an error)
 
 ### Requirement: All publish flows use the shared pipeline
-The publish action, publish-all-approved action, cron scheduled publish, and /approve command SHALL all use `publishDraft()` instead of duplicating the publish logic.
+The publish action, publish-all-approved action, cron scheduled publish, `/approve` command, the webapp publish endpoint, and the drafts-list publish action SHALL NOT call `publishDraft()` inline. Each SHALL set the draft to `'publishing'` and **enqueue a publish job** (see the `publish-queue` capability); the publish-queue processor invokes `publishDraft()`. Request-context entry points MAY kick the first chunk inline via `ctx.waitUntil()` so light posts complete immediately; the cron scheduled path enqueues only (the processor runs on its own fresh budget). The single publish notification SHALL be sent by the publish-queue finalizer, not by the entry points.
 
-#### Scenario: Callback publish action uses pipeline
-- **WHEN** user clicks the Publish button on a draft
-- **THEN** the action handler calls `publishDraft()` and renders the result with per-platform status
+#### Scenario: Callback publish action enqueues
+- **WHEN** the user clicks the Publish button on a draft
+- **THEN** the action handler SHALL set the draft `'publishing'`, enqueue a publish job, and return a "Publishing…" response immediately
+- **AND** the first chunk MAY run inline via `waitUntil`; the publish-queue finalizer SHALL deliver the per-platform outcome
 
-#### Scenario: Cron publish uses pipeline
-- **WHEN** the cron handler publishes scheduled drafts
-- **THEN** it calls `publishDraft()` for each due draft
-- **AND** sends a notification showing which platforms succeeded/failed
+#### Scenario: Cron publish enqueues
+- **WHEN** the cron handler processes due scheduled drafts
+- **THEN** it SHALL set each draft `'publishing'` and enqueue a publish job (not publish inline)
+- **AND** the publish-queue processor SHALL run the publish on a fresh budget and notify which platforms succeeded/failed
 
-#### Scenario: Publish all approved uses pipeline
-- **WHEN** user triggers publish-all-approved (via button or /approve command)
-- **THEN** it loops through approved drafts calling `publishDraft()` for each
+#### Scenario: Publish all approved enqueues
+- **WHEN** the user triggers publish-all-approved (via button or `/approve` command)
+- **THEN** it SHALL enqueue a publish job for each approved draft
+
+#### Scenario: Webapp publish enqueues
+- **WHEN** the webapp calls the publish endpoint for a draft
+- **THEN** the endpoint SHALL set the draft `'publishing'`, enqueue a publish job, and return `{ status: 'publishing' }` immediately
 
 ### Requirement: gemini.ts renamed from grok.ts contains only AI generation
 The file `services/gemini.ts` (renamed from `grok.ts`) SHALL contain only AI-related functions: `generateContent`, `editContent`, `generateImage`, `callGeminiText`, `parseContentResponse`, prompts, and `consolidateImagePrompt`/`buildImagePrompt`. It SHALL NOT contain R2 storage operations.
@@ -447,4 +468,30 @@ The LinkedIn branch SHALL collect media from the draft — restricted to items t
 #### Scenario: No media → text-only
 - **WHEN** the draft has no LinkedIn-targeted per-tweet media and no draft-level image
 - **THEN** the LinkedIn post SHALL be published as text-only (`shareMediaCategory = NONE`); the branch SHALL NOT render tweet-card images for LinkedIn
+
+### Requirement: Publish reuses pre-warmed media handles
+`publishDraft` SHALL seed its resumable upload `progress` from valid pre‑warmed `media_uploads` handles (status `ready`, `expires_at` beyond a publish‑time safety margin) for the draft's `(media, platform)` set, so each platform branch SKIPS the upload step and posts directly. A platform whose handle is missing, `failed`, or expired SHALL fall back to uploading inline (the existing path) — pre‑warming is an optimization, never a correctness dependency.
+
+#### Scenario: Warmed multi-platform post publishes instantly
+- **WHEN** a draft's media is fully warmed (`ready`, non‑expired) for all its target platforms and the user publishes
+- **THEN** `publishDraft` SHALL skip all uploads and post to each platform directly
+- **AND** the publish SHALL complete in one invocation (no chunking) and produce exactly one published record + one notification
+
+#### Scenario: Partially warmed post
+- **WHEN** some platforms have valid warmed handles and others do not
+- **THEN** the warmed platforms SHALL post without re‑uploading
+- **AND** the unwarmed platforms SHALL upload inline as today
+
+#### Scenario: Expired handle falls back
+- **WHEN** a warmed handle is past (or within the safety margin of) `expires_at` at publish time
+- **THEN** `publishDraft` SHALL treat it as not‑ready and upload that media inline
+
+#### Scenario: Warmed X video posts inline (no deferral)
+- **WHEN** an X video post is published from a valid warmed `media_id`
+- **THEN** `publishDraft` SHALL post the tweet inline rather than deferring via `x_pending_posts`, since the media‑attachability window has already elapsed
+- **AND** a non‑warmed (cold) X video SHALL still defer via `x_pending_posts` as before
+
+#### Scenario: No double-post from warming
+- **WHEN** a warmed publish runs (including any resume/retry)
+- **THEN** warming SHALL affect only the upload step; per‑platform post idempotency (results re‑read guards) SHALL be unchanged and no platform SHALL be posted twice
 

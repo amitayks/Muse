@@ -7,6 +7,8 @@
 import type { Env } from './types';
 import { cronCoordinator } from './handlers/cron';
 import { processPendingXPosts } from './core/x-pending';
+import { processPublishJobs } from './core/publish-jobs';
+import { processMediaWarms } from './core/media-prewarm';
 import {
     addSecurityHeaders,
     secureErrorResponse,
@@ -31,6 +33,7 @@ import { handlePromptApi, handleStaleCountApi, handleAcknowledgeApi, handleAdmin
 import { handleApiV1, withCors } from './routes/api-v1';
 import { handleXOAuthCallback } from './routes/x-oauth';
 import { handleLinkedInOAuthCallback } from './routes/linkedin-oauth';
+import { renderTweetCard } from './services/tweet-card';
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -108,7 +111,6 @@ export default {
             }
 
             if (url.pathname === '/test-card' && request.method === 'GET') {
-                const { renderTweetCard } = await import('./services/tweet-card');
                 const text = url.searchParams.get('text') || 'אני מסרב להאמין לטענות של אבא שלי שלישון עם הטלפון ליד הראש מזיק. אבל אני מתחיל לחשוב שלא לזה הוא התכוון באמת.\n\nזה פשוט נורא לקום כשהטלפון בהשג יד. אני שונא את זה.';
                 const name = url.searchParams.get('name') || 'Amitay Keisar';
                 const handle = url.searchParams.get('handle') || 'AmKeisar';
@@ -251,11 +253,14 @@ export default {
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
         logInfo('Cron triggered at:', new Date(event.scheduledTime).toISOString(), 'cron:', event.cron);
         try {
-            // The frequent "* * * * *" tick ONLY runs the deferred-X-video-post processor on its
-            // own fresh ~30s budget — it must NOT run the heavy 15-min coordinator. All other cron
-            // schedules ("*/15 * * * *") run the full coordinator.
+            // The frequent "* * * * *" tick runs the fresh-budget queue processors — the
+            // deferred-X-video-post processor, the durable publish-job processor, AND the media
+            // pre-warm processor — on their own fresh ~30s budget. It must NOT run the heavy 15-min
+            // coordinator. All other cron schedules ("*/15 * * * *") run the full coordinator.
             if (event.cron === '* * * * *') {
                 await processPendingXPosts(env);
+                await processPublishJobs(env);
+                await processMediaWarms(env);
                 return;
             }
             await cronCoordinator(env, ctx);

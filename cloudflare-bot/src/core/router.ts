@@ -41,11 +41,11 @@ import { watchCommand } from '../commands/watch';
 import { handwriteCommand } from '../commands/handwrite';
 import { overviewCommand } from '../commands/overview';
 import { repostCommand } from '../commands/repost';
+import { renderTweetCard, storeTweetCard } from '../services/tweet-card';
 
 // Dev-only: test tweet card rendering via /testcard <text>
 const testCardCommand: CommandHandler = async (ctx) => {
     const text = ctx.args || 'אני מסרב להאמין לטענות של אבא שלי שלישון עם הטלפון ליד הראש מזיק.';
-    const { renderTweetCard, storeTweetCard } = await import('../services/tweet-card');
     const { getUser, updateOwnProfileData } = await import('../data/user-db');
     let user = await getUser(ctx.env, ctx.chatId);
 

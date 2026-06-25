@@ -777,6 +777,8 @@ export const en = {
         publishedTo: '<b>Published to:</b> {summary}',
         publishErrors: '<b>Failed:</b> {errors}',
         draftReturnedToApproved: 'The draft has been returned to approved status. You can retry publishing.',
+        publishJobFailed: '❌ <b>Publishing Failed</b>\n\nThis post kept failing after several attempts and was stopped.',
+        publishStuckRecovered: '⚠️ A publish for "{title}" didn\'t finish (the worker was interrupted). It\'s been returned so you can retry.',
         btnDashboard: '🏠 Dashboard',
 
         // Cron — video notifications

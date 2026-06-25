@@ -138,14 +138,19 @@ Muse supports multiple users on a single bot instance. Each user goes through a 
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-Muse runs as a **single Cloudflare Worker** (`content-bot`) with a `*/15 * * * *` cron trigger:
+Muse runs as **two Cloudflare Workers**. The main `content-bot` Worker holds all the bot
+logic and has a `*/15 * * * *` cron trigger; a dedicated `render-worker` holds the heavy
+Satori/resvg image stack and is invoked over a **service binding** (RPC), so its ~3.4 MB of
+code + WASM stays out of `content-bot`'s cold-start path:
 
 | Component | What it does |
 |-----------|-------------|
-| **HTTP routes** | Telegram webhook, GitHub webhook, HeyGen webhook, media serving, setup, migrations |
-| **Cron (every 15 min)** | Polls X accounts (with smart backoff), scores tweets, publishes scheduled drafts, checks stale videos, publishes scheduled videos — all users processed in parallel via `Promise.allSettled` |
+| **`content-bot` — HTTP routes** | Telegram webhook, GitHub webhook, HeyGen webhook, media serving, setup, migrations |
+| **`content-bot` — Cron (every 15 min)** | Polls X accounts (with smart backoff), scores tweets, publishes scheduled drafts, checks stale videos, publishes scheduled videos — all users processed in parallel via `Promise.allSettled` |
+| **`render-worker` — RPC** | Renders tweet cards / threads / quote cards / 9:16 stories (Satori → resvg PNG). Internal-only; cold-starts only when an image is actually rendered |
 
-**Zero dependencies at runtime.** Pure Cloudflare Workers API — no npm packages needed in production. TypeScript compiled to ES modules.
+**`content-bot` has zero runtime dependencies** — pure Cloudflare Workers API, ~267 KB gzip,
+compiled to ES modules. The Satori/resvg npm packages live only in `render-worker`.
 
 ---
 
@@ -388,7 +393,7 @@ Each followed X account has independent configuration:
 
 ```
 Muse/
-├── cloudflare-bot/                # Single Cloudflare Worker
+├── cloudflare-bot/                # Main Cloudflare Worker (bot logic; calls render-worker via RENDER binding)
 │   ├── src/
 │   │   ├── index.ts               # HTTP router + cron entry point
 │   │   ├── types.ts               # Shared type definitions
@@ -421,7 +426,8 @@ Muse/
 │   │   │   └── github.ts          # GitHub API
 │   │   ├── services/
 │   │   │   ├── instagram-publish.ts # Instagram feed/story/reel publishing
-│   │   │   ├── tweet-card.ts      # Satori-based tweet card image renderer
+│   │   │   ├── tweet-card.ts      # Thin client → render-worker (RENDER binding) + R2 card storage
+│   │   │   ├── render-contract.ts # Shared render RPC types (mirrors render-worker/src/contract.ts)
 │   │   │   ├── poller.ts          # Twitter polling with smart backoff
 │   │   │   ├── auto-approve.ts    # Auto-generate + approve
 │   │   │   ├── video-publish.ts   # Multi-platform video publishing
@@ -444,6 +450,13 @@ Muse/
 │   ├── schema.sql                 # Full database schema
 │   └── wrangler.toml
 │
+├── render-worker/                 # Internal-only Worker: Satori/resvg image rendering (RPC)
+│   ├── src/
+│   │   ├── index.ts               # RenderService (WorkerEntrypoint) — RPC methods
+│   │   ├── renderer.ts            # Satori/resvg tweet-card/thread/quote/story rendering
+│   │   └── contract.ts            # Render RPC types + RenderEnv
+│   └── wrangler.toml
+│
 ├── openspec/                      # Specification-driven development
 │   ├── specs/                     # Capability specifications
 │   └── changes/                   # Change artifacts (proposals, designs, tasks)
@@ -459,7 +472,7 @@ Muse/
 | Database | Cloudflare D1 (SQLite) |
 | Object Storage | Cloudflare R2 |
 | AI | Google Gemini (text + image generation) |
-| Image Rendering | Satori (JSX→SVG) + resvg-wasm (SVG→PNG) |
+| Image Rendering | Satori (JSX→SVG) + resvg-wasm (SVG→PNG), in a dedicated `render-worker` (service binding) |
 | Bot Interface | Telegram Bot API |
 | Social Platforms | X/Twitter API v2 + v1.1, Instagram Graph API |
 | Video | HeyGen API v2 (transitioning to Seedance 2.0) |

@@ -665,6 +665,86 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('x_pending_posts migration note:', String(pendingXError));
         }
 
+        // Migration: Durable publish-job queue — one in-flight publish per draft (024)
+        // Generalizes x_pending_posts: a multi-platform / multi-video publish can exceed one Worker
+        // budget, so instead of running publishDraft inline we enqueue a row here and the every-minute
+        // cron processor (core/publish-jobs.ts) runs it on a fresh budget, persisting partial `progress`
+        // so a heavy publish completes across ticks without re-uploading or double-posting. One row per
+        // draft (idempotency).
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS publish_jobs (
+                    draft_id        TEXT PRIMARY KEY,
+                    chat_id         TEXT NOT NULL,
+                    lang            TEXT,
+                    prior_status    TEXT,
+                    state           TEXT NOT NULL DEFAULT 'pending',
+                    progress        TEXT,
+                    attempts        INTEGER NOT NULL DEFAULT 0,
+                    max_attempts    INTEGER NOT NULL DEFAULT 6,
+                    last_error      TEXT,
+                    next_attempt_at TEXT NOT NULL,
+                    created_at      TEXT DEFAULT (datetime('now')),
+                    updated_at      TEXT DEFAULT (datetime('now'))
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_publish_jobs_due ON publish_jobs(state, next_attempt_at);`,
+                `CREATE INDEX IF NOT EXISTS idx_publish_jobs_chat ON publish_jobs(chat_id);`,
+            ]);
+            logInfo('Ensured publish_jobs table exists');
+        } catch (publishJobsError) {
+            logInfo('publish_jobs migration note:', String(publishJobsError));
+        }
+
+        // Migration: Pre-warmed media uploads — one row per (draft, media, platform) (025)
+        // Records a reusable platform media handle (X media_id / Instagram container id / LinkedIn asset
+        // URN) uploaded ahead of publish so the publish path skips the slow upload and posts instantly.
+        // The scheduling columns let this table double as the warm queue (mirrors publish_jobs /
+        // x_pending_posts). caption_hash is Instagram-only; expires_at is conservative (X/IG ≈ +23h;
+        // LinkedIn null/far). Best-effort — a missing/expired handle falls back to inline upload.
+        try {
+            await execStatements(env.DB, [
+                `CREATE TABLE IF NOT EXISTS media_uploads (
+                    draft_id        TEXT NOT NULL,
+                    chat_id         TEXT NOT NULL,
+                    media_key       TEXT NOT NULL,
+                    platform        TEXT NOT NULL,
+                    media_kind      TEXT NOT NULL,
+                    handle          TEXT,
+                    caption_hash    TEXT,
+                    status          TEXT DEFAULT 'pending',
+                    expires_at      TEXT,
+                    attempts        INTEGER DEFAULT 0,
+                    max_attempts    INTEGER DEFAULT 6,
+                    last_error      TEXT,
+                    next_attempt_at TEXT NOT NULL,
+                    created_at      TEXT DEFAULT (datetime('now')),
+                    updated_at      TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (draft_id, media_key, platform)
+                );`,
+                `CREATE INDEX IF NOT EXISTS idx_media_uploads_due ON media_uploads(status, next_attempt_at);`,
+                `CREATE INDEX IF NOT EXISTS idx_media_uploads_draft ON media_uploads(draft_id);`,
+                `CREATE INDEX IF NOT EXISTS idx_media_uploads_chat ON media_uploads(chat_id);`,
+            ]);
+            logInfo('Ensured media_uploads table exists');
+        } catch (mediaUploadsError) {
+            logInfo('media_uploads migration note:', String(mediaUploadsError));
+        }
+
+        // Migration: Add started_at column to media_uploads (026)
+        // Records when a warm row last entered 'processing' so the webapp's per-media progress ring can
+        // show an in-flight (spinning) state. Additive only (D1 has no ALTER COLUMN).
+        try {
+            const mediaUploadsInfo = await env.DB.prepare("PRAGMA table_info(media_uploads)").all();
+            const hasStartedAt = mediaUploadsInfo.results?.some((col: any) => col.name === 'started_at');
+
+            if (!hasStartedAt) {
+                await env.DB.prepare(`ALTER TABLE media_uploads ADD COLUMN started_at TEXT;`).run();
+                logInfo('Added started_at column to media_uploads table');
+            }
+        } catch (mediaUploadsStartedAtError) {
+            logInfo('media_uploads.started_at migration note:', String(mediaUploadsStartedAtError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

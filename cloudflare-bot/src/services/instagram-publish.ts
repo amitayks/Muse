@@ -70,6 +70,51 @@ async function ensureProcessed(env: Env, containerId: string): Promise<void> {
     if (!ready) throw new InstagramPublishError('Instagram media processing failed or timed out');
 }
 
+/**
+ * The reusable, caption-bound, SLOW unit of an Instagram publish: create a media container and await
+ * its processing, returning a FINISHED `container_id` ready to publish (or to embed as a carousel
+ * child). Shared by BOTH the publish path (the functions below) and the warm engine
+ * (core/media-prewarm.ts), so a warmed handle is byte-identical to one created inline at publish.
+ *
+ * `kind` selects the container shape:
+ *   - 'feed_image'  → single image feed post (caption baked in)
+ *   - 'reel'        → standalone video Reel (caption baked in)
+ *   - 'carousel_child' → a carousel child (image or video; NO caption — the parent carries it)
+ *   - 'story'       → an image/video Story (NO caption)
+ *
+ * The caption is part of the container for the caption-bearing kinds — exposed here so the warm
+ * engine can hash it (`media_uploads.caption_hash`) and re-warm only when the caption changes.
+ * 'carousel_child' / 'story' ignore `caption`. `media.type` ('photo' | 'video') picks image_url vs
+ * video_url. Throws InstagramPublishError on create/processing failure (auth-flagged when applicable).
+ */
+export type InstagramContainerKind = 'feed_image' | 'reel' | 'carousel_child' | 'story';
+
+export async function createInstagramContainer(
+    env: Env,
+    media: InstagramMediaItem,
+    caption: string,
+    kind: InstagramContainerKind
+): Promise<string> {
+    requireInstagramConfig(env);
+    let containerId: string;
+    switch (kind) {
+        case 'feed_image':
+            containerId = await createImageContainer(env, media.url, caption);
+            break;
+        case 'reel':
+            containerId = await createVideoContainer(env, media.url, caption, 'REELS');
+            break;
+        case 'carousel_child':
+            containerId = await createCarouselChildContainer(env, media);
+            break;
+        case 'story':
+            containerId = await createStoryContainer(env, media);
+            break;
+    }
+    await ensureProcessed(env, containerId);
+    return containerId;
+}
+
 // ==================== Single Image Post ====================
 
 /**
@@ -81,12 +126,8 @@ export async function publishToInstagramPost(
     imageUrl: string,
     caption: string
 ): Promise<InstagramPublishResult> {
-    requireInstagramConfig(env);
-
-    // Step 1: Create media container
-    const containerId = await createImageContainer(env, imageUrl, caption);
-    // Step 2: Poll for processing
-    await ensureProcessed(env, containerId);
+    // Step 1+2: Create media container and await processing (shared warm/publish primitive).
+    const containerId = await createInstagramContainer(env, { url: imageUrl, type: 'photo' }, caption, 'feed_image');
     // Step 3: Publish
     return publishContainer(env, containerId);
 }
@@ -110,10 +151,8 @@ export async function publishToInstagramReel(
     videoUrl: string,
     caption: string
 ): Promise<InstagramPublishResult> {
-    requireInstagramConfig(env);
     console.log('[ig-publish] Single video for Instagram → publishing as Reel');
-    const containerId = await createVideoContainer(env, videoUrl, caption, 'REELS');
-    await ensureProcessed(env, containerId);
+    const containerId = await createInstagramContainer(env, { url: videoUrl, type: 'video' }, caption, 'reel');
     const result = await publishContainer(env, containerId);
     // It's a Reel, not a feed post — reflect that in the URL.
     return { post_id: result.post_id, url: result.post_id ? `https://www.instagram.com/reel/${result.post_id}` : result.url };
@@ -208,30 +247,12 @@ export async function publishToInstagramStory(
     env: Env,
     media: string | InstagramMediaItem
 ): Promise<InstagramPublishResult> {
-    requireInstagramConfig(env);
-
     const item: InstagramMediaItem = typeof media === 'string' ? { url: media, type: 'photo' } : media;
 
-    // Create story container — image_url for photos, video_url for videos
-    const containerUrl = `${GRAPH_API}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
-    const response = await fetch(containerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ...(item.type === 'video' ? { video_url: item.url } : { image_url: item.url }),
-            media_type: 'STORIES',
-            access_token: env.INSTAGRAM_ACCESS_TOKEN,
-        }),
-    });
-
-    if (!response.ok) {
-        throw await igErrorFromResponse(response, 'Story container creation failed');
-    }
-
-    const result = await response.json() as { id: string };
-    // Poll for processing, then publish
-    await ensureProcessed(env, result.id);
-    return publishContainer(env, result.id, true);
+    // Create story container and await processing (shared warm/publish primitive; stories have no
+    // caption), then publish.
+    const containerId = await createInstagramContainer(env, item, '', 'story');
+    return publishContainer(env, containerId, true);
 }
 
 // ==================== Internal Helpers ====================
@@ -311,6 +332,30 @@ async function createVideoContainer(
     return result.id;
 }
 
+/** Create a Story container (image or video, via media_type=STORIES) and return its id. No caption. */
+async function createStoryContainer(
+    env: Env,
+    item: InstagramMediaItem
+): Promise<string> {
+    const url = `${GRAPH_API}/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ...(item.type === 'video' ? { video_url: item.url } : { image_url: item.url }),
+            media_type: 'STORIES',
+            access_token: env.INSTAGRAM_ACCESS_TOKEN,
+        }),
+    });
+
+    if (!response.ok) {
+        throw await igErrorFromResponse(response, 'Story container creation failed');
+    }
+
+    const result = await response.json() as { id: string };
+    return result.id;
+}
+
 async function createCarouselContainer(
     env: Env,
     childIds: string[],
@@ -373,9 +418,12 @@ async function pollContainerStatus(
 }
 
 /**
- * Publish a processed container.
+ * Publish a processed (FINISHED) container by id. Exported so the publish path (core/publish.ts) can
+ * publish a pre-warmed container handle directly — the slow create+process was already done by the
+ * warm engine, so publishing a warmed container is the instant post-only step. `isStory` suppresses
+ * the (nonexistent) Story URL.
  */
-async function publishContainer(
+export async function publishContainer(
     env: Env,
     containerId: string,
     isStory = false

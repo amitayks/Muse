@@ -11,21 +11,22 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import {
     getDueDraftsByUser,
+    getStuckPublishingDrafts,
+    getWarmableDraftsByUser,
     updateDraftStatus,
-    getTimezone,
     getStaleGeneratingDraftsByUser,
     getScheduledVideoDraftsByUser,
     updateVideoDraft,
     createVideoPublished,
     getUserLanguage,
 } from '../data/db';
+import { enqueuePublishJob } from '../data/publish-jobs-db';
+import { rearmExpiringWarms } from '../data/media-uploads-db';
+import { warmDraftMedia, processMediaWarms } from '../core/media-prewarm';
 import { sendMessage, sendVideo } from '../integrations/telegram';
 import { updateUser } from '../data/user-db';
 import { refreshLongLivedToken, storeInstagramToken } from '../services/instagram-token';
-import { publishDraft } from '../core/publish';
-import { platformEmoji, formatPlatformSummary } from '../views/platform-toggle';
 import { sanitizeError, logInfo, logError } from '../infra/security';
-import { formatLocalTime } from '../infra/timezone';
 import { hydrateEnv } from '../data/user-keys';
 import { pollUserAccounts } from '../services/poller';
 
@@ -37,11 +38,26 @@ import { pollUserAccounts } from '../services/poller';
 export async function cronCoordinator(env: Env, ctx: ExecutionContext): Promise<void> {
     logInfo('[cron] Coordinator starting');
 
+    // NOTE: Cloudflare D1 caps a compound SELECT at 5 UNION'd terms (SQLITE_ERROR 7500
+    // "too many terms in compound SELECT"). This query is AT that limit (5 SELECTs), so do
+    // NOT add another UNION — fold any new "users with pending work" condition into one of the
+    // existing per-table SELECTs with OR (as the drafts SELECT does for scheduled + stuck-publishing).
+    //
+    // The drafts SELECT below ORs in "users with warmable media" (media pre-warm, openspec
+    // prewarm-media-uploads) rather than adding a 6th UNION: a scheduled draft that has crossed into
+    // the 20h warm window, OR a still-unpublished draft with a 'ready' handle nearing expiry that must
+    // be re-warmed. See getWarmableDraftsByUser for the matching per-user query.
     const result = await env.DB.prepare(`
         SELECT DISTINCT chat_id FROM (
             SELECT chat_id FROM twitter_accounts WHERE is_watching = 1
             UNION
-            SELECT chat_id FROM drafts WHERE status = 'scheduled' AND REPLACE(scheduled_at, 'T', ' ') <= datetime('now')
+            SELECT d.chat_id FROM drafts d WHERE (d.status = 'scheduled' AND REPLACE(d.scheduled_at, 'T', ' ') <= datetime('now'))
+                OR (d.status = 'publishing' AND d.updated_at <= datetime('now', '-10 minutes'))
+                OR (d.status IN ('draft', 'approved', 'scheduled') AND d.scheduled_at IS NOT NULL AND REPLACE(d.scheduled_at, 'T', ' ') <= datetime('now', '+20 hours'))
+                OR (d.status NOT IN ('published', 'publishing') AND EXISTS (
+                    SELECT 1 FROM media_uploads m
+                    WHERE m.draft_id = d.id AND m.status = 'ready' AND m.expires_at IS NOT NULL AND m.expires_at <= datetime('now', '+4 hours')
+                ))
             UNION
             SELECT chat_id FROM video_drafts WHERE status = 'generating' AND updated_at <= datetime('now', '-30 minutes')
             UNION
@@ -113,6 +129,22 @@ async function processUserCron(env: Env, chatId: string): Promise<void> {
     }
 
     try {
+        await recoverStuckPublishingDrafts(userEnv, chatId, lang);
+        results.stuckPublishing = 'ok';
+    } catch (error) {
+        logError(`[cron] Stuck-publish recovery failed for chat ${chatId}:`, sanitizeError(error));
+        results.stuckPublishing = 'error';
+    }
+
+    try {
+        await warmUserDrafts(userEnv, chatId);
+        results.mediaWarm = 'ok';
+    } catch (error) {
+        logError(`[cron] Media warm scan failed for chat ${chatId}:`, sanitizeError(error));
+        results.mediaWarm = 'error';
+    }
+
+    try {
         await checkUserStaleVideos(userEnv, chatId, lang);
         results.staleVideos = 'ok';
     } catch (error) {
@@ -174,108 +206,113 @@ async function refreshUserInstagramToken(env: Env, chatId: string, lang: Lang = 
 }
 
 /**
- * Publish due scheduled drafts for a specific user
- * Called with already-hydrated env
+ * Enqueue due scheduled drafts for a specific user onto the durable publish-job queue.
+ * Called with already-hydrated env.
+ *
+ * No inline publish and no inline notification here anymore: each due draft is flipped to
+ * 'publishing' and enqueued in publish_jobs; the every-minute publish-job processor
+ * (core/publish-jobs.ts) runs publishDraft on a fresh budget, finalizes status/record, and sends
+ * the single per-draft notification — so a heavy multi-video scheduled publish completes across
+ * ticks instead of being hard-cancelled inside this cron task. See openspec durable-publish-queue.
  */
 export async function publishUserDrafts(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
     const drafts = await getDueDraftsByUser(env, chatId);
 
     if (drafts.length === 0) return;
 
-    logInfo(`[cron] Publishing ${drafts.length} scheduled drafts for chat ${chatId}`);
+    logInfo(`[cron] Enqueuing ${drafts.length} scheduled drafts for chat ${chatId}`);
 
     for (const draft of drafts) {
-        // Mark 'publishing' before handing off — callers own this transition (mirrors
-        // actions/publish.ts and api-v1-drafts.ts). It also satisfies the deferred-X-video
-        // processor's idempotency guard (core/x-pending.ts requires status === 'publishing'),
-        // so a scheduled video draft is finalized by that processor rather than dropped.
-        // The in-memory draft keeps status 'scheduled', so publishDraft's full-failure path
-        // still reverts a scheduled draft to 'approved'.
-        await updateDraftStatus(env, draft.id, chatId, 'publishing');
+        try {
+            // Mark 'publishing' before enqueueing — this transition both reserves the draft against
+            // a duplicate enqueue on the next tick and satisfies the processor's idempotency guard
+            // (it only finalizes a still-'publishing' draft). prior_status='scheduled' so a full
+            // failure restores the scheduled status when it is still in the future.
+            await updateDraftStatus(env, draft.id, chatId, 'publishing');
+            await enqueuePublishJob(env, { draftId: draft.id, chatId, lang, priorStatus: 'scheduled' });
+        } catch (error) {
+            // Enqueue threw — reset the draft so it doesn't orphan in 'publishing' (the next tick
+            // re-picks it as due once it's back to 'scheduled'). Continue so one bad draft doesn't
+            // abort the rest of the batch.
+            logError(`[cron] enqueuePublishJob threw for scheduled draft ${draft.id}:`, sanitizeError(error));
+            await updateDraftStatus(env, draft.id, chatId, 'scheduled').catch(() => {});
+        }
+    }
+}
 
-        const publishResult = await publishDraft(env, chatId, draft);
+/**
+ * Recover drafts orphaned in 'publishing' for a specific user (>10 min).
+ *
+ * A publish flips the draft to 'publishing' before running; if the worker is terminated
+ * mid-publish (isolate eviction, CPU/wall-clock limit, a killed waitUntil() task) or
+ * publishDraft throws in an unguarded spot, nothing resets the status and the draft is
+ * orphaned. No try/catch can cover a worker kill, so this sweep is the durable safety net.
+ * getStuckPublishingDrafts already excludes legit deferred-X-video posts and anything with a
+ * published record. Reset → 'scheduled' if scheduled_at is still in the future, else 'approved'.
+ * Called with already-hydrated env.
+ */
+export async function recoverStuckPublishingDrafts(env: Env, chatId: string, lang: Lang = 'en'): Promise<void> {
+    const STUCK_MINUTES = 10;
+    const stuck = await getStuckPublishingDrafts(env, chatId, STUCK_MINUTES);
+    if (stuck.length === 0) return;
 
-        if (!publishResult.success) {
-            logError(`[cron] All platforms failed for scheduled draft ${draft.id}`);
-
-            const errorMessages = Object.entries(publishResult.results.errors || {})
-                .map(([p, msg]) => `${platformEmoji(p)} ${msg}`)
-                .join('\n');
-
-            const failButtons: Array<Array<{ text: string; callback_data: string }>> = [];
-            if (publishResult.results.needsInstagramReconnect) {
-                failButtons.push([{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]);
-            }
-            failButtons.push([{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]);
+    for (const draft of stuck) {
+        try {
+            const future = !!draft.scheduled_at && new Date(draft.scheduled_at.replace(' ', 'T')) > new Date();
+            const next = future ? 'scheduled' : 'approved';
+            await updateDraftStatus(env, draft.id, chatId, next);
+            logInfo(`[cron] Recovered orphaned 'publishing' draft ${draft.id} → ${next}`);
 
             try {
                 await sendMessage(
                     env,
                     chatId,
-                    `${t(lang, 'notifications.scheduledPostFailed')}\n\n` +
-                    `${draft.pr_title}\n\n` +
-                    `${errorMessages}\n\n` +
-                    t(lang, 'notifications.draftReturnedToApproved'),
-                    failButtons
+                    t(lang, 'notifications.publishStuckRecovered').replace('{title}', draft.pr_title || 'your post'),
+                    [[{ text: t(lang, 'notifications.btnViewDrafts'), callback_data: 'view:drafts' }]],
                 );
             } catch (notifyError) {
-                logError('Failed to send error notification:', notifyError);
+                logError('Failed to send stuck-publish recovery notification:', notifyError);
             }
-            continue;
-        }
-
-        // Deferred X video post: media uploaded + a row enqueued in x_pending_posts; the draft
-        // stays in 'publishing' and the every-minute cron processor (core/x-pending.ts) posts the
-        // tweet once the media is attachable and sends the final published/failed notification.
-        // Don't notify here (it isn't published yet) — that would be premature and duplicate.
-        if (publishResult.deferredX) {
-            logInfo(`[cron] Scheduled draft ${draft.id}: X video post deferred to x-pending processor`);
-            continue;
-        }
-
-        logInfo(`[cron] Published scheduled draft: ${draft.id}`);
-
-        try {
-            const tz = await getTimezone(env, chatId);
-            const publishTime = formatLocalTime(new Date().toISOString(), tz);
-            const summary = formatPlatformSummary(publishResult.results, lang);
-            const hasErrors = publishResult.results.errors && Object.keys(publishResult.results.errors).length > 0;
-            const title = hasErrors
-                ? t(lang, 'notifications.scheduledPostPartial')
-                : t(lang, 'notifications.scheduledPostPublished');
-
-            let message = `${title}\n\n` +
-                `${draft.pr_title}\n` +
-                `${t(lang, 'notifications.publishedAt').replace('{time}', publishTime)}\n\n` +
-                `${t(lang, 'notifications.publishedTo').replace('{summary}', summary)}`;
-
-            if (hasErrors) {
-                const errorSummary = Object.entries(publishResult.results.errors!)
-                    .map(([p, msg]) => `${platformEmoji(p)} ${msg}`)
-                    .join(', ');
-                message += `\n${t(lang, 'notifications.publishErrors').replace('{errors}', errorSummary)}`;
-            }
-
-            const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-
-            if (publishResult.results.needsInstagramReconnect) {
-                buttons.push([{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]);
-            }
-
-            if (publishResult.url) {
-                buttons.push([{ text: '🔗 Open', url: publishResult.url }]);
-            }
-
-            buttons.push([
-                { text: t(lang, 'notifications.btnView'), callback_data: `draft:${draft.id}` },
-                { text: t(lang, 'notifications.btnDashboard'), callback_data: 'view:home' },
-            ]);
-
-            await sendMessage(env, chatId, message, buttons);
-        } catch (notifyError) {
-            logError('Failed to send publish notification (draft is published):', notifyError);
+        } catch (err) {
+            logError('Stuck-publish recovery error for draft:', draft.id, err instanceof Error ? err.message : String(err));
         }
     }
+}
+
+/**
+ * Pre-warm media uploads for a specific user — media pre-warm cron scan (openspec
+ * prewarm-media-uploads). Called with already-hydrated env.
+ *
+ * The attach-time triggers (webapp PUT / bot edit) cover unscheduled now/near-term drafts. This cron
+ * scan is the durable safety net for the two cases attach-time can't reach:
+ *   - a far-scheduled draft that has since crossed into the 20h warm window (it wasn't warm-eligible
+ *     when its media was attached);
+ *   - a still-unpublished draft whose 'ready' handle is nearing expiry and must be re-warmed.
+ *
+ * For each such draft: re-arm any expiring 'ready' rows (→ 'pending', due now), then warmDraftMedia
+ * enqueues/keeps the pending warm set (gated on the same 20h eligibility). A single processMediaWarms()
+ * pass then performs the due warms for ALL of this user's drafts in one bounded batch — it's
+ * user-agnostic (claims globally), so we run it once here rather than per-draft. Best-effort throughout:
+ * nothing here throws into the cron task, and publish falls back to inline upload regardless.
+ */
+export async function warmUserDrafts(env: Env, chatId: string): Promise<void> {
+    const drafts = await getWarmableDraftsByUser(env, chatId);
+    if (drafts.length === 0) return;
+
+    logInfo(`[cron] Warming media for ${drafts.length} draft(s) for chat ${chatId}`);
+
+    for (const draft of drafts) {
+        try {
+            await rearmExpiringWarms(env, draft.id);
+            await warmDraftMedia(env, draft);
+        } catch (error) {
+            logError(`[cron] warm enqueue failed for draft ${draft.id}:`, sanitizeError(error));
+        }
+    }
+
+    // Perform the due warms now (don't wait for the every-minute processor) — one bounded batch for
+    // all of this user's just-armed rows. processMediaWarms is best-effort and never throws.
+    await processMediaWarms(env);
 }
 
 /**

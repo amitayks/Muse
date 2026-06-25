@@ -456,6 +456,82 @@ export async function getDueDraftsByUser(env: Env, chatId: string): Promise<Draf
 }
 
 /**
+ * Find drafts orphaned in 'publishing' — a publish that never completed, so the status was
+ * never reset. This happens when the worker is terminated mid-publish (isolate eviction,
+ * CPU/wall-clock limit, a killed waitUntil() background task) or, in the cron path, an
+ * uncaught throw: the draft was flipped to 'publishing' but nothing ran to move it on.
+ *
+ * Excludes legitimate in-flight cases so they're never wrongly reset:
+ *   - a live row in x_pending_posts (a deferred X-video post intentionally stays 'publishing'
+ *     until the every-minute processor resolves it)
+ *   - a live (pending/processing) row in publish_jobs (a chunked publish intentionally stays
+ *     'publishing' across ticks until the publish-job processor finalizes it); the reaper remains
+ *     the backstop for drafts whose job row is gone or 'failed'
+ *   - anything that already produced a `published` record
+ *
+ * `olderThanMinutes` must exceed the longest legitimate publish (video upload ~25s + IG
+ * polling); ~10 min is safe.
+ */
+export async function getStuckPublishingDrafts(env: Env, chatId: string, olderThanMinutes: number): Promise<Draft[]> {
+    const result = await env.DB.prepare(
+        `SELECT d.* FROM drafts d
+         WHERE d.chat_id = ? AND d.status = 'publishing'
+           AND d.updated_at <= datetime('now', ?)
+           AND NOT EXISTS (SELECT 1 FROM x_pending_posts x WHERE x.draft_id = d.id)
+           AND NOT EXISTS (SELECT 1 FROM publish_jobs j WHERE j.draft_id = d.id AND j.state IN ('pending', 'processing'))
+           AND NOT EXISTS (SELECT 1 FROM published p WHERE p.draft_id = d.id)`
+    )
+        .bind(chatId, `-${olderThanMinutes} minutes`)
+        .all<Draft>();
+    return result.results || [];
+}
+
+/**
+ * Find drafts for a user that should be (re-)warmed by the cron — media pre-warm (openspec
+ * prewarm-media-uploads). Two conditions, OR'd, scoped to still-unpublished, content-bearing drafts:
+ *
+ *   1. A scheduled draft that has crossed into the 20h warm window (scheduled_at <= now + 20h) — it
+ *      wasn't warm-eligible at attach time, so the cron enqueues its warm rows now (warmDraftMedia
+ *      gates on the same window; this just surfaces the draft to the per-user warm task).
+ *   2. A draft that already has a 'ready' media_uploads row nearing expiry (expires_at <= now + 4h) —
+ *      the handle would expire before a later publish, so it must be re-warmed. (LinkedIn rows are
+ *      durable: expires_at IS NULL, so they never match.)
+ *
+ * Excludes 'published' (and 'publishing' — a publish in flight owns the draft; re-warming mid-publish
+ * would race the seed). Bot/webapp attach-time triggers cover unscheduled now/near-term drafts; this is
+ * the durable safety net for the far-scheduled + expiry-re-warm cases. Caller then runs warmDraftMedia
+ * (enqueue / re-arm) + processMediaWarms (perform). `warmHours` / `expirySoonHours` default to the
+ * engine's 20h lead and ~4h pre-expiry margin.
+ */
+export async function getWarmableDraftsByUser(
+    env: Env,
+    chatId: string,
+    warmHours = 20,
+    expirySoonHours = 4,
+): Promise<Draft[]> {
+    const result = await env.DB.prepare(
+        `SELECT DISTINCT d.* FROM drafts d
+         WHERE d.chat_id = ?
+           AND d.status NOT IN ('published', 'publishing')
+           AND (
+                (d.status IN ('draft', 'approved', 'scheduled')
+                 AND d.scheduled_at IS NOT NULL
+                 AND REPLACE(d.scheduled_at, 'T', ' ') <= datetime('now', ?))
+             OR EXISTS (
+                 SELECT 1 FROM media_uploads m
+                 WHERE m.draft_id = d.id
+                   AND m.status = 'ready'
+                   AND m.expires_at IS NOT NULL
+                   AND m.expires_at <= datetime('now', ?)
+             )
+           )`
+    )
+        .bind(chatId, `+${warmHours} hours`, `+${expirySoonHours} hours`)
+        .all<Draft>();
+    return result.results || [];
+}
+
+/**
  * Delete a draft - verifies ownership
  */
 export async function deleteDraft(env: Env, id: string, chatId: string): Promise<boolean> {

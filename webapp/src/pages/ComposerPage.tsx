@@ -13,7 +13,7 @@ import type { Draft, DraftContent, Tweet, TweetMedia } from '../types/draft';
 import type { UploadedMedia } from '../hooks/useMediaUpload';
 import { useGenerateImage } from '../hooks/useGenerateImage';
 import { getTextDirection } from '../lib/textDirection';
-import { withTarget, type MediaPlatform } from '../lib/mediaTargets';
+import { withTarget, isMediaTargeted, type MediaPlatform } from '../lib/mediaTargets';
 import { MediaTargetRow } from '../components/MediaTargetRow';
 import { createDeferredSave, type DeferredSave } from '../lib/deferredSave';
 import { dayDeltaInTz, formatTimeInTz, formatDateInTz, parseUTC } from '../lib/timezone';
@@ -24,7 +24,7 @@ import { useBackButton, useMainButton, useSecondaryButton } from '../shell';
 import {
   confirmDestructive, confirm, popup, notifyError, haptics,
 } from '../shell';
-import { PageLoading, CharCounter, PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, MediaGrid, ImageDropZone, Spinner } from '../components/shared';
+import { PageLoading, CharCounter, PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, MediaGrid, ImageDropZone, Spinner, type ProgressState } from '../components/shared';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { resolveLifecycle } from './composerLifecycle';
 import styles from './ComposerPage.module.css';
@@ -62,6 +62,14 @@ interface DraftDetail extends Draft {
 interface SettingsCaps {
   has_instagram: boolean;
   has_linkedin: boolean;
+}
+
+/**
+ * GET /api/v1/drafts/:id/media-progress — per-media pre-upload ("warm") progress.
+ * `media` is keyed media_key → platform → { status }; only platforms with a warm row appear.
+ */
+interface MediaProgressResponse {
+  media: Record<string, Partial<Record<MediaPlatform, { status: ProgressState }>>>;
 }
 
 interface CommitSource {
@@ -160,6 +168,17 @@ export function ComposerPage() {
     staleTime: 60_000,
   });
 
+  // Per-media pre-upload ("warm") progress for the ring around each platform icon. The query has NO
+  // refetchInterval — polling is driven manually by the shouldPollWarm effect below (after targets +
+  // eligibility are known), which is robust against react-query's interval-restart quirks and bridges
+  // the async server-side warm-row creation. An unsaved draft (no id) or error simply yields no rings.
+  const mediaProgressQuery = useQuery({
+    queryKey: ['media-progress', draftId],
+    queryFn: () => api.get<MediaProgressResponse>(`/api/v1/drafts/${draftId}/media-progress`),
+    enabled: !!draftId,
+  });
+  const progressByMediaKey = mediaProgressQuery.data?.media;
+
   // Hydrate the editable tweet buffer ONCE per draft id. Background refetches (after a debounced
   // content save, a status/targets change, or a window-focus revalidation) must NOT re-seed —
   // doing so would clobber the user's in-progress edit and snap the caret to the end. Operations
@@ -195,6 +214,42 @@ export function ComposerPage() {
     if (hasLinkedIn) ps.push('linkedin');
     return ps;
   }, [hasInstagram, hasLinkedIn]);
+
+  // Should we be live-polling warm progress right now? True while ANY expected (media, platform) upload
+  // is not yet terminal. An expected pair the server is still creating shows here as "missing", which
+  // counts as not-terminal — so polling bridges the async row-creation gap after a media drop and then
+  // runs until every targeted upload is ready/failed. Recomputed each render from the editable buffer +
+  // targets + latest progress, so it flips reactively (no react-query interval quirks). Far-future
+  // scheduled drafts aren't warmed yet (server gate: within 20h of publish), so they don't poll.
+  const shouldPollWarm = useMemo(() => {
+    if (!draftId) return false;
+    if (draft?.scheduled_at) {
+      const at = Date.parse(draft.scheduled_at.replace(' ', 'T'));
+      if (!Number.isNaN(at) && at - Date.now() > 20 * 60 * 60 * 1000) return false;
+    }
+    const map = mediaProgressQuery.data?.media;
+    for (const tw of tweets) {
+      for (const m of tw.media ?? []) {
+        for (const p of connectedMediaPlatforms) {
+          if (!targets[p] || !isMediaTargeted(m, p)) continue; // not an expected warm
+          const status = map?.[m.key]?.[p]?.status as string | undefined;
+          if (status !== 'ready' && status !== 'failed' && status !== 'expired') return true;
+        }
+      }
+    }
+    return false;
+  }, [draftId, draft?.scheduled_at, tweets, targets, connectedMediaPlatforms, mediaProgressQuery.data]);
+
+  // Manual poll loop (robust vs. react-query's refetchInterval restart behavior): refetch immediately
+  // when polling becomes wanted, then every 2.5s, and clear when everything settles or on unmount.
+  const mediaProgressRefetchRef = useRef(mediaProgressQuery.refetch);
+  mediaProgressRefetchRef.current = mediaProgressQuery.refetch;
+  useEffect(() => {
+    if (!shouldPollWarm) return;
+    void mediaProgressRefetchRef.current();
+    const id = setInterval(() => { void mediaProgressRefetchRef.current(); }, 2500);
+    return () => clearInterval(id);
+  }, [shouldPollWarm]);
 
   // ============================================================
   // Persistence — every write goes through an existing endpoint.
@@ -291,7 +346,8 @@ export function ComposerPage() {
     onError: (err) => setErrorMsg(messageOf(err)),
     // Intentionally NO refetch: the local tweet buffer is the source of truth while editing, and
     // the backend persists + syncs the bot message on its own. Refetching here would re-hydrate
-    // mid-edit and jump the caret.
+    // mid-edit and jump the caret. (Warm-progress polling is driven reactively by shouldPollWarm —
+    // when the server warms this draft's media the rings pick it up on the next poll.)
   });
 
   /** Debounced content persistence while editing an existing, editable draft. */
@@ -868,6 +924,7 @@ export function ComposerPage() {
           mediaPlatforms={connectedMediaPlatforms}
           mediaEnabledTargets={targets}
           onToggleMediaTarget={toggleMediaTarget}
+          mediaProgress={progressByMediaKey}
           onGenerateImage={generateImageForTweet}
           generating={generatingIndex === i}
           anyGenerating={generatingIndex !== null}
@@ -1033,6 +1090,8 @@ interface TweetCardProps {
   /** Draft-enabled destinations — a media pill is highlighted only for these. */
   mediaEnabledTargets: Targets;
   onToggleMediaTarget: (tweetIndex: number, mediaIndex: number, platform: MediaPlatform, next: boolean) => void;
+  /** Per-media warm progress (media_key → platform → { status }) for the icon rings. */
+  mediaProgress?: Record<string, Partial<Record<MediaPlatform, { status: ProgressState }>>>;
   onGenerateImage: (index: number) => void;
   generating: boolean;
   /** True while ANY tweet's image is generating — disables every Generate button (serialized generation). */
@@ -1045,7 +1104,7 @@ function TweetCard(props: TweetCardProps) {
   const {
     tweet, index, total, canEdit, showFullMedia, placeholder, removeLabel,
     onText, onRemove, onMove, onAddMedia, onRemoveMedia,
-    mediaPlatforms, mediaEnabledTargets, onToggleMediaTarget,
+    mediaPlatforms, mediaEnabledTargets, onToggleMediaTarget, mediaProgress,
     onGenerateImage, generating, anyGenerating, generateError,
   } = props;
 
@@ -1138,6 +1197,7 @@ function TweetCard(props: TweetCardProps) {
                   platforms={mediaPlatforms}
                   enabled={mediaEnabledTargets}
                   onToggle={(platform, next) => onToggleMediaTarget(index, mi, platform, next)}
+                  progress={flattenMediaProgress(mediaProgress?.[m.key])}
                 />
               )}
             </div>
@@ -1294,6 +1354,21 @@ function PublishedResults({ draft, title }: PublishedResultsProps) {
 
 function hasAnyText(tweets: Tweet[]): boolean {
   return tweets.some((tw) => tw.text.trim().length > 0 || !!(tw.media && tw.media.length > 0));
+}
+
+/**
+ * Flatten one media item's warm progress (platform → { status }) into the platform → state map the
+ * MediaTargetRow ring expects. Returns undefined when there is nothing to show, so pills render ringless.
+ */
+function flattenMediaProgress(
+  byPlatform: Partial<Record<MediaPlatform, { status: ProgressState }>> | undefined,
+): Partial<Record<MediaPlatform, ProgressState>> | undefined {
+  if (!byPlatform) return undefined;
+  const out: Partial<Record<MediaPlatform, ProgressState>> = {};
+  for (const [platform, entry] of Object.entries(byPlatform)) {
+    if (entry) out[platform as MediaPlatform] = entry.status;
+  }
+  return out;
 }
 
 function messageOf(err: unknown): string {

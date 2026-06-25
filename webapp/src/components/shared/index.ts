@@ -11,7 +11,7 @@ export { EmptyState } from './EmptyState';
 export { StatusBadge } from './StatusBadge';
 export { Toggle } from './Toggle';
 export { CharCounter } from './CharCounter';
-export { PlatformTogglePill } from './PlatformTogglePill';
+export { PlatformTogglePill, type ProgressState } from './PlatformTogglePill';
 export { XLogo } from './XLogo';
 export { InstagramLogo } from './InstagramLogo';
 export { LinkedInLogo } from './LinkedInLogo';

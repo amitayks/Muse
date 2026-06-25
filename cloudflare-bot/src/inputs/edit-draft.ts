@@ -4,6 +4,7 @@ import type { Lang } from '../ui/strings';
 import { t } from '../ui/strings';
 import { respond } from '../core/respond';
 import { updateChatState, getDraft, updateDraftContent } from '../data/db';
+import { warmDraftMediaInline, reconcileWarmsAfterContentChange } from '../core/media-prewarm';
 import { editContent } from '../ai/gemini';
 import { sendMessage, editMessage } from '../integrations/telegram';
 import { renderError } from '../views';
@@ -42,6 +43,15 @@ export async function editDraftInput(ctx: HandlerContext & { text: string; conte
 
         await updateDraftContent(env, draftId, chatId, JSON.stringify(refinedContent));
         await updateChatState(env, chatId, { context: null });
+
+        // Reconcile warmed media after the AI content edit: an IG caption change invalidates IG rows,
+        // removed/replaced media is orphaned, and new media gets pending rows (X/LinkedIn handles survive
+        // caption edits). Best-effort, never blocks this handler.
+        const edited = await getDraft(env, draftId, chatId);
+        if (edited) {
+            await reconcileWarmsAfterContentChange(env, edited);
+            ctx.executionCtx?.waitUntil(warmDraftMediaInline(env, edited));
+        }
 
         await editMessage(env, chatId, messageId,
             `${t(lang, 'editDraft.updated')}\n\n${t(lang, 'editDraft.applied').replace('{instruction}', instruction)}`,

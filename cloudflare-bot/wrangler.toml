@@ -2,10 +2,9 @@ name = "content-bot"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 
-# Replace satori's bare process.env references at build time (Workers don't have process)
-[define]
-"process.env.SATORI_STANDALONE" = "'1'"
-"process.env.JEST_WORKER_ID" = "undefined"
+# NOTE: Image rendering (Satori/resvg) lives in the separate `render-worker`, reached via the
+# RENDER service binding below — so this Worker no longer bundles satori and the old
+# [define] process.env shims it required are gone. See ../render-worker and DEPLOY.md.
 
 # D1 Database binding
 [[d1_databases]]
@@ -17,6 +16,15 @@ database_id = "4bd535da-8924-4bf2-bb50-19d25f483236"
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "content-bot-images"
+
+# Service binding to the render-worker (Satori/resvg image rendering).
+# Kept in a separate Worker so this bundle excludes the ~3.4 MB image stack and
+# cold-starts fast on the conversational path. Deploy render-worker before/independently;
+# the binding resolves by name, so only image calls fail if it's missing.
+[[services]]
+binding = "RENDER"
+service = "render-worker"
+entrypoint = "RenderService"
 
 # Cron triggers.
 #   */15 * * * * — the per-user coordinator (poll, publish scheduled drafts, refresh tokens, …).

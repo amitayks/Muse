@@ -1,0 +1,22 @@
+{
+  "name": "render-worker",
+  "version": "1.0.0",
+  "description": "Dedicated Cloudflare Worker for Satori/resvg tweet-card image rendering, invoked by content-bot via a service binding",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail --format pretty",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260210.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
+    "bidi-js": "^1.0.3",
+    "satori": "^0.25.0"
+  }
+}

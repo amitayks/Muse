@@ -155,6 +155,59 @@ CREATE TABLE IF NOT EXISTS x_pending_posts (
 CREATE INDEX IF NOT EXISTS idx_x_pending_due  ON x_pending_posts(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_x_pending_chat ON x_pending_posts(chat_id);
 
+-- Durable publish-job queue — one in-flight publish per draft (generalizes x_pending_posts). A
+-- publish (multi-platform, possibly multi-video) can exceed one Worker budget; instead of running
+-- publishDraft inline we enqueue a row here and the every-minute cron processor (core/publish-jobs.ts)
+-- runs publishDraft on a fresh budget, persisting partial `progress` (already-uploaded media keyed by
+-- platform + tweet index + media index) so a heavy publish completes across ticks without re-uploading
+-- or double-posting. One row per draft (idempotency). (migration 024)
+CREATE TABLE IF NOT EXISTS publish_jobs (
+  draft_id        TEXT PRIMARY KEY,
+  chat_id         TEXT NOT NULL,
+  lang            TEXT,
+  prior_status    TEXT,
+  state           TEXT NOT NULL DEFAULT 'pending',
+  progress        TEXT,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  max_attempts    INTEGER NOT NULL DEFAULT 6,
+  last_error      TEXT,
+  next_attempt_at TEXT NOT NULL,
+  created_at      TEXT DEFAULT (datetime('now')),
+  updated_at      TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_publish_jobs_due  ON publish_jobs(state, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_publish_jobs_chat ON publish_jobs(chat_id);
+
+-- Pre-warmed media uploads — one row per (draft, media, platform) holding a reusable platform media
+-- handle (X media_id / Instagram container id / LinkedIn asset URN) uploaded ahead of publish so the
+-- publish path skips the slow upload and posts instantly. The scheduling columns (status, attempts,
+-- next_attempt_at) let this table double as the warm queue, mirroring publish_jobs / x_pending_posts.
+-- caption_hash is Instagram-only (the container bakes in the caption); expires_at is conservative
+-- (X/IG ≈ warm time + 23h; LinkedIn null/far). Warming is best-effort — a missing/expired handle just
+-- falls back to inline upload at publish. (migration 025)
+CREATE TABLE IF NOT EXISTS media_uploads (
+  draft_id        TEXT NOT NULL,
+  chat_id         TEXT NOT NULL,
+  media_key       TEXT NOT NULL,
+  platform        TEXT NOT NULL,
+  media_kind      TEXT NOT NULL,
+  handle          TEXT,
+  caption_hash    TEXT,
+  status          TEXT DEFAULT 'pending',
+  expires_at      TEXT,
+  attempts        INTEGER DEFAULT 0,
+  max_attempts    INTEGER DEFAULT 6,
+  last_error      TEXT,
+  next_attempt_at TEXT NOT NULL,
+  started_at      TEXT,                            -- when the row last entered 'processing' (migration 026)
+  created_at      TEXT DEFAULT (datetime('now')),
+  updated_at      TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (draft_id, media_key, platform)
+);
+CREATE INDEX IF NOT EXISTS idx_media_uploads_due   ON media_uploads(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_media_uploads_draft ON media_uploads(draft_id);
+CREATE INDEX IF NOT EXISTS idx_media_uploads_chat  ON media_uploads(chat_id);
+
 -- Watched repos for auto-detection
 CREATE TABLE IF NOT EXISTS repos (
   id TEXT PRIMARY KEY,

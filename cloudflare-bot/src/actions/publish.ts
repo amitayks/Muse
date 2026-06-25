@@ -1,14 +1,10 @@
 import type { HandlerContext } from '../core/router';
 import type { ViewResult } from '../types';
 import type { Lang } from '../ui/strings';
-import { t } from '../ui/strings';
-import { getDraft, getTimezone, updateDraftStatus, getTwitterAccounts } from '../data/db';
-import { publishDraft } from '../core/publish';
-import { renderDraftDetail, renderError } from '../views';
-import { platformEmoji, platformLabel, formatPlatformSummary } from '../views/platform-toggle';
-import { escapeHtml } from '../ui/utils';
-import { editMessage, sendMessage } from '../integrations/telegram';
-import { truncateHtml } from '../ui/utils';
+import { getDraft, updateDraftStatus } from '../data/db';
+import { enqueuePublishJob } from '../data/publish-jobs-db';
+import { processPublishJobOnce, INLINE_DEADLINE_MS } from '../core/publish-jobs';
+import { renderError } from '../views';
 
 export async function publishAction(ctx: HandlerContext & { value: string; extra?: string }): Promise<ViewResult> {
     const lang = (ctx.lang || 'en') as Lang;
@@ -26,104 +22,20 @@ export async function publishAction(ctx: HandlerContext & { value: string; extra
         return { text: `⏳ ${label}`, keyboard: [] };
     }
 
-    // Mark as publishing immediately to prevent duplicates
+    const priorStatus = draft.status; // restored by the processor on full failure
+
+    // Mark as publishing immediately to prevent duplicates, then enqueue a durable publish job.
+    // The processor (core/publish-jobs.ts) owns the publish, partial-failure handling, status
+    // finalization, and the single user notification — see openspec durable-publish-queue.
     await updateDraftStatus(ctx.env, draft.id, ctx.chatId, 'publishing');
+    await enqueuePublishJob(ctx.env, { draftId: draft.id, chatId: ctx.chatId, lang, priorStatus });
 
-    // Capture context for background task
+    // Kick the first chunk inline so light posts finish without waiting for the next cron tick.
     const env = ctx.env;
-    const chatId = ctx.chatId;
-    const messageId = ctx.messageId!;
-
-    const publishTask = (async () => {
-        try {
-            const result = await publishDraft(env, chatId, draft);
-
-            if (!result.success) {
-                const errorMessages = Object.entries(result.results.errors || {})
-                    .map(([p, msg]) => `${platformEmoji(p)} ${platformLabel(p, lang)}: ${escapeHtml(msg)}`)
-                    .join('\n');
-                const keyboard = result.results.needsInstagramReconnect
-                    ? [[{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }]]
-                    : undefined;
-                await editMessage(env, chatId, messageId,
-                    `❌ <b>Publishing failed</b>\n\n<code>${errorMessages}</code>`,
-                    keyboard,
-                ).catch(() => {});
-                // Revert to approved so user can retry
-                await updateDraftStatus(env, draft.id, chatId, 'approved');
-                return;
-            }
-
-            // Update the "Publishing..." message with the result
-            try {
-                const tz = await getTimezone(env, chatId);
-                const view = await renderDraftDetail(env, chatId, draftId, tz, lang);
-
-                const hasErrors = result.results.errors && Object.keys(result.results.errors).length > 0;
-                if (result.deferredX) {
-                    // X video is uploaded but its tweet-creation is deferred to the every-minute
-                    // cron processor (core/x-pending.ts); the user gets a follow-up notification
-                    // when X resolves.
-                    view.text = `⏳ <b>X video posting…</b>\n\nThe video uploaded; X needs a moment before the post goes live. You'll be notified when it's done.\n\n${view.text}`;
-                } else if (hasErrors) {
-                    const summary = formatPlatformSummary(result.results, lang);
-                    view.text = `⚠️ <b>${t(lang, 'notifications.scheduledPostPartial')}</b>\n${summary}\n\n${view.text}`;
-                    if (result.results.needsInstagramReconnect) {
-                        view.keyboard = [
-                            [{ text: t(lang, 'notifications.btnReconnectInstagram'), callback_data: 'settings:update:instagram' }],
-                            ...(view.keyboard || []),
-                        ];
-                    }
-                } else {
-                    view.text = `✅ <b>Published!</b>\n\n${view.text}`;
-                }
-
-                await editMessage(env, chatId, messageId,
-                    truncateHtml(view.text, 4096),
-                    view.keyboard,
-                );
-            } catch {
-                await editMessage(env, chatId, messageId,
-                    `✅ <b>Published!</b>\n\n${result.url ? `<a href="${result.url}">View post</a>` : 'Post is live.'}`,
-                ).catch(() => {});
-            }
-
-            // Follow prompt: offer to follow the reposted account if not already followed
-            if (draft.source === 'repost' && draft.original_tweet_url) {
-                try {
-                    const urlMatch = draft.original_tweet_url.match(/(?:x\.com|twitter\.com)\/([a-zA-Z0-9_]+)\/status\//);
-                    const username = urlMatch?.[1];
-                    if (username) {
-                        const accounts = await getTwitterAccounts(env, chatId);
-                        const alreadyFollowed = accounts.some(
-                            a => a.username.toLowerCase() === username.toLowerCase()
-                        );
-                        if (!alreadyFollowed) {
-                            const followText = t(lang, 'actions.followPrompt').replace('{username}', username);
-                            await sendMessage(env, chatId, followText, [[
-                                { text: t(lang, 'actions.btnFollow'), callback_data: `rp_follow:${username}` },
-                                { text: t(lang, 'actions.btnNoThanks'), callback_data: `rp_no_follow:dismiss` },
-                            ]]);
-                        }
-                    }
-                } catch { /* non-critical */ }
-            }
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[publish-bg] Background publish failed:', msg);
-            await editMessage(env, chatId, messageId,
-                `❌ <b>Publishing failed</b>\n\n<code>${escapeHtml(msg)}</code>`,
-            ).catch(() => {});
-            // Revert status so user can retry
-            await updateDraftStatus(env, draft.id, chatId, 'approved').catch(() => {});
-        }
-    })();
-
-    // Run in background if executionCtx available, otherwise await
     if (ctx.executionCtx) {
-        ctx.executionCtx.waitUntil(publishTask);
+        ctx.executionCtx.waitUntil(processPublishJobOnce(env, draft.id, Date.now() + INLINE_DEADLINE_MS));
     } else {
-        await publishTask;
+        await processPublishJobOnce(env, draft.id, Date.now() + INLINE_DEADLINE_MS);
     }
 
     // Immediate response — edits the current message to "Publishing..."

@@ -1,0 +1,21 @@
+name = "render-worker"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+# Internal-only Worker: reachable solely through the content-bot `RENDER` service
+# binding. No public route and workers.dev disabled so it has no public HTTP surface.
+workers_dev = false
+
+# Replace satori's bare process.env references at build time (Workers have no process).
+# These MUST match content-bot's [define] block — satori fails to run on Workers without them.
+[define]
+"process.env.SATORI_STANDALONE" = "'1'"
+"process.env.JEST_WORKER_ID" = "undefined"
+
+# R2 Storage binding — same bucket as content-bot.
+# Used by the renderer for: fonts/ (read), emoji/ Twemoji cache (read+write),
+# profiles/ avatar cache (read+write). The tweet-cards/ output keys are written
+# by content-bot, not here.
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "content-bot-images"

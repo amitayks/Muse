@@ -1,35 +1,75 @@
 # Deploy & Migrate
 
-How to ship the `content-bot` Worker and apply DB changes **today**.
+How to ship the Workers and apply DB changes **today**.
 
 > ⚠️ This is the *correct* process for how the project is currently wired — **not** the
 > best practice we want long-term. See [Known sharp edges](#known-sharp-edges-not-best-practice)
 > at the bottom. Follow this until we migrate to a cleaner setup.
 
-All commands run from `cloudflare-bot/` unless noted.
+The bot is split into **two Workers**:
 
-- **Worker:** `content-bot` → https://content-bot.keisarcontentcreator.workers.dev
-- **Config:** `cloudflare-bot/wrangler.toml`
-- **D1 database:** `content-bot-db`
+- **`content-bot`** (`cloudflare-bot/`) → https://content-bot.keisarcontentcreator.workers.dev
+  The Telegram bot, webhooks, D1, AI, routes. Config: `cloudflare-bot/wrangler.toml`, DB: `content-bot-db`.
+- **`render-worker`** (`render-worker/`) → internal-only (no public route, `workers_dev = false`)
+  Satori/resvg tweet-card image rendering (~3.4 MB stack incl. WASM). Config: `render-worker/wrangler.toml`.
+  `content-bot` calls it over the **`RENDER` service binding** (RPC entrypoint `RenderService`).
+  Keeping it separate is why `content-bot`'s bundle is ~267 KB gzip (down from ~1.47 MB) and cold-starts
+  fast on the conversational path — the image stack only loads when an image is actually rendered.
+
+Both Workers bind the same R2 bucket `content-bot-images` (render-worker reads fonts and read/writes the
+`emoji/` + `profiles/` caches; `content-bot` reads/writes the `tweet-cards/` outputs and serves `/image`,`/media`).
+
 - **Auth:** OAuth token via `wrangler login` (needs `d1 (write)` + `workers_scripts (write)`). Check with `npx wrangler whoami`.
+- Unless noted, DB commands run from `cloudflare-bot/`.
 
 ---
 
-## 1. Deploy the Worker
+## 1. Deploy the Workers
+
+Deploy **`render-worker` first, then `content-bot`** — the `RENDER` binding resolves by
+name at runtime, but deploying the dependency first avoids the first bot deploy pointing at
+a not-yet-existing service. From the **repo root**, one command does both in order:
 
 ```bash
-cd cloudflare-bot
-npx wrangler deploy --dry-run   # validate the bundle builds first
-npx wrangler deploy             # ship it
+npm run deploy            # = deploy:render && deploy:bot
 ```
 
-⚠️ **`wrangler deploy` bundles the entire working tree, not git.** Whatever is
-currently in `cloudflare-bot/src` ships to production — including uncommitted and
-unrelated WIP. Before deploying, run `git status` and make sure you actually want
-everything that's modified to go live.
+Or individually:
 
-> The `webapp/` (React) deploys **separately** to Cloudflare Pages and is not affected
-> by `wrangler deploy` of the Worker.
+```bash
+npm run deploy:render     # cd render-worker && wrangler deploy
+npm run deploy:bot        # cd cloudflare-bot && wrangler deploy
+```
+
+Validate either bundle before shipping with a dry run, e.g.:
+
+```bash
+cd render-worker  && npx wrangler deploy --dry-run
+cd cloudflare-bot && npx wrangler deploy --dry-run
+```
+
+> If you only changed bot logic (no rendering changes), `npm run deploy:bot` alone is fine.
+> If you only changed the renderer, `npm run deploy:render` alone is fine.
+
+⚠️ **`wrangler deploy` bundles the entire working tree, not git.** Whatever is currently in
+`src/` ships to production — including uncommitted and unrelated WIP. Before deploying, run
+`git status` and make sure you actually want everything that's modified to go live.
+
+> The `webapp/` (React) deploys **separately** to Cloudflare Pages and is not affected by
+> `wrangler deploy` of either Worker.
+
+### Local dev (service binding)
+
+`content-bot`'s image features call `env.RENDER`, so run **both** Workers for end-to-end
+image testing — `wrangler dev` resolves the service binding to a locally-running `render-worker`:
+
+```bash
+cd render-worker  && npm run dev    # terminal 1
+cd cloudflare-bot && npm run dev    # terminal 2
+```
+
+Text/Telegram flows work with just `content-bot` running; only image actions (tweet cards,
+Instagram publish, `/test-card`) need `render-worker` up.
 
 ---
 

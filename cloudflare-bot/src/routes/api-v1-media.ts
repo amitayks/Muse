@@ -58,6 +58,11 @@ export async function handleMediaUploadApi(ctx: ApiContext): Promise<Response> {
         });
     }
 
+    // NOTE: media pre-warm is NOT kicked here. This endpoint only stores bytes to R2 and returns a
+    // key — the media isn't attached to a draft yet (no draftId in scope), and the warm set is
+    // computed from a draft's content ∩ publish-targets. The webapp attaches the returned key via a
+    // subsequent PUT /api/v1/drafts/:id (updateDraftContent), which is where warmDraftMedia +
+    // warmDraftMediaInline fire (see routes/api-v1-drafts.ts). See openspec prewarm-media-uploads.
     const workerUrl = ctx.env.WORKER_URL || '';
     return jsonResponse({
         key,

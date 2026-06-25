@@ -14,6 +14,7 @@ import { getDraft, updateDraftPublishTargets, getTimezone } from '../data/db';
 import { renderDraftDetail, renderError } from '../views';
 import { parsePublishTargets } from '../views/platform-toggle';
 import { answerCallback } from '../integrations/telegram';
+import { reconcileWarmsAfterTargetsChange, warmDraftMediaInline } from '../core/media-prewarm';
 
 /**
  * Toggle a platform on a draft's publish targets.
@@ -60,6 +61,13 @@ export async function platformToggleAction(
 
     // Save
     await updateDraftPublishTargets(ctx.env, draft.id, ctx.chatId, targets);
+
+    // Reconcile pre-warmed media for the new target set: orphan handles for de-targeted platforms and
+    // enqueue pending rows for newly-targeted ones, then kick a best-effort first warm pass. The draft's
+    // publish_targets are now `targets`; reuse the in-memory draft to avoid a re-fetch. Best-effort.
+    const draftWithTargets = { ...draft, publish_targets: JSON.stringify(targets) };
+    await reconcileWarmsAfterTargetsChange(ctx.env, draftWithTargets);
+    ctx.executionCtx?.waitUntil(warmDraftMediaInline(ctx.env, draftWithTargets));
 
     // Re-render draft detail with toggles still open
     const tz = await getTimezone(ctx.env, ctx.chatId);

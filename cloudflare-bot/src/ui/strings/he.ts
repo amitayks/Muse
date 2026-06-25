@@ -734,6 +734,8 @@ export const he: StringsMap = {
         publishedTo: '<b>פורסם ב:</b> {summary}',
         publishErrors: '<b>נכשל:</b> {errors}',
         draftReturnedToApproved: 'הטיוטה הוחזרה לסטטוס מאושר. ניתן לנסות שוב.',
+        publishJobFailed: '❌ <b>הפרסום נכשל</b>\n\nהפוסט המשיך להיכשל אחרי מספר ניסיונות והופסק.',
+        publishStuckRecovered: '⚠️ פרסום של "{title}" לא הושלם (התהליך הופסק). הטיוטה הוחזרה כדי שתוכל לנסות שוב.',
         btnDashboard: '🏠 לוח בקרה',
 
         // Cron — video notifications

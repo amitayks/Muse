@@ -1,9 +1,7 @@
 ## Purpose
 
 This capability defines the security posture of the Cloudflare Worker host: hardened HTTP endpoints (public health check, 404 for unknown routes, security headers), secret management (shared infra keys as Worker secrets versus per-user API keys encrypted in D1), request validation, parameterized D1 queries with sanitized errors, safe R2 key/upload handling, secure cron execution, and safe responses. It also specifies the consolidated `users` table that replaces `chat_state`, carrying identity, encrypted keys, UI state, and settings.
-
 ## Requirements
-
 ### Requirement: Worker Entry Point Security
 All HTTP endpoints exposed by the Cloudflare Worker SHALL implement appropriate security controls.
 
@@ -25,7 +23,7 @@ All HTTP endpoints exposed by the Cloudflare Worker SHALL implement appropriate 
 - **AND** `X-XSS-Protection: 1; mode=block` header SHALL be included
 
 ### Requirement: Environment Secret Management
-All shared infrastructure keys/tokens SHALL be stored as Cloudflare secrets: `TELEGRAM_BOT_TOKEN`, `ENCRYPTION_KEY`, `ADMIN_SECRET`, `GITHUB_WEBHOOK_SECRET`, `TELEGRAM_CHAT_ID`. Per-user API keys (`GOOGLE_API_KEY`, `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`, `GITHUB_TOKEN`, `HEYGEN_API_KEY`) SHALL be stored encrypted in D1 `users` table and resolved per-request via env hydration. The `Env` interface SHALL include `ENCRYPTION_KEY: string` and `MAX_USERS?: string`.
+All shared infrastructure keys/tokens SHALL be stored as Cloudflare secrets: `TELEGRAM_BOT_TOKEN`, `ENCRYPTION_KEY`, `ADMIN_SECRET`, `GITHUB_WEBHOOK_SECRET`, `TELEGRAM_CHAT_ID`. Per-user API keys (`GOOGLE_API_KEY`, `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`, `GITHUB_TOKEN`, `HEYGEN_API_KEY`) SHALL be stored encrypted in D1 `users` table and resolved per-request via env hydration. The `Env` interface SHALL include `ENCRYPTION_KEY: string`, `MAX_USERS?: string`, and a `RENDER` service binding referencing the `render-worker` (typed as the render-service entrypoint / `Fetcher`).
 
 #### Scenario: Per-user keys not in Worker secrets
 - **WHEN** the Worker is deployed
@@ -34,6 +32,11 @@ All shared infrastructure keys/tokens SHALL be stored as Cloudflare secrets: `TE
 #### Scenario: ENCRYPTION_KEY in Worker secrets
 - **WHEN** the Worker starts
 - **THEN** `env.ENCRYPTION_KEY` is available as a Worker secret for encrypting/decrypting user keys
+
+#### Scenario: RENDER service binding available
+- **WHEN** the bot Worker needs to render an image
+- **THEN** `env.RENDER` SHALL be available as a service binding to `render-worker`
+- **AND** the bot SHALL invoke rendering through it rather than rendering in-process
 
 ### Requirement: Request Validation
 All incoming requests SHALL be validated before processing.
@@ -130,3 +133,16 @@ The D1 database SHALL have a `users` table that combines user identity, encrypte
 #### Scenario: chat_state data preserved
 - **WHEN** the migration runs and an existing `chat_state` row exists
 - **THEN** the UI state and settings data (message_id, current_view, context, timezone, page_size, video_settings) is copied to the corresponding `users` row
+
+### Requirement: Image rendering excluded from the bot Worker bundle
+The `content-bot` Worker bundle SHALL NOT include `satori`, `@resvg/resvg-wasm`, `bidi-js`, or their WASM assets (`yoga.wasm`, resvg `index_bg.wasm`). All image rendering SHALL be delegated to `render-worker` via the `RENDER` service binding, so the bot Worker's cold-start load/compile cost excludes the image-rendering stack.
+
+#### Scenario: Bot bundle excludes the rendering stack
+- **WHEN** `wrangler deploy --dry-run` is run for the `content-bot` Worker
+- **THEN** the emitted bundle SHALL NOT contain the `satori`, `@resvg/resvg-wasm`, or `bidi-js` modules, nor `index_bg.wasm`/`yoga.wasm`
+- **AND** the total bundle size SHALL be materially smaller than the pre-split 4.8 MB (target well under 1 MB)
+
+#### Scenario: Cold start excludes the rendering stack
+- **WHEN** a cold isolate of the bot Worker handles a Telegram webhook or other non-image request
+- **THEN** it SHALL NOT load or compile Satori, resvg, bidi-js, or their WASM
+

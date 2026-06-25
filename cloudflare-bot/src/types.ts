@@ -2,10 +2,15 @@
  * Shared types for the Cloudflare Bot
  */
 
+import type { RenderServiceBinding } from './services/render-contract';
+
 // Environment bindings
 export interface Env {
     DB: D1Database;
     IMAGES: R2Bucket;
+    // Service binding to the render-worker (Satori/resvg image rendering kept out of this
+    // Worker's bundle). See src/services/render-contract.ts and src/services/tweet-card.ts.
+    RENDER: RenderServiceBinding;
     TELEGRAM_BOT_TOKEN: string;
     TELEGRAM_CHAT_ID: string;
     GITHUB_TOKEN: string;
@@ -245,6 +250,61 @@ export interface PublishResults {
      */
     x_pending?: boolean;
 }
+
+/**
+ * Durable publish progress — already-completed uploads for an in-flight publish, keyed by platform.
+ * The publish-job processor (core/publish-jobs.ts) persists this between cron chunks so a resumable
+ * publishDraft skips uploads it has already done (no re-upload, no double-post). Media is keyed by
+ * tweet index + media index so a partially-uploaded thread resumes mid-thread. JSON-serializable
+ * (stored as publish_jobs.progress). Empty/absent means "nothing uploaded yet".
+ */
+export interface PublishProgress {
+    x?: {
+        /** Per-tweet media id arrays (handwritten drafts). null = no media / not yet uploaded for that tweet. */
+        perTweetMediaIds?: (string[] | null)[];
+        /** Single draft-level media id (legacy auto-generated drafts). */
+        mediaId?: string;
+    };
+    instagram_post?: {
+        /** Per-image media/container ids in carousel order. null = slot not yet uploaded. */
+        mediaIds?: (string | null)[];
+    };
+    instagram_story?: {
+        mediaId?: string;
+    };
+    instagram_reel?: {
+        mediaId?: string;
+    };
+    linkedin?: {
+        /** Uploaded asset/image URNs in order. null = slot not yet uploaded. */
+        assetUrns?: (string | null)[];
+    };
+    /**
+     * Platforms that have already POSTED in an earlier chunk. Carried across chunks so a resumed
+     * publishDraft does NOT re-post a platform that succeeded while another platform's uploads spilled
+     * into a later chunk (e.g. X posts in chunk 1, LinkedIn video upload finishes in chunk 2). Only
+     * success keys are stored (x / x_pending / instagram_* / linkedin); errors are not, so a failed
+     * platform retries cleanly on resume. The final chunk merges these into the published record.
+     */
+    posted?: PublishResults;
+}
+
+// ==================== MEDIA PRE-WARM ====================
+
+/**
+ * Platforms a media item can be pre-warmed (uploaded ahead of publish) for. Mirrors the per-media
+ * targeting keys (MediaTargets / PublishTargets) so a warm row's platform matches the draft's targeting
+ * exactly. Each maps to a distinct upload encoding: X media_id, Instagram container id (caption-coupled),
+ * LinkedIn asset URN. See data/media-uploads-db.ts and core/media-prewarm.ts.
+ */
+export type MediaWarmPlatform = 'x' | 'instagram_post' | 'instagram_story' | 'instagram_reel' | 'linkedin';
+
+/**
+ * Lifecycle of a media_uploads warm row: 'pending' (queued) → 'processing' (leased by a warm tick) →
+ * 'ready' (handle uploaded, usable by publishDraft) → 'failed' (attempts exhausted) / 'expired'
+ * (handle past its validity window). 'ready' is the only state publish seeds progress from.
+ */
+export type MediaUploadStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'expired';
 
 // Draft record from D1
 export interface Draft {
