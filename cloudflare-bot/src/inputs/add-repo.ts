@@ -62,6 +62,9 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
         // Use canonical GitHub names to avoid case-mismatch with webhook payloads
         const canonicalOwner = canonical.owner;
         const canonicalRepo = canonical.name;
+        // Seed the repo's real default branch (master/trunk/develop/…) so events on it are
+        // detected; 'main' is only a last-resort fallback if GitHub reports no default.
+        const defaultBranch = canonical.default_branch || 'main';
 
         // Read user's repo defaults
         const repoDefaults = await getRepoDefaults(env, chatId);
@@ -74,7 +77,7 @@ export async function addRepoInput(ctx: HandlerContext & { text: string; context
             config: {
                 watchPRs: true,
                 watchPushes: repoDefaults.defaultWatchPushes,
-                branches: ['main'],
+                branches: [defaultBranch],
                 platform: 'x',
                 minCommitsForThread: 3,
                 maxTweets: 10,

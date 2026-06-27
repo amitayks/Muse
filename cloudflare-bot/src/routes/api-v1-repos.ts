@@ -24,19 +24,25 @@ export async function handleReposApi(ctx: ApiContext, path: string): Promise<Res
     // Extract repo ID: /repos/:id
     const match = path.match(/^\/repos\/([^/]+)(\/(.+))?$/);
     if (!match) {
-        // POST /api/v1/repos (add new)
+        // POST /api/v1/repos (add new) — validates accessibility, seeds the repo's actual
+        // default branch, and creates the GitHub webhook (parity with the Telegram add path).
         if (path === '/repos' && method === 'POST') {
-            const body = await request.json() as { owner: string; repo: string };
-            if (!body.owner || !body.repo) return errorResponse('owner and repo are required', 400);
-
-            const { createRepo } = await import('../data/db');
-            const id = await createRepo(env, chatId, { owner: body.owner, repo: body.repo });
-            return jsonResponse({ success: true, id });
+            return addRepo(ctx);
         }
         return errorResponse('Not Found', 404);
     }
 
     const repoId = match[1];
+
+    // POST /api/v1/repos/:id/branches — verify the branch exists then follow it
+    if (match[3] === 'branches' && method === 'POST') {
+        return addBranch(ctx, repoId);
+    }
+
+    // DELETE /api/v1/repos/:id/branches?branch=<name> — unfollow a branch
+    if (match[3] === 'branches' && method === 'DELETE') {
+        return removeBranch(ctx, repoId);
+    }
 
     // POST /api/v1/repos/:id/bootstrap-overview — (re)bootstrap the project overview.
     // Reuses the SAME logic the bot's `config:rebootstrap` callback runs
@@ -95,6 +101,127 @@ export async function handleReposApi(ctx: ApiContext, path: string): Promise<Res
     }
 
     return errorResponse('Not Found', 404);
+}
+
+/**
+ * POST /api/v1/repos — add (follow) a repository.
+ * Validates accessibility, seeds the repo's actual GitHub default branch as the initial
+ * watched branch (not the literal 'main'), and creates the GitHub webhook. Mirrors the
+ * Telegram add-repo flow so webapp-added repos actually receive push/PR events.
+ */
+async function addRepo(ctx: ApiContext): Promise<Response> {
+    const { env, chatId, request } = ctx;
+    const body = await request.json().catch(() => ({})) as { owner?: string; repo?: string };
+    if (!body.owner || !body.repo) return errorResponse('owner and repo are required', 400);
+
+    const { getRepoByOwnerRepo, createRepo, updateRepo, getRepoDefaults } = await import('../data/db');
+
+    // Idempotent: if this repo is already being watched, return the existing id.
+    const existing = await getRepoByOwnerRepo(env, chatId, body.owner, body.repo);
+    if (existing) return jsonResponse({ success: true, id: existing.id });
+
+    // GitHub access uses the USER's token (decrypted from D1 via hydrateEnv), NOT a
+    // worker-level token — per-user keys are how this project authenticates to GitHub.
+    const { hydrateEnv } = await import('../data/user-keys');
+    const userEnv = await hydrateEnv(env, chatId);
+    if (!userEnv.GITHUB_TOKEN) return errorResponse('Connect your GitHub account in Settings first', 400);
+
+    // Validate accessibility and capture canonical names + the default branch.
+    const { validateRepo } = await import('../integrations/github');
+    const canonical = await validateRepo(userEnv, body.owner, body.repo);
+    if (!canonical) return errorResponse('Repository not found or not accessible', 404);
+
+    const { DEFAULT_REPO_CONFIG } = await import('../types');
+    const repoDefaults = await getRepoDefaults(env, chatId);
+
+    const webhookSecret = crypto.randomUUID();
+    const id = await createRepo(env, chatId, {
+        owner: canonical.owner,
+        repo: canonical.name,
+        webhook_secret: webhookSecret,
+        config: {
+            ...DEFAULT_REPO_CONFIG,
+            watchPushes: repoDefaults.defaultWatchPushes,
+            branches: [canonical.default_branch || 'main'],
+        },
+    });
+
+    // Create the GitHub webhook (best-effort — never hard-fail the add if it errors).
+    let webhookCreated = false;
+    const workerUrl = userEnv.WORKER_URL;
+    if (workerUrl) {
+        const { createWebhook } = await import('../integrations/webhook');
+        const webhookId = await createWebhook(userEnv, canonical.owner, canonical.name, workerUrl, webhookSecret);
+        if (webhookId) {
+            await updateRepo(env, id, chatId, { webhook_id: webhookId });
+            webhookCreated = true;
+        }
+    }
+
+    return jsonResponse({ success: true, id, webhookCreated });
+}
+
+/**
+ * POST /api/v1/repos/:id/branches — follow an additional branch.
+ * Verifies the branch exists on GitHub (user's token) before persisting; appends the
+ * canonical branch name idempotently. Returns the full updated config so the client can
+ * refresh its cache and avoid a stale-config race against the toggle PUT.
+ */
+async function addBranch(ctx: ApiContext, repoId: string): Promise<Response> {
+    const { env, chatId, request } = ctx;
+    const body = await request.json().catch(() => ({})) as { branch?: string };
+    const branch = (body.branch || '').trim();
+    if (!branch) return errorResponse('branch is required', 400);
+
+    const { getRepo, updateRepo, parseRepoConfig } = await import('../data/db');
+    const repo = await getRepo(env, repoId, chatId);
+    if (!repo) return errorResponse('Repo not found', 404);
+
+    // GitHub access uses the USER's token (decrypted from D1), not a worker-level token.
+    // hydrateEnv populates GITHUB_TOKEN (user's key) + GITHUB_OWNER (user's username).
+    const { hydrateEnv } = await import('../data/user-keys');
+    const userEnv = await hydrateEnv(env, chatId);
+    if (!userEnv.GITHUB_TOKEN) return errorResponse('Connect your GitHub account in Settings first', 400);
+
+    // Verify the branch exists before following it.
+    const { validateBranch } = await import('../integrations/github');
+    let canonicalBranch: string | null;
+    try {
+        canonicalBranch = await validateBranch(userEnv, repo.owner, repo.repo, branch);
+    } catch {
+        return errorResponse('Could not verify branch — please try again', 500);
+    }
+    if (!canonicalBranch) return errorResponse('Branch not found on this repository', 422);
+
+    const config = parseRepoConfig(repo);
+    if (!config.branches.includes(canonicalBranch)) {
+        config.branches = [...config.branches, canonicalBranch];
+        await updateRepo(env, repoId, chatId, { config });
+    }
+    return jsonResponse({ success: true, config });
+}
+
+/**
+ * DELETE /api/v1/repos/:id/branches?branch=<name> — unfollow a branch.
+ * No-op if the branch isn't followed; removing the last branch is allowed (the repo then
+ * watches nothing on push/PR). Returns the full updated config.
+ */
+async function removeBranch(ctx: ApiContext, repoId: string): Promise<Response> {
+    const { env, chatId, request } = ctx;
+    const url = new URL(request.url);
+    const branch = (url.searchParams.get('branch') || '').trim();
+    if (!branch) return errorResponse('branch is required', 400);
+
+    const { getRepo, updateRepo, parseRepoConfig } = await import('../data/db');
+    const repo = await getRepo(env, repoId, chatId);
+    if (!repo) return errorResponse('Repo not found', 404);
+
+    const config = parseRepoConfig(repo);
+    if (config.branches.includes(branch)) {
+        config.branches = config.branches.filter((b) => b !== branch);
+        await updateRepo(env, repoId, chatId, { config });
+    }
+    return jsonResponse({ success: true, config });
 }
 
 /**
@@ -177,9 +304,10 @@ async function saveOverview(ctx: ApiContext, repoId: string): Promise<Response> 
     return jsonResponse({ success: true, overview });
 }
 
-/** GET /api/v1/repos/search?q= — search accessible GitHub repos scoped to GITHUB_OWNER */
+/** GET /api/v1/repos/search?q= — search the user's accessible GitHub repos (scoped to their
+ *  GitHub username), authenticated with the user's own token decrypted from D1. */
 async function searchRepos(ctx: ApiContext): Promise<Response> {
-    const { env, request } = ctx;
+    const { env, chatId, request } = ctx;
     const url = new URL(request.url);
     const q = (url.searchParams.get('q') || '').trim();
 
@@ -187,8 +315,11 @@ async function searchRepos(ctx: ApiContext): Promise<Response> {
     if (!q) return jsonResponse({ results: [] });
 
     try {
+        // GitHub token + owner come from the user's record via hydrateEnv, not worker config.
+        const { hydrateEnv } = await import('../data/user-keys');
+        const userEnv = await hydrateEnv(env, chatId);
         const { searchOwnerRepos } = await import('../integrations/github');
-        const results = await searchOwnerRepos(env, q);
+        const results = await searchOwnerRepos(userEnv, q);
         return jsonResponse({ results });
     } catch (err) {
         const { GitHubTokenMissingError } = await import('../integrations/github');

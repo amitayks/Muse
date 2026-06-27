@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Caption } from '@telegram-apps/telegram-ui';
+import { Button, Caption, Input } from '@telegram-apps/telegram-ui';
 import { api, ApiError } from '../api/client';
 import { useTranslation } from '../i18n';
 import {
@@ -104,6 +104,11 @@ export function RepoDetailPage() {
   // Overview edit buffer; non-null = editing. Holds all six fields.
   const [overviewDraft, setOverviewDraft] = useState<OverviewDraft | null>(null);
 
+  // Branch add UI: whether the inline input is shown, its value, and the last error.
+  const [addingBranch, setAddingBranch] = useState(false);
+  const [branchInput, setBranchInput] = useState('');
+  const [branchError, setBranchError] = useState<string | null>(null);
+
   const repoQuery = useQuery({
     queryKey: ['repo', id],
     queryFn: () => api.get<RepoDetail>(`/api/v1/repos/${id}`),
@@ -171,6 +176,48 @@ export function RepoDetailPage() {
     },
   });
 
+  // Branch add/remove are server-authoritative: each returns the full updated config, which
+  // we write straight into the cache so the toggle PUT (which sends the whole config) never
+  // races against a stale branch set.
+  const addBranchMutation = useMutation({
+    mutationFn: (branch: string) =>
+      api.post<{ success: boolean; config: RepoConfig }>(`/api/v1/repos/${id}/branches`, { branch }),
+    onSuccess: (data) => {
+      haptics.notification('success');
+      queryClient.setQueryData<RepoDetail>(['repo', id], (old) =>
+        old ? { ...old, config: JSON.stringify(data.config) } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ['repos'] });
+      setAddingBranch(false);
+      setBranchInput('');
+      setBranchError(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 422) {
+        setBranchError(t('repos.branchNotFound'));
+      } else {
+        setBranchError(err instanceof ApiError ? err.message : t('common.error'));
+      }
+    },
+  });
+
+  const removeBranchMutation = useMutation({
+    mutationFn: (branch: string) =>
+      api.delete<{ success: boolean; config: RepoConfig }>(
+        `/api/v1/repos/${id}/branches?branch=${encodeURIComponent(branch)}`,
+      ),
+    onSuccess: (data) => {
+      haptics.notification('success');
+      queryClient.setQueryData<RepoDetail>(['repo', id], (old) =>
+        old ? { ...old, config: JSON.stringify(data.config) } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ['repos'] });
+    },
+    onError: async (err) => {
+      await notifyError(err instanceof ApiError ? err.message : t('common.error'));
+    },
+  });
+
   const watching = !!repo?.is_watching;
 
   // Primary action = the watch on/off toggle (matches the bot's start/stop-watching button).
@@ -198,6 +245,17 @@ export function RepoDetailPage() {
 
   const handleToggleConfig = (key: 'watchPRs' | 'watchPushes', next: boolean) => {
     updateMutation.mutate({ config: { ...config, [key]: next } });
+  };
+
+  const handleAddBranch = () => {
+    const branch = branchInput.trim();
+    if (!branch) return;
+    // Client-side dedupe so an obvious duplicate doesn't spend a GitHub verify call.
+    if (config?.branches.includes(branch)) {
+      setBranchError(t('repos.branchAlreadyFollowed'));
+      return;
+    }
+    addBranchMutation.mutate(branch);
   };
 
   const handleBootstrap = async () => {
@@ -258,15 +316,91 @@ export function RepoDetailPage() {
         >
           {t('repos.watchPushes')}
         </Cell>
-        <Cell
-          after={
-            <Caption className={styles.branchValue}>
-              {config.branches.length ? config.branches.join(', ') : '—'}
-            </Caption>
-          }
-        >
-          {t('repos.branches')}
-        </Cell>
+      </Section>
+
+      <Section header={t('repos.branches')}>
+        <div className={styles.branchBlock}>
+          <div className={styles.branchChips}>
+            {config.branches.map((b) => (
+              <span key={b} className={styles.chip}>
+                <span className={styles.chipLabel}>{b}</span>
+                <button
+                  type="button"
+                  className={styles.chipRemove}
+                  aria-label={`${t('common.delete')} ${b}`}
+                  disabled={removeBranchMutation.isPending}
+                  onClick={() => removeBranchMutation.mutate(b)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {!addingBranch && (
+              <button
+                type="button"
+                className={styles.chipAdd}
+                aria-label={t('repos.addBranch')}
+                onClick={() => {
+                  setAddingBranch(true);
+                  setBranchError(null);
+                }}
+              >
+                +
+              </button>
+            )}
+          </div>
+
+          {addingBranch && (
+            <div className={styles.branchAddRow}>
+              <Input
+                value={branchInput}
+                placeholder={t('repos.addBranchPlaceholder')}
+                onChange={(e) => {
+                  setBranchInput(e.target.value);
+                  setBranchError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddBranch();
+                }}
+                disabled={addBranchMutation.isPending}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <div className={styles.branchAddActions}>
+                <Button
+                  size="s"
+                  loading={addBranchMutation.isPending}
+                  disabled={addBranchMutation.isPending || !branchInput.trim()}
+                  onClick={handleAddBranch}
+                >
+                  {t('repos.addBranch')}
+                </Button>
+                <Button
+                  size="s"
+                  mode="plain"
+                  disabled={addBranchMutation.isPending}
+                  onClick={() => {
+                    setAddingBranch(false);
+                    setBranchInput('');
+                    setBranchError(null);
+                  }}
+                >
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {addBranchMutation.isPending && (
+            <Caption className={styles.branchHint}>{t('repos.verifyingBranch')}</Caption>
+          )}
+          {branchError && <Caption className={styles.branchError}>{branchError}</Caption>}
+          {config.branches.length === 0 && !addingBranch && !addBranchMutation.isPending && (
+            <Caption className={styles.branchHint}>{t('repos.noBranches')}</Caption>
+          )}
+        </div>
       </Section>
 
       <Section

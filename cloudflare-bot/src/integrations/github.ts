@@ -506,7 +506,7 @@ export async function validateRepo(
     env: Env,
     owner: string,
     repo: string
-): Promise<{ owner: string; name: string } | null> {
+): Promise<{ owner: string; name: string; default_branch: string } | null> {
     try {
         const response = await fetch(`${GITHUB_API}/repos/${owner}/${repo}`, {
             headers: {
@@ -517,9 +517,11 @@ export async function validateRepo(
         });
 
         if (response.ok) {
-            const data = await response.json() as { owner: { login: string }; name: string };
+            const data = await response.json() as { owner: { login: string }; name: string; default_branch: string };
             console.log(`Repository ${data.owner.login}/${data.name} is valid and accessible`);
-            return { owner: data.owner.login, name: data.name };
+            // default_branch lets callers seed the initial watched branch with the repo's
+            // real default (master/trunk/develop/…) instead of assuming 'main'.
+            return { owner: data.owner.login, name: data.name, default_branch: data.default_branch };
         }
 
         if (response.status === 404) {
@@ -532,6 +534,56 @@ export async function validateRepo(
     } catch (error) {
         console.error(`Error validating repo ${owner}/${repo}:`, error);
         return null;
+    }
+}
+
+/**
+ * Verify a branch exists on a repository before it is followed.
+ *
+ * Uses the caller-provided env's GITHUB_TOKEN — pass a hydrateEnv()'d env so this
+ * authenticates with the user's GitHub token (this project has no worker-level token).
+ * Returns the canonical branch name (case-preserving, exactly as GitHub reports it) on
+ * success, or `null` when the branch does not exist (HTTP 404). Any other failure throws
+ * a generic error so callers can distinguish "not found" (reject) from "couldn't check"
+ * (server error). SECURITY: the token is never included in thrown/logged messages.
+ *
+ * Git branch names are case-sensitive and the webhook handler matches them exactly, so we
+ * store GitHub's canonical `name` rather than the user's typed casing.
+ */
+export async function validateBranch(
+    env: Env,
+    owner: string,
+    repo: string,
+    branch: string
+): Promise<string | null> {
+    // Branch names can contain '/', e.g. release/1.0. Encode each segment but keep the
+    // slashes so GitHub matches the full ref (encodeURIComponent alone would escape '/').
+    const encodedBranch = branch.split('/').map(encodeURIComponent).join('/');
+    try {
+        const response = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/branches/${encodedBranch}`, {
+            headers: {
+                Authorization: `token ${env.GITHUB_TOKEN}`,
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'content-bot',
+            },
+        });
+
+        if (response.ok) {
+            const data = await response.json() as { name: string };
+            return data.name;
+        }
+
+        if (response.status === 404) {
+            return null;
+        }
+
+        // Non-404 failure — log status only (no token, no body) and surface a generic error.
+        console.error(`[validateBranch] ${owner}/${repo} branch check failed: ${response.status}`);
+        throw new Error('Failed to verify branch');
+    } catch (error) {
+        if (error instanceof Error && error.message === 'Failed to verify branch') throw error;
+        console.error(`Error verifying branch ${owner}/${repo}#${branch}:`, error);
+        throw new Error('Failed to verify branch');
     }
 }
 

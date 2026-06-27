@@ -380,7 +380,10 @@ export interface WatchedRepo {
     updated_at: string;
 }
 
-// Default config for new repos
+// Default config for new repos.
+// NOTE: `branches: ['main']` here is only a last-resort fallback. The add paths
+// (webapp POST /api/v1/repos and the Telegram add-repo flow) override it with the
+// repository's actual GitHub default branch via validateRepo().default_branch.
 export const DEFAULT_REPO_CONFIG: RepoConfig = {
     watchPRs: true,
     watchPushes: false,

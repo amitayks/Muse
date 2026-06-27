@@ -31,9 +31,92 @@
   background: color-mix(in srgb, var(--success) 14%, transparent);
 }
 
-.branchValue {
-  color: var(--hint);
+/* ---- Branch management ---- */
+.branchBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+  padding: var(--sp-md);
+}
+
+.branchChips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding: 4px 6px 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-size: var(--text-sm);
   font-family: var(--font);
+  max-width: 100%;
+}
+
+.chipLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--hint);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chipRemove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chipAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--separator);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--link);
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.branchAddRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+}
+
+.branchAddActions {
+  display: flex;
+  gap: var(--sp-sm);
+}
+
+.branchHint {
+  color: var(--hint);
+}
+
+.branchError {
+  color: var(--destructive);
 }
 
 .overviewBlock {
