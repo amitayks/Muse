@@ -61,6 +61,7 @@ export async function tweetGenerateAction(ctx: HandlerContext & { extra?: string
         original_tweet_id: tweet.id,
         original_tweet_url: tweet.tweet_url || undefined,
         publish_targets: tgUser?.default_publish_targets || undefined,
+        language: lang,
     });
 
     // Update tweet status

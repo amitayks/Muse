@@ -6,6 +6,19 @@
 
 import { getInitData } from '../lib/telegram';
 import type { CalendarResponse } from '../types/calendar';
+import type { TweetMedia, MediaTargets } from '../types/draft';
+
+/**
+ * Shared response shape for the dedicated draft-media endpoints (attach / remove / retarget).
+ * The server returns the tweet's FULL, authoritative media array plus the resolved tweet identity
+ * — the editor sets its local media from this, so a lost response self-heals on the next op.
+ */
+export interface TweetMediaResponse {
+  success: boolean;
+  tweetId: string;
+  tweetIndex: number;
+  media: TweetMedia[];
+}
 
 /** Thrown when the server returns 401 (session expired) */
 export class SessionExpiredError extends Error {
@@ -122,6 +135,35 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
+
+  // ---- Dedicated draft-media operations (server is authoritative; keyed by tweet id) ----
+  // `tweetRef` is the stable tweet `id` (preferred) or a legacy numeric array-index string —
+  // the server resolves either. `key` is the R2 key (may contain `/`); it is URL-encoded here.
+
+  /** Attach an already-uploaded media item to a tweet. Returns the tweet's full updated media. */
+  attachMedia: (
+    draftId: string,
+    tweetRef: string,
+    body: { key: string; type: 'photo' | 'video'; width?: number; height?: number; targets?: MediaTargets },
+  ) =>
+    request<TweetMediaResponse>(
+      `/api/v1/drafts/${draftId}/tweets/${encodeURIComponent(tweetRef)}/media`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /** Remove (unlink) one media item from a tweet by its R2 key. R2 object is retained server-side. */
+  removeMedia: (draftId: string, tweetRef: string, key: string) =>
+    request<TweetMediaResponse>(
+      `/api/v1/drafts/${draftId}/tweets/${encodeURIComponent(tweetRef)}/media/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    ),
+
+  /** Set one media item's per-item platform targeting. Returns the tweet's full updated media. */
+  retargetMedia: (draftId: string, tweetRef: string, key: string, targets: MediaTargets) =>
+    request<TweetMediaResponse>(
+      `/api/v1/drafts/${draftId}/tweets/${encodeURIComponent(tweetRef)}/media/${encodeURIComponent(key)}/targets`,
+      { method: 'PUT', body: JSON.stringify({ targets }) },
+    ),
 
   /**
    * Content-calendar feed for the schedule picker: scheduled + published posts within a

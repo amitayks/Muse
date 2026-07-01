@@ -116,6 +116,7 @@ export async function scheduleInput(ctx: HandlerContext & { text: string; contex
             commit_sha: sha,
             content: JSON.stringify(content),
             publish_targets: user?.default_publish_targets || undefined,
+            language: lang,
         });
 
         await updateChatState(env, chatId, { context: null });

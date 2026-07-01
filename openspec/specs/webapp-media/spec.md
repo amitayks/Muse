@@ -3,15 +3,15 @@
 Covers webapp image media handling: uploading images to R2 via the Worker API (file picker or drag-and-drop) with progress and error states, previewing existing and new images as thumbnails, removing images from a draft without deleting the R2 object, the webapp R2 key format, media-serving CORS, and file type and size validation.
 ## Requirements
 ### Requirement: Image upload from webapp
-The system SHALL allow uploading images from the webapp to R2 storage via the Worker API.
+The system SHALL allow uploading images from the webapp to R2 storage via the Worker API, then attaching the stored object to a specific tweet through the dedicated attach operation. Uploading bytes and attaching are two steps: `POST /api/v1/media/upload` stores the bytes and returns the R2 key + serving URL (no draft association), and the dedicated attach endpoint binds that key to a tweet `id`. Attaching SHALL NOT occur by bundling the media into a full-content save.
 
 #### Scenario: Upload via file picker
 - **WHEN** the user selects an image file via the file picker in the draft editor or compose page
-- **THEN** the webapp SHALL upload the file as multipart form data to `POST /api/v1/media/upload` and receive the R2 key and serving URL
+- **THEN** the webapp SHALL upload the file as multipart form data to `POST /api/v1/media/upload`, receive the R2 key and serving URL, and (for an existing draft) attach the key to the target tweet via the dedicated attach endpoint
 
 #### Scenario: Upload via drag-and-drop
 - **WHEN** the user drags an image file onto a drop zone in the draft editor or compose page
-- **THEN** the webapp SHALL upload the file identically to the file picker flow
+- **THEN** the webapp SHALL upload the file identically to the file picker flow and attach it via the dedicated attach endpoint
 
 #### Scenario: Upload progress indicator
 - **WHEN** an image upload is in progress
@@ -20,6 +20,10 @@ The system SHALL allow uploading images from the webapp to R2 storage via the Wo
 #### Scenario: Upload error handling
 - **WHEN** an image upload fails (network error, file too large, invalid type)
 - **THEN** an error message SHALL be displayed inline (e.g., "Upload failed — file too large") and the user SHALL be able to retry
+
+#### Scenario: Attach failure does not corrupt media
+- **WHEN** the upload succeeds but the attach call fails
+- **THEN** the draft's existing media SHALL be unchanged and the user SHALL be able to retry the attach; no media SHALL be lost
 
 ### Requirement: Image preview in editor
 The system SHALL display image previews for all media attached to drafts. In the Composer/Draft-viewer existing-draft state, images SHALL render **full content width** (not 80×80 thumbnails) so the user sees them as they will appear.
@@ -37,11 +41,15 @@ The system SHALL display image previews for all media attached to drafts. In the
 - **THEN** they SHALL preserve aspect ratio (no distortion), with multiple images laid out in a tidy grid (up to 4)
 
 ### Requirement: Image removal from draft
-The system SHALL allow removing images from a draft without deleting the R2 object.
+The system SHALL allow removing images from a draft through the dedicated remove operation, without deleting the R2 object.
 
 #### Scenario: Remove image
-- **WHEN** the user taps the "X" button on an image thumbnail
-- **THEN** the image SHALL be unlinked from the tweet's media array (the R2 object remains for potential re-use), and the change SHALL be saved
+- **WHEN** the user taps the "X" button on an image
+- **THEN** the image SHALL be unlinked from the tweet via the dedicated remove endpoint (the R2 object remains for potential re-use), and the editor SHALL reflect the authoritative result
+
+#### Scenario: Removal is not expressed by a content save
+- **WHEN** the user removes an image
+- **THEN** the removal SHALL be sent as an explicit remove operation, never by omitting the media from a full-content save
 
 ### Requirement: R2 key format for webapp uploads
 The system SHALL store webapp-uploaded images with a consistent key format.

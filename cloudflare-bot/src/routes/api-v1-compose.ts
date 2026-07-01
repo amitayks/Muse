@@ -44,14 +44,17 @@ async function handleCompose(ctx: ApiContext): Promise<Response> {
         tweets,
     };
 
+    // Resolve the effective language up-front (independent of AI refine) so it is persisted onto the
+    // draft even when AI is off — a later refine reads draft.language instead of defaulting to English.
+    const { getUserLanguage } = await import('../data/user-settings-db');
+    const userLang = await getUserLanguage(ctx.env, ctx.chatId);
+    const effectiveLang = body.options?.langOverride ?? userLang;
+
     // AI refinement if requested
     if (body.options?.aiRefine) {
         try {
             const { hydrateEnv } = await import('../data/user-keys');
             const userEnv = await hydrateEnv(ctx.env, ctx.chatId);
-            const { getUserLanguage } = await import('../data/user-settings-db');
-            const userLang = await getUserLanguage(ctx.env, ctx.chatId);
-            const effectiveLang = body.options?.langOverride ?? userLang;
             const { refineHandwrittenContent } = await import('../ai/gemini');
             const refined = await refineHandwrittenContent(
                 userEnv, content,
@@ -72,6 +75,7 @@ async function handleCompose(ctx: ApiContext): Promise<Response> {
         commit_sha: '',
         source: 'handwrite',
         content: JSON.stringify(content),
+        language: effectiveLang,
     });
 
     // Drive the existing bot-message sync so the bot reflects the new draft.
@@ -157,6 +161,7 @@ async function handleGenerate(ctx: ApiContext): Promise<Response> {
         commit_sha: sha,
         source: 'commit',
         content: JSON.stringify(contentResult.content),
+        language: effectiveLang,
     });
 
     // Drive the existing bot-message sync so the bot reflects the new draft.
@@ -196,6 +201,11 @@ async function handleRepost(ctx: ApiContext): Promise<Response> {
         tweets,
     };
 
+    // Persist the effective content language so a later AI refine of this repost draft respects it.
+    const { getUserLanguage } = await import('../data/user-settings-db');
+    const userLang = await getUserLanguage(ctx.env, ctx.chatId);
+    const effectiveLang = body.options?.langOverride ?? userLang;
+
     const title = `Repost: ${body.url.substring(0, 60)}`;
     const draftId = await createDraft(ctx.env, ctx.chatId, {
         pr_number: 0,
@@ -205,6 +215,7 @@ async function handleRepost(ctx: ApiContext): Promise<Response> {
         content: JSON.stringify(content),
         original_tweet_id: originalTweetId,
         original_tweet_url: body.url,
+        language: effectiveLang,
     });
 
     // Drive the existing bot-message sync so the bot reflects the new draft.

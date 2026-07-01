@@ -511,6 +511,8 @@ async function finalizeDraft(
         original_tweet_id: compose.sourceTweet?.tweetId,
         original_tweet_url: compose.sourceTweet?.tweetUrl,
         event_id: commitOverrides?.eventId,
+        // Persist the session's effective language so a later AI refine respects it.
+        language: compose.langOverride ?? lang,
     });
 
     // Collect per-tweet media URLs

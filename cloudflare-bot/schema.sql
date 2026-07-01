@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS drafts (
   publish_targets TEXT DEFAULT '{"x":true}',
   publish_results TEXT DEFAULT '{}',
   has_video INTEGER DEFAULT 0,
+  language TEXT, -- content language ('en' | 'he') chosen at creation; NULL for legacy drafts
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 import { api, ApiError } from '../api/client';
-import type { Draft, DraftContent, Tweet, TweetMedia } from '../types/draft';
+import type { Draft, DraftContent, Tweet } from '../types/draft';
 import type { UploadedMedia } from '../hooks/useMediaUpload';
 import { useGenerateImage } from '../hooks/useGenerateImage';
 import { getTextDirection } from '../lib/textDirection';
@@ -24,7 +24,7 @@ import { useBackButton, useMainButton, useSecondaryButton } from '../shell';
 import {
   confirmDestructive, confirm, popup, notifyError, haptics,
 } from '../shell';
-import { PageLoading, CharCounter, PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, MediaGrid, ImageDropZone, Spinner, type ProgressState } from '../components/shared';
+import { PageLoading, CharCounter, PlatformTogglePill, XLogo, InstagramLogo, LinkedInLogo, MediaGrid, ImageDropZone, Spinner, Toggle, type ProgressState } from '../components/shared';
 import { ScheduleCalendar } from '../components/ScheduleCalendar';
 import { resolveLifecycle } from './composerLifecycle';
 import styles from './ComposerPage.module.css';
@@ -189,6 +189,9 @@ export function ComposerPage() {
     if (hydratedFor.current === draft.id) return;
     const content = draft.content as DraftContent | undefined;
     const next = content?.tweets?.length ? content.tweets : [{ text: '', index: 0 }];
+    // Seed the editable buffer from the GET response, carrying each tweet's stable `id` (`...tw`).
+    // The server backfills ids on read-for-edit, so the editor always has ids to address the
+    // dedicated media endpoints (attach/remove/retarget/image) by tweet identity.
     setTweets(next.map((tw, i) => ({ ...tw, index: i })));
     hydratedFor.current = draft.id;
   }, [draft]);
@@ -343,6 +346,15 @@ export function ComposerPage() {
   const saveContentMutation = useMutation({
     mutationFn: (content: DraftContent) =>
       api.put<DraftDetail>(`/api/v1/drafts/${draftId}`, { content }),
+    // Adopt the server-assigned stable ids for locally-created tweets. The PUT response carries the
+    // reconciled tweets (each with an `id`) 1:1-by-position with the savable buffer tweets we sent;
+    // we fill in any MISSING id BY POSITION without touching text, caret, or media. Without this a
+    // new tweet never learns its id and later media ops fall back to numeric-index addressing (which
+    // can misroute / 404). See adoptTweetIdsByPosition for the position-mapping + bail guard.
+    onSuccess: (data) => {
+      const serverTweets = (data?.content as DraftContent | undefined)?.tweets;
+      if (serverTweets?.length) setTweets((prev) => adoptTweetIdsByPosition(prev, serverTweets));
+    },
     onError: (err) => setErrorMsg(messageOf(err)),
     // Intentionally NO refetch: the local tweet buffer is the source of truth while editing, and
     // the backend persists + syncs the bot message on its own. Refetching here would re-hydrate
@@ -351,37 +363,43 @@ export function ComposerPage() {
   });
 
   /** Debounced content persistence while editing an existing, editable draft. */
-  // Synchronous "a per-tweet image generation is in flight" guard. A ref (not state) so it can't
-  // lag a render: it serializes generation (see generateImageForTweet) AND tells the debounced
-  // save to stand down while the server is appending media out-of-band.
-  const generatingRef = useRef(false);
   // Always persist the LATEST tweet buffer at fire time, never a snapshot captured when the timer
-  // was armed. This is what stops a save armed before an image finished generating from writing
-  // stale content that drops the freshly-appended media.
+  // was armed (the user may keep typing while the debounce is pending).
   const tweetsRef = useRef(tweets);
   useEffect(() => { tweetsRef.current = tweets; }, [tweets]);
   // Keep the latest mutation reachable from the one stable saver instance below.
   const saveContentMutationRef = useRef(saveContentMutation);
   useEffect(() => { saveContentMutationRef.current = saveContentMutation; });
 
-  /** Build DraftContent from the latest tweet buffer (drops empty trailing tweets). */
+  /**
+   * Build the TEXT-ONLY content payload from the latest tweet buffer. Tweets carry `{ id, text }`
+   * only — NO media. The server reconciles by `id` and preserves each surviving tweet's stored media
+   * untouched, so this save can never add, drop, or reorder media. New tweets omit `id` → the server
+   * assigns one. (Media lives in the buffer for rendering and for the keep filter, but is intentionally
+   * not serialized into the payload.)
+   *
+   * CRITICAL (F1): a tweet that has an `id` is NEVER dropped, even when its LOCAL buffer is empty
+   * (no text, no media) — the SERVER may hold media on it (e.g. a lost generate/attach response), and
+   * omitting its id from the payload would make the server's reconcile DELETE the tweet and its media.
+   * Only an id-LESS, empty, media-less non-first tweet is droppable (it has no server identity, so it
+   * cannot hold server media). See keepTweetForSave.
+   */
   const buildLatestContent = useCallback((): DraftContent => {
     const finalTweets: Tweet[] = tweetsRef.current
-      .filter((tw, i) => i === 0 || tw.text.trim().length > 0 || (tw.media && tw.media.length > 0))
-      .map((tw, i) => ({ text: tw.text, index: i, media: tw.media }));
+      .filter((tw, i) => keepTweetForSave(tw, i))
+      .map((tw, i) => ({ id: tw.id, text: tw.text, index: i }));
     return {
       format: finalTweets.length === 1 ? 'single' : 'thread',
       tweets: finalTweets.length ? finalTweets : [{ text: '', index: 0 }],
     };
   }, []);
 
-  // One stable deferred-save instance. It reads refs lazily, so every fire sees the latest buffer,
-  // the latest mutation, and the live generation flag — deferring the PUT while an image generates
-  // and then persisting the up-to-date content (including the generated media).
+  // One stable deferred-save instance. It reads refs lazily, so every fire sees the latest buffer
+  // and the latest mutation. Media is no longer in the payload, so no in-flight guard is needed —
+  // a stale/lost text save is structurally incapable of clobbering server-held media.
   const deferredSaveRef = useRef<DeferredSave | null>(null);
   if (!deferredSaveRef.current) {
     deferredSaveRef.current = createDeferredSave<DraftContent>({
-      isBlocked: () => generatingRef.current,
       getValue: () => buildLatestContent(),
       save: (content) => saveContentMutationRef.current.mutate(content),
     });
@@ -445,10 +463,19 @@ export function ComposerPage() {
 
   // ---- Refine ----
   const refineMutation = useMutation({
-    mutationFn: (refineInstruction: string) =>
-      api.post(`/api/v1/drafts/${draftId}/refine`, { instruction: refineInstruction }),
+    mutationFn: (vars: { instruction: string; newImage: boolean }) =>
+      api.post<{ success: boolean; content: DraftContent; imageError?: string }>(
+        `/api/v1/drafts/${draftId}/refine`, vars,
+      ),
     // Refine replaces the content server-side, so force a one-time re-seed of the editable buffer.
-    onSuccess: () => { hydratedFor.current = null; haptics.notification('success'); void refresh(); },
+    onSuccess: (res) => {
+      hydratedFor.current = null;
+      haptics.notification('success');
+      setRefining(false);
+      // The text refine still succeeded even if the requested new image failed — surface a soft error.
+      if (res?.imageError) void notifyError(t('editor.refineImageError'));
+      void refresh();
+    },
     onError: (err) => { setErrorMsg(messageOf(err)); void notifyError(messageOf(err)); },
   });
 
@@ -544,48 +571,231 @@ export function ComposerPage() {
     haptics.selectionChanged();
   }, [persistContentDebounced]);
 
-  const addMedia = useCallback((index: number, m: UploadedMedia) => {
-    setTweets((prev) => {
-      const next = prev.map((tw, i) => {
-        if (i !== index) return tw;
-        const media: TweetMedia[] = [...(tw.media ?? []), { key: m.key, type: m.type }];
-        return { ...tw, media };
-      });
-      persistContentDebounced();
-      return next;
-    });
-  }, [persistContentDebounced]);
+  // ---- Server-authoritative tweet-id resolution for media ops ----
+  // A media endpoint MUST be addressed by a tweet's stable server `id`. A locally-created tweet
+  // (addThreadTweet) has none until a content save mints one; addressing it by numeric array index
+  // resolves out-of-range server-side → 404 → the media op (and its media) is lost (F7/F8). So before
+  // any media op on an id-less tweet we FLUSH a content save (await the PUT), adopt the server id for
+  // that tweet, and address the endpoint with the real id.
 
-  const removeMedia = useCallback((tweetIndex: number, mediaIndex: number) => {
-    setTweets((prev) => {
-      const next = prev.map((tw, i) => {
+  /**
+   * Flush a content save NOW (cancelling any pending debounce) and return the stable id the server
+   * assigned to the tweet at `index`. The payload keeps the savable tweets (mirroring buildLatestContent)
+   * but ALWAYS includes the target `index` — so even a brand-new, still-empty tweet (e.g. an image
+   * dropped onto a freshly-added thread tweet before any text) is persisted and gets a real id, instead
+   * of being filtered out (which would leave us unable to mint its id). The PUT response's tweets are
+   * 1:1-by-position with what we sent, so we read back the id at the target's position. Returns null on
+   * failure. (Dropped tweets are only id-less/unpersisted — the server never deletes a stored tweet.)
+   */
+  const flushContentSaveForTweet = useCallback(async (id: string, index: number): Promise<string | null> => {
+    deferredSaveRef.current?.cancel();
+    const sent = tweetsRef.current;
+    const keptIdx: number[] = [];
+    sent.forEach((tw, i) => { if (keepTweetForSave(tw, i) || i === index) keptIdx.push(i); });
+    const payloadTweets: Tweet[] = (keptIdx.length ? keptIdx : [0]).map((bi, pos) => ({
+      id: sent[bi]?.id, text: sent[bi]?.text ?? '', index: pos,
+    }));
+    const payload: DraftContent = {
+      format: payloadTweets.length === 1 ? 'single' : 'thread',
+      tweets: payloadTweets,
+    };
+    try {
+      const res = await api.put<DraftDetail>(`/api/v1/drafts/${id}`, { content: payload });
+      const serverTweets = (res?.content as DraftContent | undefined)?.tweets ?? [];
+      setTweets((prev) => adoptTweetIdsByPosition(prev, serverTweets));
+      const k = keptIdx.indexOf(index);
+      return (k >= 0 ? serverTweets[k]?.id : undefined) ?? null;
+    } catch (err) {
+      setErrorMsg(messageOf(err));
+      return null;
+    }
+  }, []);
+
+  /**
+   * Adopt (loss-free) the stable id the SERVER already holds for the tweet at `index`, via a GET — used
+   * when the local buffer isn't hydrated yet (a just-created draft). A GET never mutates server media,
+   * so this is always safe. Maps the tweet to a server tweet BY POSITION among the savable tweets and
+   * returns its id, or null if it can't be mapped (shape diverged / extra local tweet).
+   */
+  const adoptIdFromServer = useCallback(async (id: string, index: number): Promise<string | null> => {
+    try {
+      const fresh = await api.get<DraftDetail>(`/api/v1/drafts/${id}`);
+      const serverTweets = (fresh?.content as DraftContent | undefined)?.tweets ?? [];
+      setTweets((prev) => adoptTweetIdsByPosition(prev, serverTweets));
+      const cur = tweetsRef.current;
+      const savable: number[] = [];
+      cur.forEach((tw, i) => { if (keepTweetForSave(tw, i)) savable.push(i); });
+      if (savable.length !== serverTweets.length) return null;
+      const k = savable.indexOf(index);
+      return (k >= 0 ? serverTweets[k]?.id : undefined) ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
+   * The stable id for the tweet at `index`: return it if the buffer already has it. Otherwise mint /
+   * adopt it WITHOUT ever dropping server-held media:
+   *  - Buffer hydrated for this draft → every pre-existing tweet carries its server id, so a content
+   *    save reconciles by id (media-safe). FLUSH it to persist the new tweet and mint its id (F7/F8).
+   *  - Buffer NOT yet hydrated (just-created draft) → flushing id-less content could mis-reconcile and
+   *    drop composed media, so DON'T flush: adopt the id the server already assigned (loss-free GET),
+   *    falling back to the numeric index string (the server resolves an in-range index, and a 404 then
+   *    triggers the caller's re-hydrate-and-retry self-heal).
+   */
+  const resolveTweetId = useCallback(async (id: string, index: number): Promise<string | null> => {
+    const existing = tweetsRef.current[index]?.id;
+    if (existing) return existing;
+    if (hydratedFor.current === id) return flushContentSaveForTweet(id, index);
+    return (await adoptIdFromServer(id, index)) ?? String(index);
+  }, [flushContentSaveForTweet, adoptIdFromServer]);
+
+  /**
+   * Self-heal after a media op 404s (the tweet id is unknown server-side — a losing concurrent
+   * backfill, or an unpersisted tweet): re-read the draft, adopt the authoritative tweet ids into the
+   * buffer, and return the authoritative server tweet for `index` (matched by id, else by position).
+   * The caller surfaces a soft error and may retry once with the freshly-adopted id.
+   */
+  const rehydrateTweetFromServer = useCallback(async (id: string, index: number): Promise<Tweet | null> => {
+    try {
+      const fresh = await api.get<DraftDetail>(`/api/v1/drafts/${id}`);
+      const serverTweets = (fresh?.content as DraftContent | undefined)?.tweets ?? [];
+      const local = tweetsRef.current[index];
+      const match = (local?.id ? serverTweets.find((st) => st.id === local.id) : undefined)
+        ?? serverTweets[index];
+      setTweets((prev) => adoptTweetIdsByPosition(prev, serverTweets));
+      return match ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Media mutations go through the dedicated, atomic, server-authoritative endpoints (NOT the text
+  // auto-save). We update local state optimistically for responsiveness, then reconcile from the
+  // endpoint's authoritative media array; on error we revert. Pre-save (no draft id) there is no
+  // endpoint yet, so media is held locally and submitted with the compose/repost POST.
+  const addMedia = useCallback(async (index: number, m: UploadedMedia) => {
+    if (!draftId) {
+      // Pre-save compose: keep locally; handleSave/handleGenerate carry it in the compose payload.
+      setTweets((prev) => prev.map((tw, i) =>
+        i === index ? { ...tw, media: [...(tw.media ?? []), { key: m.key, type: m.type }] } : tw));
+      return;
+    }
+    // Optimistic append.
+    setTweets((prev) => prev.map((tw, i) =>
+      i === index ? { ...tw, media: [...(tw.media ?? []), { key: m.key, type: m.type }] } : tw));
+    const revert = () => setTweets((prev) => prev.map((tw, i) =>
+      i === index ? { ...tw, media: (tw.media ?? []).filter((mm) => mm.key !== m.key) } : tw));
+    // Ensure the tweet exists server-side (mint+adopt its id) BEFORE addressing the endpoint (F7/F8).
+    const ref = await resolveTweetId(draftId, index);
+    if (!ref) { revert(); return; }
+    const attach = async (tweetRef: string) => {
+      const res = await api.attachMedia(draftId, tweetRef, { key: m.key, type: m.type });
+      setTweets((prev) => prev.map((tw, i) =>
+        i === index ? { ...tw, id: tw.id ?? res.tweetId, media: res.media } : tw));
+    };
+    try {
+      await attach(ref);
+    } catch (err) {
+      // Stale/unknown id (losing concurrent backfill or unpersisted tweet) → re-hydrate authoritative
+      // ids and retry once with the freshly-adopted id (F6).
+      if (err instanceof ApiError && err.status === 404) {
+        const healed = await rehydrateTweetFromServer(draftId, index);
+        if (healed?.id && healed.id !== ref) {
+          try { await attach(healed.id); return; } catch (e2) { setErrorMsg(messageOf(e2)); }
+        } else { setErrorMsg(messageOf(err)); }
+      } else {
+        setErrorMsg(messageOf(err));
+      }
+      revert();
+    }
+  }, [draftId, resolveTweetId, rehydrateTweetFromServer]);
+
+  const removeMedia = useCallback(async (tweetIndex: number, mediaIndex: number) => {
+    const item = tweets[tweetIndex]?.media?.[mediaIndex];
+    if (!item) return;
+    if (!draftId) {
+      setTweets((prev) => prev.map((tw, i) => {
         if (i !== tweetIndex) return tw;
         const media = (tw.media ?? []).filter((_, mi) => mi !== mediaIndex);
         return { ...tw, media: media.length ? media : undefined };
-      });
-      persistContentDebounced();
-      return next;
-    });
-  }, [persistContentDebounced]);
+      }));
+      return;
+    }
+    // Optimistic unlink.
+    setTweets((prev) => prev.map((tw, i) =>
+      i === tweetIndex ? { ...tw, media: (tw.media ?? []).filter((mm) => mm.key !== item.key) } : tw));
+    const revert = () => setTweets((prev) => prev.map((tw, i) => {
+      if (i !== tweetIndex) return tw;
+      const media = [...(tw.media ?? [])];
+      media.splice(mediaIndex, 0, item);
+      return { ...tw, media };
+    }));
+    const ref = await resolveTweetId(draftId, tweetIndex);
+    if (!ref) { revert(); return; }
+    try {
+      const res = await api.removeMedia(draftId, ref, item.key);
+      setTweets((prev) => prev.map((tw, i) =>
+        i === tweetIndex ? { ...tw, id: tw.id ?? res.tweetId, media: res.media.length ? res.media : undefined } : tw));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        // Unknown id server-side → adopt authoritative ids + media for this tweet, surface soft error (F6).
+        const healed = await rehydrateTweetFromServer(draftId, tweetIndex);
+        if (healed) {
+          setTweets((prev) => prev.map((tw, i) =>
+            i === tweetIndex ? { ...tw, id: tw.id ?? healed.id, media: healed.media?.length ? healed.media : undefined } : tw));
+        } else {
+          revert();
+        }
+        setErrorMsg(messageOf(err));
+      } else {
+        setErrorMsg(messageOf(err));
+        revert();
+      }
+    }
+  }, [draftId, tweets, resolveTweetId, rehydrateTweetFromServer]);
 
-  /** Toggle one platform on one media item's per-item targeting, then persist. */
-  const toggleMediaTarget = useCallback((tweetIndex: number, mediaIndex: number, platform: MediaPlatform, next: boolean) => {
-    setTweets((prev) => {
-      const updated = prev.map((tw, i) => {
-        if (i !== tweetIndex) return tw;
-        const media = (tw.media ?? []).map((m, mi) =>
-          mi === mediaIndex ? { ...m, targets: withTarget(m.targets, platform, next) } : m,
-        );
-        return { ...tw, media };
-      });
-      persistContentDebounced();
-      return updated;
-    });
+  /** Toggle one platform on one media item's per-item targeting via the retarget endpoint. */
+  const toggleMediaTarget = useCallback(async (tweetIndex: number, mediaIndex: number, platform: MediaPlatform, next: boolean) => {
+    const item = tweets[tweetIndex]?.media?.[mediaIndex];
+    if (!item) return;
+    const prevTargets = item.targets;
+    const newTargets = withTarget(prevTargets, platform, next);
+    // Optimistic flip.
+    setTweets((prev) => prev.map((tw, i) =>
+      i === tweetIndex
+        ? { ...tw, media: (tw.media ?? []).map((m, mi) => (mi === mediaIndex ? { ...m, targets: newTargets } : m)) }
+        : tw));
+    const revert = () => setTweets((prev) => prev.map((tw, i) =>
+      i === tweetIndex
+        ? { ...tw, media: (tw.media ?? []).map((m, mi) => (mi === mediaIndex ? { ...m, targets: prevTargets } : m)) }
+        : tw));
     // Highlighting a platform also makes it a draft destination, so the highlighted media publishes.
-    // (Only for a saved draft — the draft-level targets endpoint needs an id; pre-save, the media's
-    // own targeting still persists with the draft content on save.)
+    // This stays a SEPARATE, draft-level call (the retarget endpoint only owns per-item targeting).
+    // (Only for a saved draft — pre-save the media's own targeting persists with the compose POST.)
     if (draftId && next && !targets[platform]) targetsMutation.mutate({ ...targets, [platform]: true });
-  }, [draftId, persistContentDebounced, targets, targetsMutation]);
+    if (!draftId) return; // pre-save: local-only targeting
+    const ref = await resolveTweetId(draftId, tweetIndex);
+    if (!ref) { revert(); return; }
+    const retarget = async (tweetRef: string) => {
+      const res = await api.retargetMedia(draftId, tweetRef, item.key, newTargets);
+      setTweets((prev) => prev.map((tw, i) =>
+        i === tweetIndex ? { ...tw, id: tw.id ?? res.tweetId, media: res.media } : tw));
+    };
+    try {
+      await retarget(ref);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        const healed = await rehydrateTweetFromServer(draftId, tweetIndex);
+        if (healed?.id && healed.id !== ref) {
+          try { await retarget(healed.id); return; } catch (e2) { setErrorMsg(messageOf(e2)); }
+        } else { setErrorMsg(messageOf(err)); }
+      } else {
+        setErrorMsg(messageOf(err));
+      }
+      revert();
+    }
+  }, [draftId, tweets, targets, targetsMutation, resolveTweetId, rehydrateTweetFromServer]);
 
   // ---- Per-slot AI image generation ----
   const { generate: generateImageForSlot } = useGenerateImage();
@@ -616,36 +826,84 @@ export function ComposerPage() {
     }
   }, [draftId, commitSource, repostSource, buildContent, aiOn, instruction, effectiveLangOverride, navigate, t]);
 
+  /**
+   * Recover from a possibly-lost image-generation response: re-read the draft and, if the server's
+   * media for this tweet has more items than the local buffer (the append landed but the response
+   * was lost), merge the authoritative media in. Returns true iff media was recovered.
+   */
+  const healTweetMediaFromServer = useCallback(async (id: string, index: number): Promise<boolean> => {
+    try {
+      const fresh = await api.get<DraftDetail>(`/api/v1/drafts/${id}`);
+      const content = fresh.content as DraftContent | undefined;
+      const serverTweets = content?.tweets ?? [];
+      const localTweet = tweetsRef.current[index];
+      const match = (localTweet?.id ? serverTweets.find((st) => st.id === localTweet.id) : undefined)
+        ?? serverTweets[index];
+      const serverMedia = match?.media ?? [];
+      const localMedia = localTweet?.media ?? [];
+      if (serverMedia.length > localMedia.length) {
+        setTweets((prev) => prev.map((tw, i) =>
+          i === index ? { ...tw, id: tw.id ?? match?.id, media: serverMedia } : tw));
+        return true;
+      }
+    } catch {
+      // Re-read failed — fall through to reporting the original generation error.
+    }
+    return false;
+  }, []);
+
   const generateImageForTweet = useCallback(async (index: number) => {
-    // Serialize generation: only one image may generate at a time. The ref guard is synchronous
-    // (state lags a render, and the user can click a second tweet's button before re-render), so
-    // overlapping requests — which previously raced the draft and dropped media — can't start.
-    if (generatingRef.current) return;
-    generatingRef.current = true;
+    // UI-level serialization: the Generate buttons are disabled while `generatingIndex` is set
+    // (anyGenerating), so a second generation can't be triggered from the same render. Overlapping
+    // generations are now structurally safe anyway — each is an atomic server-side append keyed by
+    // tweet id, and the text auto-save no longer carries media, so nothing can clobber the append.
+    if (generatingIndex !== null) return;
     setImageGenError(null);
+    setGeneratingIndex(index);
     try {
       const id = await ensureDraftForImage();
       if (!id) return;
-      setGeneratingIndex(index);
+      // Ensure the tweet exists server-side (mint+adopt its id) BEFORE addressing the image endpoint
+      // by ref — a locally-created, not-yet-persisted tweet has no id and would resolve out-of-range
+      // server-side → 404 → the generated image is lost (F7/F8).
+      const ref = await resolveTweetId(id, index);
+      if (!ref) {
+        setImageGenError({ index, message: t('composer.generateImageFailed') });
+        return;
+      }
       haptics.impact('medium');
-      const media = await generateImageForSlot(id, index);
-      if (media) {
+      const result = await generateImageForSlot(id, ref);
+      if (result) {
+        const { media } = result;
         haptics.notification('success');
         // The server already appended the media to the draft (atomically) and synced the bot.
-        // Update local state ONLY (no re-persist) — re-persisting would PUT the draft again and
-        // trigger a second bot-sync photo.
-        setTweets((prev) => prev.map((tw, i) =>
-          i === index ? { ...tw, media: [...(tw.media ?? []), { key: media.key, type: media.type }] } : tw,
-        ));
+        // Merge into local state ONLY (no content re-persist) — the response carries the single
+        // newly-appended item. Adopt the server's RESOLVED stable `tweetId` (NOT the request `ref`,
+        // which may be a numeric-index string) so a subsequent text save addresses this tweet by its
+        // real id and the server carries its (just-generated) media — otherwise an id-less / wrong-id
+        // save could reconcile-replace the tweet and drop the image. Guard against a double-merge.
+        setTweets((prev) => prev.map((tw, i) => {
+          if (i !== index) return tw;
+          const existing = tw.media ?? [];
+          if (existing.some((mm) => mm.key === media.key)) return { ...tw, id: tw.id ?? result.tweetId };
+          return { ...tw, id: tw.id ?? result.tweetId, media: [...existing, { key: media.key, type: media.type }] };
+        }));
       } else {
-        haptics.notification('error');
-        setImageGenError({ index, message: t('composer.generateImageFailed') });
+        // The call reported failure — but the response may simply have been LOST after the server
+        // atomically appended the image. Re-read the draft and merge its authoritative media for
+        // this tweet; if media actually grew, the append self-heals and we treat it as success.
+        const healed = await healTweetMediaFromServer(id, index);
+        if (healed) {
+          haptics.notification('success');
+        } else {
+          haptics.notification('error');
+          setImageGenError({ index, message: t('composer.generateImageFailed') });
+        }
       }
     } finally {
-      generatingRef.current = false;
       setGeneratingIndex(null);
     }
-  }, [ensureDraftForImage, generateImageForSlot, t]);
+  }, [generatingIndex, ensureDraftForImage, resolveTweetId, generateImageForSlot, healTweetMediaFromServer, t]);
 
   // ============================================================
   // Top-action handlers
@@ -659,6 +917,10 @@ export function ComposerPage() {
   // Schedule picker (calendar: month grid → day hour-ruler). Opening it is just a state toggle;
   // the picker emits a wall-clock "YYYY-MM-DDTHH:mm" string in the user's tz.
   const [scheduling, setScheduling] = useState(false);
+
+  // AI refine dialog (instruction + "generate new image" toggle). Opening it is a state toggle;
+  // the dialog emits { instruction, newImage } on submit.
+  const [refining, setRefining] = useState(false);
 
   const onSchedule = useCallback(() => {
     haptics.selectionChanged();
@@ -677,10 +939,10 @@ export function ComposerPage() {
     if (ok) unscheduleMutation.mutate();
   }, [t, unscheduleMutation]);
 
-  const onRefine = useCallback(async () => {
-    const text = await promptText(t('editor.refineInstruction'));
-    if (text && text.trim()) refineMutation.mutate(text.trim());
-  }, [t, refineMutation]);
+  const onRefine = useCallback(() => {
+    haptics.selectionChanged();
+    setRefining(true);
+  }, []);
 
   // ============================================================
   // Commit source ([+ commit])
@@ -1054,6 +1316,19 @@ export function ComposerPage() {
           onCancel={() => setScheduling(false)}
         />
       )}
+
+      {refining && (
+        <RefineDialog
+          busy={refineMutation.isPending}
+          title={t('editor.refineTitle')}
+          placeholder={t('editor.refineInstruction')}
+          newImageLabel={t('editor.refineNewImage')}
+          cancelLabel={t('common.cancel')}
+          submitLabel={t('editor.refine')}
+          onCancel={() => setRefining(false)}
+          onSubmit={(instruction, newImage) => refineMutation.mutate({ instruction, newImage })}
+        />
+      )}
     </div>
   );
 
@@ -1307,6 +1582,71 @@ function InstructionCard({ value, onChange, placeholder, label, disabled }: Inst
   );
 }
 
+interface RefineDialogProps {
+  busy: boolean;
+  title: string;
+  placeholder: string;
+  newImageLabel: string;
+  cancelLabel: string;
+  submitLabel: string;
+  onCancel: () => void;
+  onSubmit: (instruction: string, newImage: boolean) => void;
+}
+
+/**
+ * AI-refine bottom sheet: a free-text instruction plus a "generate new image" toggle (default OFF).
+ * Mirrors the ScheduleCalendar overlay pattern. Emits { instruction, newImage } on submit; the parent
+ * owns the mutation + close-on-success. Refine is disabled until a non-empty instruction is entered.
+ */
+function RefineDialog({
+  busy, title, placeholder, newImageLabel, cancelLabel, submitLabel, onCancel, onSubmit,
+}: RefineDialogProps) {
+  const [instruction, setInstruction] = useState('');
+  const [newImage, setNewImage] = useState(false);
+  const dir = getTextDirection(instruction);
+  const canSubmit = instruction.trim().length > 0 && !busy;
+
+  return (
+    <div className={styles.refineBackdrop} onClick={busy ? undefined : onCancel}>
+      <div className={styles.refineSheet} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.refineTitle}>{title}</div>
+        <textarea
+          className={styles.refineTextarea}
+          value={instruction}
+          dir={dir}
+          rows={3}
+          autoFocus
+          disabled={busy}
+          placeholder={placeholder}
+          onChange={(e) => setInstruction(e.target.value)}
+        />
+        <label className={styles.refineToggleRow}>
+          <span>{newImageLabel}</span>
+          <Toggle checked={newImage} onChange={setNewImage} disabled={busy} />
+        </label>
+        <div className={styles.refineActions}>
+          <button
+            type="button"
+            className={styles.refineCancel}
+            onClick={onCancel}
+            disabled={busy}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className={styles.refineSubmit}
+            onClick={() => onSubmit(instruction.trim(), newImage)}
+            disabled={!canSubmit}
+          >
+            {busy ? <Spinner /> : submitLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface PublishedResultsProps {
   draft: Draft;
   title: string;
@@ -1354,6 +1694,39 @@ function PublishedResults({ draft, title }: PublishedResultsProps) {
 
 function hasAnyText(tweets: Tweet[]): boolean {
   return tweets.some((tw) => tw.text.trim().length > 0 || !!(tw.media && tw.media.length > 0));
+}
+
+/**
+ * Which buffer tweets are emitted by a content save (mirrors buildLatestContent's filter). The first
+ * tweet is always kept. A non-first tweet is kept when it has a stable `id` (it may hold server media,
+ * so dropping it would reconcile-DELETE that media — F1), non-empty text, or local media. ONLY an
+ * id-less, empty, media-less non-first tweet is droppable — it has no server identity and thus no
+ * server media to lose.
+ */
+function keepTweetForSave(tw: Tweet, i: number): boolean {
+  return i === 0 || !!tw.id || tw.text.trim().length > 0 || !!(tw.media && tw.media.length > 0);
+}
+
+/**
+ * Adopt server-assigned stable ids into the local buffer BY POSITION, without disturbing text, caret,
+ * or media. `serverTweets` are the reconciled tweets returned by a content save (1:1-by-position with
+ * the savable buffer tweets we sent) or a draft GET. We map them onto the buffer's savable tweets in
+ * order and fill in any MISSING id; an existing id is never overwritten. If the savable count does not
+ * match the server count (the buffer changed since the save was built), we bail and return `prev`
+ * unchanged — a subsequent save reconciles. Returns `prev` (same ref) when nothing changed, so React
+ * skips the re-render and the caret is untouched.
+ */
+function adoptTweetIdsByPosition(prev: Tweet[], serverTweets: Array<{ id?: string }>): Tweet[] {
+  const savable: number[] = [];
+  prev.forEach((tw, i) => { if (keepTweetForSave(tw, i)) savable.push(i); });
+  if (savable.length !== serverTweets.length) return prev;
+  let changed = false;
+  const next = prev.slice();
+  savable.forEach((bufIdx, k) => {
+    const id = serverTweets[k]?.id;
+    if (id && !next[bufIdx].id) { next[bufIdx] = { ...next[bufIdx], id }; changed = true; }
+  });
+  return changed ? next : prev;
 }
 
 /**

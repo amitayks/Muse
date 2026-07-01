@@ -6,6 +6,7 @@
  */
 
 export * from './draft-db';
+export * from './tweet-ids';
 export * from './user-settings-db';
 export * from './repo-db';
 export * from './video-db';

@@ -16,7 +16,7 @@
 import type { Env, Draft, DraftContent, TweetMedia, RepoOverview } from '../types';
 import { assembleSystemInstruction } from './prompts';
 import { callLLMText, generateGeminiImage, GeminiImageError } from './gemini';
-import { getDraft, appendTweetMedia } from '../data/draft-db';
+import { getDraft, appendTweetMedia, resolveTweetIndex, ensureStableTweetId } from '../data/draft-db';
 import { getContentSource } from '../integrations/github';
 import { getRepoByOwnerRepo, getRepoOverview } from '../data/repo-db';
 import { getTweetById } from '../integrations/x';
@@ -38,36 +38,53 @@ export interface GeneratedTweetImage {
     media: TweetMedia;
     /** The updated draft content (with media appended), already persisted. */
     content: DraftContent;
+    /** The resolved STABLE tweet id the image was attached to (never a numeric index string), so the
+     *  editor binds the generated media to a durable id instead of a position. */
+    tweetId: string;
 }
 
 /**
- * Generate an AI image for `tweetIndex` in `draftId`, attach it to that tweet's
- * media, persist the draft, and return the new media + updated content.
- * Throws TweetImageError (with status) on missing draft, bad index, malformed
- * model output, or image-model failure. Does NOT drive bot sync — the caller
- * (webapp route) fires syncBotMessage via waitUntil.
+ * Generate an AI image for a tweet in `draftId`, attach it to that tweet's media, persist the draft,
+ * and return the new media + updated content. `tweetRef` keys the tweet by stable `id` (string) OR a
+ * legacy array index (number for internal callers, numeric-string accepted via resolveTweetIndex) —
+ * media binds to tweet identity, so the slot is resolved to an index internally.
+ * Throws TweetImageError (with status) on missing draft, unresolvable tweet, malformed model output,
+ * or image-model failure. Does NOT drive bot sync — the caller (webapp route) fires syncBotMessage.
  */
 export async function generateTweetImage(
     env: Env,
     chatId: string,
     draftId: string,
-    tweetIndex: number,
+    tweetRef: string | number,
 ): Promise<GeneratedTweetImage> {
     // 1. Load + own the draft
     const draft = await getDraft(env, draftId, chatId);
     if (!draft) throw new TweetImageError('Draft not found', 404);
 
-    // 2. Parse content + validate the tweet index
+    // 2. Parse content + resolve the tweet slot by id (or legacy index)
     let content: DraftContent;
     try {
         content = JSON.parse(draft.content) as DraftContent;
     } catch {
         throw new TweetImageError('Draft content is not valid JSON', 500);
     }
-    if (!Array.isArray(content.tweets) || tweetIndex < 0 || tweetIndex >= content.tweets.length) {
+    if (!Array.isArray(content.tweets)) {
+        throw new TweetImageError('Invalid tweet index', 400);
+    }
+    const tweetIndex = typeof tweetRef === 'number'
+        ? (Number.isInteger(tweetRef) && tweetRef >= 0 && tweetRef < content.tweets.length ? tweetRef : -1)
+        : resolveTweetIndex(content, tweetRef);
+    if (tweetIndex < 0) {
         throw new TweetImageError('Invalid tweet index', 400);
     }
     const tweet = content.tweets[tweetIndex];
+
+    // Resolve (and persist for legacy id-less tweets) the STABLE tweet id up front — before the
+    // expensive prompt/image calls — so we can return it. Without this the image endpoint would echo
+    // back the client's raw ref (possibly a numeric-index string), the editor would adopt that as the
+    // tweet's id, and a later text save would mis-reconcile and drop the freshly generated image.
+    const tweetId = await ensureStableTweetId(env, draft, content, tweetIndex, chatId);
+    if (!tweetId) throw new TweetImageError('Invalid tweet index', 400);
 
     // 3. Resolve language and assemble the inputs (skill + identity, tweet + source context)
     const lang = await getUserLanguage(env, chatId);
@@ -125,7 +142,7 @@ export async function generateTweetImage(
     tweet.media = [...(tweet.media ?? []), media];
     content.tweets[tweetIndex] = tweet;
 
-    return { media, content };
+    return { media, content, tweetId };
 }
 
 /**

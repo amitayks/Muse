@@ -317,3 +317,70 @@ The system SHALL provide endpoints to add and remove a repository's watched bran
 - **THEN** it SHALL call `hydrateEnv(env, chatId)` and verify with the user's GitHub token (not the raw request env)
 - **AND** if the user has no GitHub token, it SHALL return an actionable "connect your GitHub account" error rather than issuing a request that 401s
 
+### Requirement: Refine endpoint language resolution and new-image option
+The `POST /api/v1/drafts/:id/refine` endpoint SHALL accept a body of `{ instruction: string, newImage?: boolean }` (where `newImage` defaults to `false`). It SHALL resolve the refine language server-side from the draft (per the `draft-content-language` capability) and pass it to the AI refine function — it SHALL NOT default the language to English and SHALL NOT require the client to send a language. It SHALL preserve the draft's media by tweet index. When `newImage` is `true`, it SHALL clear the first tweet's media before saving and then generate a fresh image for the first tweet via the existing per-tweet image generator, leaving tweets `1..N` media preserved by index.
+
+#### Scenario: Refine with instruction only (newImage defaults OFF)
+- **WHEN** a POST is made with `{ instruction: "make it shorter" }` and no `newImage`
+- **THEN** the endpoint SHALL refine the text in the draft's resolved language, preserve all media by index, update the draft, and return the new content
+
+#### Scenario: Refine resolves language without a client-sent language
+- **WHEN** the request body contains no language field
+- **THEN** the endpoint SHALL resolve the language from the draft (stored language → Hebrew content detection → global language) and refine in that language
+
+#### Scenario: Refine with newImage true regenerates the first tweet image
+- **WHEN** a POST is made with `{ instruction, newImage: true }`
+- **THEN** the endpoint SHALL preserve media on tweets `1..N` by index, clear the first tweet's media, save the refined content, then generate and attach a fresh image to the first tweet via the per-tweet image generator
+- **AND** the response SHALL reflect the refined content including the newly generated first-tweet image
+
+#### Scenario: First-tweet image generation fails after text is saved
+- **WHEN** `newImage` is `true` and the image model fails after the refined text has been saved
+- **THEN** the refined text SHALL remain persisted
+- **AND** the endpoint SHALL return the refined content together with an image-generation error signal rather than failing the whole request
+
+#### Scenario: Media warming reconciles to the final media set
+- **WHEN** a refine completes (with or without `newImage`)
+- **THEN** the endpoint SHALL reconcile pre-warmed media against the final saved content so preserved media keeps its warm handles and only genuinely-removed media is orphaned
+
+### Requirement: Media-non-destructive content update endpoint
+`PUT /api/v1/drafts/:id` SHALL accept a content body whose tweets are keyed by tweet `id` and carry text + thread order only (no media). The endpoint SHALL reconcile against the stored draft by `id` — preserving each surviving tweet's stored media, creating new tweets with no media, and removing tweets whose `id` is absent — and SHALL ignore any media present in the payload. It SHALL assign ids to any id-less stored tweets (legacy drafts) as part of the update.
+
+#### Scenario: PUT preserves stored media
+- **WHEN** a `PUT /api/v1/drafts/:id` is made with `{ content: { tweets: [{ id, text }, ...] } }`
+- **THEN** the stored content SHALL be updated with the new text/order and each surviving tweet's stored media SHALL be preserved unchanged
+
+#### Scenario: PUT ignores payload media
+- **WHEN** a client (legacy or buggy) includes `media` in the `PUT` payload
+- **THEN** the endpoint SHALL ignore the payload media and neither add nor remove media based on it
+
+#### Scenario: PUT recomputes has_video from preserved media
+- **WHEN** a content update completes
+- **THEN** the draft's denormalized `has_video` flag SHALL be recomputed from the reconciled (preserved) media, and the bot message SHALL be synced
+
+### Requirement: Dedicated draft media endpoints
+The API SHALL provide authenticated, ownership-scoped endpoints to mutate a draft's media, each keyed by tweet `id` and performed atomically server-side, each driving media-prewarm reconcile and bot sync:
+- `POST /api/v1/drafts/:id/tweets/:tweetId/media` `{ key, type }` — attach an already-uploaded media item.
+- `DELETE /api/v1/drafts/:id/tweets/:tweetId/media/:key` — remove a media item (unlink only; R2 object retained).
+- `PUT /api/v1/drafts/:id/tweets/:tweetId/media/:key/targets` `{ targets }` — set a media item's per-item platform targeting.
+- `POST /api/v1/drafts/:id/tweets/:tweetId/image` — generate an AI image into a tweet (the existing per-tweet image generation, keyed by tweet id).
+
+#### Scenario: Attach uploaded media
+- **WHEN** `POST /api/v1/drafts/:id/tweets/:tweetId/media` is called with `{ key, type }` for an owned draft
+- **THEN** the item SHALL be appended to that tweet's media atomically and the updated media SHALL be returned
+
+#### Scenario: Remove media item
+- **WHEN** `DELETE /api/v1/drafts/:id/tweets/:tweetId/media/:key` is called
+- **THEN** only that key SHALL be unlinked from the tweet, the R2 object SHALL remain, and the updated media SHALL be returned
+
+#### Scenario: Retarget media item
+- **WHEN** `PUT /api/v1/drafts/:id/tweets/:tweetId/media/:key/targets` is called with `{ targets }`
+- **THEN** only that item's `targets` SHALL be updated and the updated media SHALL be returned
+
+#### Scenario: Image generation keyed by tweet id
+- **WHEN** `POST /api/v1/drafts/:id/tweets/:tweetId/image` is called for an owned draft
+- **THEN** the generated image SHALL be attached to the tweet identified by `tweetId`
+
+#### Scenario: Endpoints are ownership-scoped
+- **WHEN** any media endpoint is called for a draft the caller does not own
+- **THEN** it SHALL return a not-found/forbidden response and SHALL NOT mutate any draft
+

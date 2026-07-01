@@ -79,11 +79,17 @@ async function generateAndApproveDraft(
 ): Promise<void> {
     const { generateRepostContent } = await import('../ai/repost-generate');
 
+    // Resolve the user's language once: drive generation with it AND persist it on the draft, so the
+    // stored language matches the generated content and a later AI refine respects it.
+    const aaUser = await getUser(env, account.chat_id);
+    const userLang = aaUser?.language || 'en';
+
     const imageUrls = config.analyzeMedia && tweet.media_url ? [tweet.media_url] : [];
     // Pass undefined for personaOverride — lets repost-generate fetch from account overview
     const content = await generateRepostContent(env, tweet, account.id, config, {
         imageUrls,
         relevanceReason: tweet.relevance_reason,
+        language: userLang,
     });
     if (!content) {
         console.error(`[auto-approve] No content generated for tweet ${tweet.id}`);
@@ -91,7 +97,6 @@ async function generateAndApproveDraft(
     }
 
     const tweetPreview = tweet.text.substring(0, 30).replace(/\n/g, ' ');
-    const aaUser = await getUser(env, account.chat_id);
     const draftId = await createDraft(env, account.chat_id, {
         pr_number: 0,
         pr_title: `@${account.username} | ${tweetPreview}...`,
@@ -102,6 +107,7 @@ async function generateAndApproveDraft(
         original_tweet_id: tweet.id,
         original_tweet_url: tweet.tweet_url || undefined,
         publish_targets: aaUser?.default_publish_targets || undefined,
+        language: userLang,
     });
 
     await updateTwitterTweet(env, tweet.id, {

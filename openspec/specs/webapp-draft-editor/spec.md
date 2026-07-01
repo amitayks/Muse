@@ -45,19 +45,19 @@ The system SHALL allow users to add, remove, and reorder tweets within a thread.
 - **THEN** the tweets SHALL be reordered and renumbered accordingly
 
 ### Requirement: Media management per tweet
-The system SHALL allow users to attach, preview, and remove media (images and video) for each tweet, respecting the platform rule that a tweet holds EITHER up to 4 photos OR exactly 1 video. In the existing-draft (viewer) state, attached media SHALL be displayed **full-size** (full content width), not as small thumbnails, so the user sees the image/video as it will appear.
+The system SHALL allow users to attach, preview, and remove media (images and video) for each tweet, respecting the platform rule that a tweet holds EITHER up to 4 photos OR exactly 1 video. In the existing-draft (viewer) state, attached media SHALL be displayed **full-size** (full content width), not as small thumbnails, so the user sees the image/video as it will appear. All media changes (attach, remove, retarget) SHALL be applied through the dedicated server media operations keyed by tweet `id`, NOT bundled into the content/text auto-save; the editor SHALL reflect the authoritative server media returned by those operations. The text auto-save SHALL carry text and thread structure only and SHALL never remove a tweet's media.
 
 #### Scenario: Attach image via file picker
 - **WHEN** the user taps "Add image" on a tweet with no video attached
-- **THEN** a file picker opens allowing selection of image files (jpg, png, gif, webp), and the selected image is uploaded to R2 and attached to the tweet
+- **THEN** a file picker opens allowing selection of image files (jpg, png, gif, webp), and the selected image is uploaded to R2 and then attached to the tweet via the dedicated attach operation
 
 #### Scenario: Attach image via drag-and-drop
 - **WHEN** the user drags an image file onto a tweet's media area (with no video attached)
-- **THEN** the image is uploaded to R2 and attached to the tweet
+- **THEN** the image is uploaded to R2 and attached to the tweet via the dedicated attach operation
 
 #### Scenario: Attach video via file picker or drag-and-drop
 - **WHEN** the user taps "Add video" (or drags a `video/mp4` file) onto a tweet that has no media yet
-- **THEN** the video is uploaded to R2 and attached to the tweet as a single video media item
+- **THEN** the video is uploaded to R2 and attached to the tweet as a single video media item via the dedicated attach operation
 
 #### Scenario: Image shown full-size in the viewer
 - **WHEN** a tweet in the existing-draft view has attached images
@@ -69,7 +69,11 @@ The system SHALL allow users to attach, preview, and remove media (images and vi
 
 #### Scenario: Remove media
 - **WHEN** the user taps the remove control on an image or video
-- **THEN** the media SHALL be removed from the tweet's media list (R2 object is NOT deleted — just unlinked from the tweet)
+- **THEN** the media SHALL be removed from the tweet via the dedicated remove operation (R2 object is NOT deleted — just unlinked), and the editor SHALL reflect the authoritative result
+
+#### Scenario: Media survives a concurrent text edit
+- **WHEN** the user attaches or generates media and then edits tweet text (triggering a content auto-save)
+- **THEN** the text edit SHALL be saved AND the media SHALL remain attached, because the auto-save never carries media
 
 #### Scenario: Photo/video exclusivity
 - **WHEN** a tweet has a video attached
@@ -81,19 +85,43 @@ The system SHALL allow users to attach, preview, and remove media (images and vi
 - **THEN** the "Add image" affordance SHALL be disabled with a hint "Max 4 images per tweet (X limit)"
 
 ### Requirement: AI refine panel
-The system SHALL provide an AI refine panel where users can send natural language instructions to modify the draft content.
+The system SHALL provide an AI refine panel where users can send natural language instructions to modify the draft content. The panel SHALL be a dialog containing an instruction text input and a "🖼️ Generate new image" toggle (default OFF). Refine SHALL run in the draft's persisted content language (resolved server-side from the draft, per the `draft-content-language` capability) and SHALL preserve the draft's media deterministically by tweet index.
 
 #### Scenario: Open AI refine panel
 - **WHEN** the user taps the "AI Refine" button on the draft editor
-- **THEN** an expandable panel SHALL appear with a text input for instructions
+- **THEN** a dialog SHALL appear with a text input for instructions and a "🖼️ Generate new image" toggle defaulting to OFF
 
 #### Scenario: Submit refine instruction
 - **WHEN** the user types an instruction (e.g., "Make it more concise") and taps "Refine"
-- **THEN** the system SHALL call `POST /api/v1/drafts/:id/refine` with the instruction, show a loading state, and upon success, update the tweet textareas with the AI-refined content
+- **THEN** the system SHALL call `POST /api/v1/drafts/:id/refine` with `{ instruction, newImage }`, show a loading state, and upon success, update the tweet textareas with the AI-refined content
+- **AND** the request SHALL NOT need to include a language field (the server resolves it from the draft)
 
-#### Scenario: Refine preserves media
-- **WHEN** the AI refine updates the text content
-- **THEN** all attached media SHALL be preserved (not removed or modified)
+#### Scenario: Refine preserves media by index
+- **WHEN** the AI refine updates the text content and the "Generate new image" toggle is OFF
+- **THEN** each refined tweet at index `i` SHALL keep the media of the original tweet at index `i`
+- **AND** no media SHALL be removed or modified for indices that exist in both the original and refined content
+
+#### Scenario: Refine produces fewer tweets than the original
+- **WHEN** the original draft has 5 tweets each with an image and the refine output has 3 tweets
+- **THEN** the refined tweets at indices 0, 1, 2 SHALL keep their corresponding original images
+- **AND** the images on the dropped original tweets (indices 3, 4) SHALL be discarded
+- **AND** the AI SHALL NOT be forced to emit extra tweets to absorb the leftover images
+
+#### Scenario: Refine produces more tweets than the original
+- **WHEN** the original draft has 1 tweet with an image and the refine output has 3 tweets
+- **THEN** the refined tweet at index 0 SHALL keep the original image
+- **AND** the new tweets at indices 1, 2 SHALL have no media
+
+#### Scenario: Generate new image toggle ON
+- **WHEN** the user submits a refine with the "🖼️ Generate new image" toggle ON
+- **THEN** the refined tweets at indices 1..N SHALL keep their original images by index
+- **AND** the first tweet's existing media SHALL be cleared and a freshly generated image SHALL be attached to the first tweet
+- **AND** the new image SHALL be produced by the existing per-tweet image generator
+
+#### Scenario: New-image generation fails
+- **WHEN** the "Generate new image" toggle is ON and the image model fails after the text refine is saved
+- **THEN** the text refinement SHALL remain saved
+- **AND** the webapp SHALL surface an image-generation error without discarding the rewritten text
 
 #### Scenario: Undo refine
 - **WHEN** the user taps "Undo" after a refine operation

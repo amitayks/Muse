@@ -177,6 +177,13 @@ export interface TweetMedia {
 
 // Tweet in a draft
 export interface Tweet {
+    /**
+     * Stable, opaque tweet identity (short uuid). Media binds to this id, not the array index,
+     * so reorder/insert/delete keep each tweet's media attached and the content save can reconcile
+     * by id. Optional for back-compat: legacy drafts lack it and get one assigned lazily (see
+     * data/tweet-ids.ts → ensureTweetIds). Publish/bot-render paths never require it.
+     */
+    id?: string;
     text: string;
     index: number;
     media?: TweetMedia[];
@@ -324,6 +331,7 @@ export interface Draft {
     publish_results: string; // JSON string of PublishResults
     has_video: number; // 0 or 1
     event_id: string | null; // FK to commit_events.id (for commit/PR drafts)
+    language: string | null; // content language ('en' | 'he') chosen at creation; NULL for legacy drafts
     created_at: string;
     updated_at: string;
 }

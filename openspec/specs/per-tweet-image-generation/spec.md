@@ -149,13 +149,17 @@ The webapp SHALL prevent more than one per-tweet image generation from being in 
 - **THEN** the "Generate" controls SHALL be re-enabled
 
 ### Requirement: Auto-save does not clobber generated media
-While a per-tweet image generation is in flight, the editor's debounced full-content auto-save SHALL NOT persist the draft, so that a stale local snapshot cannot overwrite media the server appended out-of-band. After the generation resolves and its media is reflected in local editor state, normal auto-save SHALL resume, and any edits the user made SHALL still be persisted — carrying the newly generated media.
+The editor's content/text auto-save SHALL NOT carry or mutate media, so it is **structurally incapable** of overwriting media the server appended out-of-band — regardless of timing, lost responses, or page reloads. Media lives server-side and is changed only through dedicated atomic media operations; the auto-save reconciles text/structure by tweet `id` and preserves stored media. The previous timing-based safeguard (suppressing the auto-save while a generation is in flight) is therefore no longer required for correctness.
 
-#### Scenario: Auto-save suppressed during generation
-- **WHEN** a debounced auto-save would fire while a per-tweet image generation is in flight
-- **THEN** the auto-save SHALL be withheld and SHALL NOT overwrite the draft content
+#### Scenario: Auto-save cannot drop generated media
+- **WHEN** a per-tweet image generation has appended media server-side and a content auto-save then fires whose buffer does not include that media (e.g. the generate response was lost, or a different tab/reload)
+- **THEN** the auto-save SHALL NOT remove the generated media — the media SHALL remain attached after the save
 
-#### Scenario: Edits during generation are saved afterward without dropping media
-- **WHEN** the user edits tweet text while a generation is in flight, and the generation then resolves
-- **THEN** a subsequent save SHALL persist the user's edits together with the generated media, and the generated media SHALL NOT be lost
+#### Scenario: Edits during/after generation keep the generated media
+- **WHEN** the user edits tweet text around the time an image is generated
+- **THEN** a subsequent content save SHALL persist the user's text edits AND the generated media SHALL remain attached (the save never carries media)
+
+#### Scenario: A lost generate response self-heals
+- **WHEN** an image generation succeeds server-side but its response does not reach the editor
+- **THEN** the media SHALL still be persisted server-side, and the editor SHALL recover it on the next draft read (it is not lost and is not clobbered)
 

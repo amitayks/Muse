@@ -21,6 +21,12 @@ export interface TweetMedia {
 }
 
 export interface Tweet {
+  /**
+   * Stable, opaque tweet identity (short uuid) assigned server-side. Media binds to this id,
+   * not the array index, so the editor addresses media endpoints by tweet id. Optional for
+   * back-compat: legacy drafts lack it and get one assigned lazily on read-for-edit.
+   */
+  id?: string;
   text: string;
   index: number;
   media?: TweetMedia[];

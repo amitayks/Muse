@@ -5,15 +5,72 @@
  * SECURITY: All data operations require and filter by chat_id for ownership verification.
  */
 
-import type { Env, Draft, ChatContext, Published, DraftStatus, PublishTargets, PublishResults, TweetMedia } from '../types';
+import type { Env, Draft, DraftContent, ChatContext, Published, DraftStatus, PublishTargets, PublishResults, TweetMedia, MediaTargets } from '../types';
 import { logInfo, logError } from '../infra/security';
-import { APPEND_TWEET_MEDIA_SQL, tweetMediaPath } from './append-tweet-media-sql';
+import { APPEND_TWEET_MEDIA_SQL, SET_TWEET_MEDIA_SQL, tweetMediaPath } from './append-tweet-media-sql';
+import { ensureTweetIds, ensureTweetIdsInJson } from './tweet-ids';
 
 /**
  * Generate a UUID v4
  */
 function generateId(): string {
     return crypto.randomUUID();
+}
+
+/**
+ * Recompute the denormalized `has_video` flag from a tweet list: 1 iff any tweet carries a media
+ * item of type 'video', else 0. Single source of truth shared by the full-content save and the
+ * dedicated media ops so the flag never drifts from the actual attached media (Instagram-Reel
+ * publish branch + drafts-list video badge depend on it).
+ */
+function computeHasVideo(tweets: Array<{ media?: Array<{ type?: string }> }> | undefined | null): number {
+    return tweets?.some(t => t.media?.some(m => m.type === 'video')) ? 1 : 0;
+}
+
+/**
+ * Atomically recompute and persist the denormalized `has_video` flag from the draft's CURRENT stored
+ * content, in a SINGLE statement. Used by the dedicated media ops after they mutate a tweet's media —
+ * the atomic media statements only touch the inline `content` JSON and intentionally do NOT recompute
+ * the flag. Computing it inside the UPDATE (rather than read-back-then-blind-write) means two
+ * concurrent video-presence-changing ops can't persist a stale flag: each derives the value from the
+ * latest committed content. `type` only appears on media items in the content JSON, so a json_tree
+ * scan for key='type' value='video' uniquely detects an attached video anywhere in the draft.
+ */
+async function recomputeHasVideo(env: Env, id: string, chatId: string): Promise<void> {
+    await env.DB.prepare(
+        `UPDATE drafts SET has_video = (
+            SELECT CASE WHEN EXISTS (
+                SELECT 1 FROM json_tree(content) WHERE json_tree.key = 'type' AND json_tree.value = 'video'
+            ) THEN 1 ELSE 0 END
+        ) WHERE id = ? AND chat_id = ?`,
+    ).bind(id, chatId).run();
+}
+
+/**
+ * Compare-and-set persist of a lazily backfilled (id-bearing) content JSON. Only writes when the
+ * stored content STILL equals `oldContent` — i.e. it is still the id-less original — so two
+ * concurrent first-reads of a legacy draft converge on ONE id set (the first writer wins; a later
+ * read whose `oldContent` no longer matches is a no-op). Returns the AUTHORITATIVE content JSON:
+ * the value we persisted when we won, or the winner's already-stored content when we lost the race.
+ * Idempotent: a no-op when `oldContent === newContent`.
+ */
+export async function persistBackfilledTweetIds(
+    env: Env,
+    id: string,
+    chatId: string,
+    oldContent: string,
+    newContent: string,
+): Promise<string> {
+    if (oldContent === newContent) return oldContent;
+    const result = await env.DB.prepare(
+        "UPDATE drafts SET content = ?, updated_at = datetime('now') WHERE id = ? AND chat_id = ? AND content = ?"
+    )
+        .bind(newContent, id, chatId, oldContent)
+        .run();
+    if ((result.meta?.changes ?? 0) > 0) return newContent; // first writer wins
+    // Lost the race (or content changed concurrently): re-read the converged content the winner stored.
+    const fresh = await getDraft(env, id, chatId);
+    return fresh?.content ?? newContent;
 }
 
 // ==================== DRAFTS ====================
@@ -246,6 +303,9 @@ export async function createDraft(
         publish_targets?: string;
         has_video?: number;
         event_id?: string;
+        // Content language ('en' | 'he') chosen at creation time; persisted so AI refine respects it
+        // later instead of defaulting to English. NULL when the creator didn't resolve a language.
+        language?: string;
     }
 ): Promise<string> {
     const id = generateId();
@@ -253,11 +313,14 @@ export async function createDraft(
     const status = data.status || 'draft';
     const publishTargets = data.publish_targets || '{"x":true}';
     const hasVideo = data.has_video || 0;
+    // Every new draft carries stable tweet ids from creation (Decision 1) — media binds to identity,
+    // not array index. ids live inside the content JSON, so no DB migration is needed.
+    const content = ensureTweetIdsInJson(data.content);
     await env.DB.prepare(
-        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url, publish_targets, has_video, event_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO drafts (id, chat_id, pr_number, pr_title, commit_sha, content, source, status, original_tweet_id, original_tweet_url, publish_targets, has_video, event_id, language)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, data.content, source, status, data.original_tweet_id || null, data.original_tweet_url || null, publishTargets, hasVideo, data.event_id || null)
+        .bind(id, chatId, data.pr_number, data.pr_title, data.commit_sha, content, source, status, data.original_tweet_id || null, data.original_tweet_url || null, publishTargets, hasVideo, data.event_id || null, data.language || null)
         .run();
     return id;
 }
@@ -294,7 +357,7 @@ export async function updateDraftContent(
     let hasVideo = 0;
     try {
         const parsed = JSON.parse(content) as { tweets?: Array<{ media?: Array<{ type?: string }> }> };
-        hasVideo = parsed.tweets?.some(t => t.media?.some(m => m.type === 'video')) ? 1 : 0;
+        hasVideo = computeHasVideo(parsed.tweets);
     } catch {
         hasVideo = 0;
     }
@@ -374,6 +437,189 @@ export async function appendTweetMedia(
         .bind(path, path, JSON.stringify(media), id, chatId)
         .run();
     return (result.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * Resolve a tweet identifier to its array index in stored content. Accepts either a stable tweet
+ * `id` (matched against `tweets[i].id`) or a legacy numeric index string (back-compat during the
+ * id cutover — `generateTweetImage` and the media endpoints accept both). Returns -1 if unresolved.
+ */
+export function resolveTweetIndex(content: DraftContent, tweetId: string): number {
+    const tweets = content.tweets ?? [];
+    const byId = tweets.findIndex(t => t.id === tweetId);
+    if (byId >= 0) return byId;
+    // Legacy/transition fallback: a purely numeric identifier is treated as the array index.
+    if (/^\d+$/.test(tweetId)) {
+        const idx = Number(tweetId);
+        if (Number.isInteger(idx) && idx >= 0 && idx < tweets.length) return idx;
+    }
+    return -1;
+}
+
+/** Parse a draft's stored content JSON, or null when malformed. */
+function parseDraftContent(draft: Draft): DraftContent | null {
+    try {
+        const parsed = JSON.parse(draft.content) as DraftContent;
+        return Array.isArray(parsed?.tweets) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Result of a media mutation: the updated media array for the touched tweet, its resolved array
+ * index, AND the tweet's RESOLVED STABLE id. `tweetId` is always a real `content.tweets[i].id`
+ * (never the client's raw request ref): if the request addressed an id-less legacy tweet by numeric
+ * index, the op assigns+persists a stable id and returns THAT here, so the editor adopts a durable id
+ * instead of a positional index string. `null` means the draft was not found/owned or the tweet ref
+ * could not be resolved.
+ */
+export interface TweetMediaMutationResult {
+    tweetIndex: number;
+    tweetId: string;
+    media: TweetMedia[];
+}
+
+/**
+ * Resolve the STABLE id of the tweet at `tweetIndex`, assigning one if the tweet is id-less (legacy
+ * draft addressed by numeric index before its ids were backfilled). When backfilling, all tweets get
+ * ids and the result is persisted via compare-and-set (`persistBackfilledTweetIds`) so concurrent
+ * media ops / reads converge on one id set. Returns the resolved id, or null if it still can't be
+ * determined (shape changed under us). Backfill is positional, so `tweetIndex` stays valid.
+ */
+export async function ensureStableTweetId(
+    env: Env,
+    draft: Draft,
+    content: DraftContent,
+    tweetIndex: number,
+    chatId: string,
+): Promise<string | null> {
+    const existing = content.tweets[tweetIndex]?.id;
+    if (existing) return existing;
+    const withIds = ensureTweetIds(content);
+    const authoritativeJson = await persistBackfilledTweetIds(
+        env, draft.id, chatId, draft.content, JSON.stringify(withIds),
+    );
+    let authoritative: DraftContent | null;
+    try {
+        authoritative = JSON.parse(authoritativeJson) as DraftContent;
+    } catch {
+        authoritative = null;
+    }
+    return authoritative?.tweets[tweetIndex]?.id ?? null;
+}
+
+/**
+ * Attach (append) ONE media item to the tweet identified by `tweetId` (stable id or legacy index).
+ * Reuses the ATOMIC single-statement append (`APPEND_TWEET_MEDIA_SQL`) so a concurrent attach to a
+ * different tweet (or generated image) can't clobber it. Returns the updated media array (read back
+ * after the write) or null when the draft/tweet can't be resolved/owned.
+ */
+export async function attachTweetMediaById(
+    env: Env,
+    id: string,
+    chatId: string,
+    tweetId: string,
+    media: TweetMedia,
+): Promise<TweetMediaMutationResult | null> {
+    const draft = await getDraft(env, id, chatId);
+    if (!draft) return null;
+    const content = parseDraftContent(draft);
+    if (!content) return null;
+    const tweetIndex = resolveTweetIndex(content, tweetId);
+    if (tweetIndex < 0) return null;
+
+    // Ensure the resolved tweet has a stable id (assign+persist for legacy id-less tweets) and return
+    // it so the editor binds to a durable id, not a numeric index. Done BEFORE the append so the
+    // backfill write doesn't race the media write.
+    const stableId = await ensureStableTweetId(env, draft, content, tweetIndex, chatId);
+    if (!stableId) return null;
+
+    const ok = await appendTweetMedia(env, id, chatId, tweetIndex, media);
+    if (!ok) return null;
+
+    // Read back the authoritative media for the touched tweet (the atomic append may have raced other
+    // appends; the re-read reflects the committed result).
+    const after = await getDraft(env, id, chatId);
+    const afterContent = after ? parseDraftContent(after) : null;
+    const updated = afterContent?.tweets[tweetIndex]?.media ?? [...(content.tweets[tweetIndex]?.media ?? []), media];
+    // Recompute has_video atomically from the committed content: a video attach must SET the flag (the
+    // atomic append never touches it); a photo attach leaves it unchanged. Race-safe vs concurrent ops.
+    await recomputeHasVideo(env, id, chatId);
+    return { tweetIndex, tweetId: stableId, media: updated };
+}
+
+/**
+ * Remove (unlink) the media item with `mediaKey` from the tweet identified by `tweetId`. The R2 object
+ * is intentionally NOT deleted — only the reference is dropped, so a mis-issued remove is recoverable.
+ * Read-modify-write of the one tweet's media array (see SET_TWEET_MEDIA_SQL atomicity note). Returns the
+ * updated media array, or null when the draft/tweet can't be resolved/owned.
+ */
+export async function removeTweetMediaById(
+    env: Env,
+    id: string,
+    chatId: string,
+    tweetId: string,
+    mediaKey: string,
+): Promise<TweetMediaMutationResult | null> {
+    const draft = await getDraft(env, id, chatId);
+    if (!draft) return null;
+    const content = parseDraftContent(draft);
+    if (!content) return null;
+    const tweetIndex = resolveTweetIndex(content, tweetId);
+    if (tweetIndex < 0) return null;
+
+    const stableId = await ensureStableTweetId(env, draft, content, tweetIndex, chatId);
+    if (!stableId) return null;
+
+    const current = content.tweets[tweetIndex].media ?? [];
+    const next = current.filter(m => m.key !== mediaKey);
+    const path = tweetMediaPath(tweetIndex);
+    const result = await env.DB.prepare(SET_TWEET_MEDIA_SQL)
+        .bind(path, JSON.stringify(next), id, chatId)
+        .run();
+    if ((result.meta?.changes ?? 0) === 0) return null;
+    // Recompute has_video atomically from the committed content: removing the last video must CLEAR the
+    // flag. Computed inside the UPDATE, so it's race-safe vs a concurrent video op on the same draft.
+    await recomputeHasVideo(env, id, chatId);
+    return { tweetIndex, tweetId: stableId, media: next };
+}
+
+/**
+ * Set the per-item `targets` of the media item with `mediaKey` on the tweet identified by `tweetId`,
+ * leaving its key/type and all other items unchanged. Read-modify-write of the one tweet's media array
+ * (see SET_TWEET_MEDIA_SQL atomicity note). Returns the updated media array, or null when the
+ * draft/tweet/media key can't be resolved/owned.
+ */
+export async function retargetTweetMediaById(
+    env: Env,
+    id: string,
+    chatId: string,
+    tweetId: string,
+    mediaKey: string,
+    targets: MediaTargets,
+): Promise<TweetMediaMutationResult | null> {
+    const draft = await getDraft(env, id, chatId);
+    if (!draft) return null;
+    const content = parseDraftContent(draft);
+    if (!content) return null;
+    const tweetIndex = resolveTweetIndex(content, tweetId);
+    if (tweetIndex < 0) return null;
+
+    const current = content.tweets[tweetIndex].media ?? [];
+    if (!current.some(m => m.key === mediaKey)) return null;
+
+    const stableId = await ensureStableTweetId(env, draft, content, tweetIndex, chatId);
+    if (!stableId) return null;
+
+    const next = current.map(m => (m.key === mediaKey ? { ...m, targets } : m));
+    const path = tweetMediaPath(tweetIndex);
+    const result = await env.DB.prepare(SET_TWEET_MEDIA_SQL)
+        .bind(path, JSON.stringify(next), id, chatId)
+        .run();
+    if ((result.meta?.changes ?? 0) === 0) return null;
+    // Retarget changes per-item targeting only, never video PRESENCE, so has_video needs no recompute.
+    return { tweetIndex, tweetId: stableId, media: next };
 }
 
 /**

@@ -6,7 +6,7 @@
 
 import type { Env, ContentSource, DraftContent, RepoOverview, OverviewPatch, ContentResponse, VideoScriptResponse, VideoScene, HeyGenEmotion } from '../types';
 import { logInfo, logError, sanitizeContent } from '../infra/security';
-import { getRepoOverview } from '../data/db';
+import { getRepoOverview, ensureTweetIds } from '../data/db';
 import { getPrompt, assembleSystemInstruction } from './prompts';
 import { buildPromptSections } from './prompt-utils';
 import { callClaudeText } from './claude';
@@ -444,7 +444,25 @@ export async function refineContent(
         tools: [{ googleSearch: {} }],
     });
     const result = parseContentResponse(responseText).content;
-    return result;
+
+    // Preserve media AND stable tweet ids across the rewrite. Refine is text-only (the model's JSON
+    // schema carries neither media nor ids), so parseContentResponse emits fresh id-less tweets. Re-attach
+    // the ORIGINAL media AND id positionally by the SAME mapping: the refined tweet COUNT is authoritative.
+    // When refine returns fewer tweets than the original, media/ids on the dropped tail indices are
+    // discarded; new tweets beyond the original count keep no media and get a fresh id below. Purely
+    // positional — the model is never consulted. Carrying the id keeps media bound to identity so a later
+    // content save / media endpoint reconciles correctly (server-authoritative-media, Decision 1).
+    for (let i = 0; i < result.tweets.length; i++) {
+        const original = content.tweets[i];
+        if (original?.id) result.tweets[i].id = original.id;
+        if (original?.media && original.media.length > 0) {
+            result.tweets[i].media = original.media;
+        }
+    }
+
+    // Assign fresh ids to genuinely-new tweets (those beyond the original count, or originals that lacked
+    // one). Idempotent: tweets that already carried an id above are left untouched.
+    return ensureTweetIds(result);
 }
 
 /** Map which images belong to which tweets for the multimodal prompt */
@@ -683,6 +701,18 @@ export function languageDirective(language?: string): string {
     return isHebrew
         ? '\n\nאני כותב את כל הפוסט הזה בעברית בלבד — לא משנה באיזו שפה כתובים הקומיטים, הקבצים, הזהות שלי או כל הקשר אחר.'
         : '\n\nI write this entire post in English only — no matter what language the commits, files, my identity, or any other context are in.';
+}
+
+/**
+ * Heuristic language detection from a draft's own text, used as the FALLBACK when a draft has no
+ * stored `language` (legacy rows). Returns 'he' if any tweet contains a Hebrew-block character
+ * (U+0590–U+05FF), otherwise `undefined` (not enough signal — caller falls back to the user's
+ * global language). Deliberately one-directional: presence of Hebrew is a strong signal; absence
+ * is not proof of English.
+ */
+export function detectContentLang(content: DraftContent): 'he' | undefined {
+    const hasHebrew = content.tweets.some(t => /[֐-׿]/.test(t.text || ''));
+    return hasHebrew ? 'he' : undefined;
 }
 
 function buildContentPrompt(source: ContentSource, overview?: RepoOverview | null, language?: string, options?: GenerateContentOptions): string {

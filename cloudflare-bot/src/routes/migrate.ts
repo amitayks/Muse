@@ -745,6 +745,22 @@ export async function handleMigrate(request: Request, env: Env): Promise<Respons
             logInfo('media_uploads.started_at migration note:', String(mediaUploadsStartedAtError));
         }
 
+        // Migration: Add per-draft content language column to drafts (027)
+        // A draft remembers the content language it was authored in (langOverride ?? globalLang) so AI
+        // refine respects it instead of defaulting to English. Nullable, no backfill — legacy NULL rows
+        // fall back to content detection then the user's global language at refine time.
+        try {
+            const draftsInfo5 = await env.DB.prepare("PRAGMA table_info(drafts)").all();
+            const hasLanguage = draftsInfo5.results?.some((col: any) => col.name === 'language');
+
+            if (!hasLanguage) {
+                await env.DB.prepare(`ALTER TABLE drafts ADD COLUMN language TEXT;`).run();
+                logInfo('Added language column to drafts table');
+            }
+        } catch (draftLanguageError) {
+            logInfo('drafts.language migration note:', String(draftLanguageError));
+        }
+
         return secureJsonResponse({ success: true, message: 'Database migrated' });
     } catch (error) {
         const sanitized = sanitizeError(error);

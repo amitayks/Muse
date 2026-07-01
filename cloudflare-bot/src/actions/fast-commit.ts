@@ -71,6 +71,7 @@ export async function fastCommitAction(ctx: HandlerContext & { extra?: string })
         content: JSON.stringify(content),
         publish_targets: user?.default_publish_targets || undefined,
         event_id: eventId,
+        language: lang,
     });
 
     // Update event status

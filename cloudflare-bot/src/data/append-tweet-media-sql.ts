@@ -32,3 +32,21 @@ WHERE id = ? AND chat_id = ?`;
 export function tweetMediaPath(tweetIndex: number): string {
     return `$.tweets[${Math.trunc(tweetIndex)}].media`;
 }
+
+/**
+ * Replace ONE tweet's `media` array in place with a caller-computed value.
+ *
+ * ATOMICITY TRADE-OFF (see openspec `server-authoritative-media`, Decision 3): unlike the append
+ * (`APPEND_TWEET_MEDIA_SQL`, a true single-statement read-and-write), `remove` and `retarget` are
+ * read-modify-write of the ONE tweet's media array — the new array is computed in JS from a possibly
+ * stale read, then written back. This statement only touches `$.tweets[N].media`, so a concurrent
+ * append/edit to a DIFFERENT tweet is never clobbered; only two overlapping mutations of the SAME
+ * tweet's media could lose one. That blast radius is acceptable (and far smaller than the full-content
+ * clobber this change fixes): remove/retarget are rare, explicit, single-item user actions.
+ *
+ * Bind order: (path, mediaJson, id, chatId). `json(?)` stores the array as JSON, not an escaped string.
+ */
+export const SET_TWEET_MEDIA_SQL = `UPDATE drafts
+SET content = json_set(content, ?, json(?)),
+    updated_at = datetime('now')
+WHERE id = ? AND chat_id = ?`;
